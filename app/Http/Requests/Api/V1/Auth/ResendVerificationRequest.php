@@ -6,6 +6,13 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class ResendVerificationRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'email' => mb_strtolower(trim((string) $this->input('email'))),
+        ]);
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -15,6 +22,15 @@ class ResendVerificationRequest extends FormRequest
     {
         return [
             'email' => ['required', 'email', 'max:190'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'email.required' => 'L\'email e obbligatoria.',
+            'email.email' => 'Inserisci un indirizzo email valido.',
+            'email.max' => 'L\'email non puo superare 190 caratteri.',
         ];
     }
 }

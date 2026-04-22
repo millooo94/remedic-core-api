@@ -2,56 +2,76 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Auth\LoginRequest;
 use App\Http\Requests\Api\V1\Auth\RegisterRequest;
 use App\Http\Requests\Api\V1\Auth\ResendVerificationRequest;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
+use App\Services\EmailVerificationService;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly EmailVerificationService $emailVerificationService,
+    ) {
+    }
+
     public function register(RegisterRequest $request): JsonResponse
     {
         $payload = $request->validated();
 
-        $user = User::query()->create([
-            'name' => trim((string) $payload['name']),
-            'last_name' => trim((string) $payload['last_name']),
-            'email' => mb_strtolower(trim((string) $payload['email'])),
-            'password' => $payload['password'],
-            'role' => 'admin',
-            'is_active' => true,
-            'email_verified_at' => null,
-        ]);
+        try {
+            $user = User::query()->create([
+                'name' => $payload['name'],
+                'last_name' => $payload['last_name'],
+                'email' => $payload['email'],
+                'password' => $payload['password'],
+                'role' => UserRole::Admin,
+                'is_active' => true,
+                'email_verified_at' => null,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([
+                'email' => 'Questa email e gia registrata.',
+            ]);
+        }
 
-        $user->sendEmailVerificationNotification();
+        $verificationEmailSent = $this->emailVerificationService->send($user, 'register');
 
         return response()->json([
-            'message' => 'Registrazione completata. Controlla la tua email per confermare l\'account.',
+            'message' => $verificationEmailSent
+                ? 'Registrazione completata. Controlla la tua email per confermare l\'account.'
+                : 'Account creato correttamente, ma non siamo riusciti a inviare l\'email di verifica. Puoi richiederne una nuova dalla pagina di accesso.',
+            'email' => $user->email,
+            'verification_email_sent' => $verificationEmailSent,
         ], Response::HTTP_CREATED);
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
         $user = User::query()
-            ->where('email', mb_strtolower(trim((string) $request->validated('email'))))
+            ->where('email', $request->validated('email'))
             ->first();
 
         if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
             return response()->json([
                 'message' => 'Credenziali non valide.',
+                'reason' => 'invalid_credentials',
             ], Response::HTTP_UNAUTHORIZED);
         }
 
         if (! $user->is_active) {
             return response()->json([
-                'message' => 'Il tuo account non è attivo. Contatta l\'amministrazione.',
+                'message' => 'Il tuo account non e attivo. Contatta l\'amministrazione.',
                 'reason' => 'user_inactive',
             ], Response::HTTP_FORBIDDEN);
         }
@@ -88,14 +108,14 @@ class AuthController extends Controller
 
     public function resendVerification(ResendVerificationRequest $request): JsonResponse
     {
-        $user = User::query()->where('email', mb_strtolower(trim((string) $request->validated('email'))))->first();
+        $user = User::query()->where('email', $request->validated('email'))->first();
 
         if ($user && $user->is_active && ! $user->hasVerifiedEmail()) {
-            $user->sendEmailVerificationNotification();
+            $this->emailVerificationService->send($user, 'resend_verification_guest');
         }
 
         return response()->json([
-            'message' => 'Se l\'indirizzo esiste ed è verificabile, abbiamo inviato una nuova email di conferma.',
+            'message' => 'Se l\'indirizzo esiste ed e verificabile, abbiamo inviato una nuova email di conferma.',
         ]);
     }
 
@@ -105,11 +125,19 @@ class AuthController extends Controller
         $user = $request->user();
 
         if (! $user->hasVerifiedEmail()) {
-            $user->sendEmailVerificationNotification();
+            $sent = $this->emailVerificationService->send($user, 'resend_verification_authenticated');
+
+            return response()->json([
+                'message' => $sent
+                    ? 'Email di verifica inviata.'
+                    : 'Non siamo riusciti a inviare l\'email di verifica. Riprova tra poco.',
+                'verification_email_sent' => $sent,
+            ], $sent ? Response::HTTP_OK : Response::HTTP_SERVICE_UNAVAILABLE);
         }
 
         return response()->json([
-            'message' => 'Email di verifica inviata.',
+            'message' => 'Email gia verificata.',
+            'verification_email_sent' => true,
         ]);
     }
 

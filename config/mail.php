@@ -1,5 +1,23 @@
 <?php
 
+$mailScheme = env('MAIL_SCHEME');
+$mailEncryption = env('MAIL_ENCRYPTION');
+
+$mailScheme = is_string($mailScheme) ? strtolower(trim($mailScheme)) : $mailScheme;
+$mailEncryption = is_string($mailEncryption) ? strtolower(trim($mailEncryption)) : $mailEncryption;
+$mailScheme = $mailScheme === '' ? null : $mailScheme;
+$mailEncryption = $mailEncryption === '' ? null : $mailEncryption;
+
+if (! in_array($mailScheme, ['smtp', 'smtps', null], true)) {
+    $mailScheme = match (true) {
+        in_array($mailScheme, ['tls'], true) => 'smtp',
+        in_array($mailScheme, ['ssl'], true) => 'smtps',
+        $mailEncryption === 'tls' => 'smtp',
+        $mailEncryption === 'ssl' => 'smtps',
+        default => null,
+    };
+}
+
 return [
 
     /*
@@ -39,7 +57,7 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
-            'scheme' => env('MAIL_SCHEME'),
+            'scheme' => $mailScheme,
             'url' => env('MAIL_URL'),
             'host' => env('MAIL_HOST', '127.0.0.1'),
             'port' => env('MAIL_PORT', 2525),
@@ -111,8 +129,18 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
+        'address' => env('MAIL_FROM_ADDRESS', 'humancaretelemedicine@gmail.com'),
+        'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Remedic')),
     ],
+
+    'branding' => [
+        'product_name' => env('MAIL_BRAND_PRODUCT_NAME', env('APP_NAME', 'Remedic')),
+        'company_name' => env('MAIL_BRAND_COMPANY_NAME', 'Humancare Telemedicine S.r.l.'),
+        'website_url' => rtrim((string) env('MAIL_BRAND_URL', env('FRONTEND_URL', env('APP_URL', 'http://localhost'))), '/'),
+        'logo_url' => env('MAIL_LOGO_URL', rtrim((string) env('APP_URL', 'http://localhost'), '/').'/images/logo.svg'),
+        'support_email' => env('MAIL_SUPPORT_EMAIL', env('MAIL_FROM_ADDRESS', 'humancaretelemedicine@gmail.com')),
+    ],
+
+    'reminder_copy_recipient' => env('MAIL_REMINDER_COPY_RECIPIENT', 'humancaretelemedicine@gmail.com'),
 
 ];

@@ -30,6 +30,10 @@ class DashboardApiTest extends TestCase
             'full_name' => 'Russo Ilenia',
             'area_name' => 'Nutrizione',
         ]);
+        $secondProfessional = Professional::factory()->create([
+            'full_name' => 'Bianchi Luca',
+            'area_name' => 'Nutrizione',
+        ]);
         $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
         $service = Service::factory()->create([
             'category_id' => $category->id,
@@ -43,6 +47,12 @@ class DashboardApiTest extends TestCase
             'price_amount' => 100,
             'is_active' => true,
         ]);
+        ProfessionalService::query()->create([
+            'professional_id' => $secondProfessional->id,
+            'service_id' => $service->id,
+            'price_amount' => 200,
+            'is_active' => true,
+        ]);
 
         app(PerformanceRecordService::class)->create([
             'performed_at' => '2026-03-10',
@@ -54,6 +64,28 @@ class DashboardApiTest extends TestCase
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => true,
+        ], $user);
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-12',
+            'professional_id' => $secondProfessional->id,
+            'service_id' => $service->id,
+            'quantity' => 1,
+            'unit_amount' => 200,
+            'payment_method' => 'card',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 60,
+            'is_black' => false,
+        ], $user);
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-15',
+            'professional_id' => $secondProfessional->id,
+            'service_id' => $service->id,
+            'quantity' => 1,
+            'unit_amount' => 150,
+            'payment_method' => 'cash',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 50,
+            'is_black' => false,
         ], $user);
 
         $expenseCategory = ExpenseCategory::factory()->create([
@@ -74,14 +106,24 @@ class DashboardApiTest extends TestCase
 
         $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
             ->assertOk()
-            ->assertJsonPath('cards.total_performances', 1)
-            ->assertJsonPath('cards.total_center_amount', 30)
-            ->assertJsonPath('cards.total_professional_amount', 70)
-            ->assertJsonPath('cards.revenue_payment_breakdown.cash', 100)
-            ->assertJsonPath('cards.revenue_payment_breakdown.card', 0)
+            ->assertJsonPath('cards.total_performances', 3)
+            ->assertJsonPath('cards.total_center_amount', 185)
+            ->assertJsonPath('cards.total_professional_amount', 265)
+            ->assertJsonPath('cards.revenue_payment_breakdown.cash', 250)
+            ->assertJsonPath('cards.revenue_payment_breakdown.card', 200)
+            ->assertJsonPath('cards.average_performance_cost', 150)
+            ->assertJsonPath('cards.average_performance_cost_excluding_black', 175)
             ->assertJsonPath('cards.total_fixed_costs', 20)
             ->assertJsonPath('cards.black', 30)
-            ->assertJsonPath('cards.net_center_margin', 10);
+            ->assertJsonPath('cards.net_center_margin', 165)
+            ->assertJsonPath('cards.top_by_performance_count.professional_name', 'Bianchi Luca')
+            ->assertJsonPath('cards.top_by_performance_count.performances', 2)
+            ->assertJsonPath('cards.top_by_revenue.professional_name', 'Bianchi Luca')
+            ->assertJsonPath('cards.top_by_revenue.revenue_total', 350)
+            ->assertJsonPath('cards.performance_count_ranking.0.professional_name', 'Bianchi Luca')
+            ->assertJsonPath('cards.performance_count_ranking.1.professional_name', 'Russo Ilenia')
+            ->assertJsonPath('cards.revenue_ranking.0.professional_name', 'Bianchi Luca')
+            ->assertJsonPath('cards.revenue_ranking.1.professional_name', 'Russo Ilenia');
 
         $response = $this->getJson('/api/v1/dashboard/monthly-trends?year=2026')
             ->assertOk();

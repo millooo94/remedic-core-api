@@ -20,7 +20,7 @@ class ReminderService
             ->get();
 
         foreach ($reminders as $reminder) {
-            if (!$this->isDueToday($reminder, $today)) {
+            if (! $this->isDueToday($reminder, $today)) {
                 continue;
             }
 
@@ -28,10 +28,25 @@ class ReminderService
                 continue;
             }
 
-            Mail::to($reminder->recipient_email)->send(
+            $primaryRecipient = strtolower(trim((string) $reminder->recipient_email));
+            $copyRecipient = strtolower(trim((string) config('mail.reminder_copy_recipient', 'humancaretelemedicine@gmail.com')));
+
+            $ccRecipients = collect([$copyRecipient])
+                ->filter()
+                ->reject(fn (string $email): bool => $email === $primaryRecipient)
+                ->values()
+                ->all();
+
+            $pendingMail = Mail::to($primaryRecipient);
+
+            if ($ccRecipients !== []) {
+                $pendingMail->cc($ccRecipients);
+            }
+
+            $pendingMail->send(
                 new CountingReminderMail(
                     reminderDate: $today,
-                    companyName: 'Humancare Telemedicine S.r.l.',
+                    companyName: (string) config('mail.branding.company_name', 'Humancare Telemedicine S.r.l.'),
                     subjectLine: $reminder->subject,
                     bodyText: $reminder->body,
                 ),
@@ -59,6 +74,7 @@ class ReminderService
     private function dayMatchesMonth(Carbon $today, int $day): bool
     {
         $normalized = max(1, min($day, $today->daysInMonth));
+
         return $today->day === $normalized;
     }
 }

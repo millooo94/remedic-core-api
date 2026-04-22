@@ -8,6 +8,7 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 class CountingReminderMail extends Mailable
 {
@@ -18,23 +19,24 @@ class CountingReminderMail extends Mailable
         public readonly string $companyName,
         public readonly string $subjectLine,
         public readonly string $bodyText,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
+        $subject = trim($this->subjectLine);
+
         return new Envelope(
-            subject: $this->subjectLine,
+            subject: Str::contains(Str::lower($subject), 'remedic')
+                ? $subject
+                : 'Remedic | '.$subject,
         );
     }
 
     public function content(): Content
     {
         return new Content(
-            text: 'mail.counting-reminder',
-            with: [
-                'bodyText' => $this->bodyText,
-            ],
+            html: 'mail.counting-reminder',
+            text: 'mail.counting-reminder-text',
         );
     }
 }

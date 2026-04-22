@@ -2,10 +2,11 @@
 
 namespace App\Providers;
 
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Auth\Notifications\VerifyEmail;
-use Illuminate\Support\Facades\URL;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -29,6 +30,23 @@ class AppServiceProvider extends ServiceProvider
                     'hash' => sha1($notifiable->getEmailForVerification()),
                 ],
             );
+        });
+
+        VerifyEmail::toMailUsing(function (object $notifiable, string $verificationUrl): MailMessage {
+            $recipientName = trim((string) ($notifiable->name ?? ''));
+
+            return (new MailMessage)
+                ->subject('Conferma il tuo indirizzo email Remedic')
+                ->view(
+                    [
+                        'html' => 'mail.verify-email',
+                        'text' => 'mail.verify-email-text',
+                    ],
+                    [
+                        'recipientName' => $recipientName,
+                        'verificationUrl' => $verificationUrl,
+                    ],
+                );
         });
     }
 }

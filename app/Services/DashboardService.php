@@ -32,6 +32,12 @@ class DashboardService
         $averagePerformanceCost = $totalPerformances > 0
             ? round($revenueTotal / $totalPerformances, 2)
             : 0.0;
+        $nonBlackPerformanceRecords = $performanceRecords->where('is_black', false);
+        $nonBlackRevenueTotal = round((float) $nonBlackPerformanceRecords->sum('total_amount'), 2);
+        $nonBlackPerformanceCount = $nonBlackPerformanceRecords->count();
+        $averagePerformanceCostExcludingBlack = $nonBlackPerformanceCount > 0
+            ? round($nonBlackRevenueTotal / $nonBlackPerformanceCount, 2)
+            : 0.0;
         $blackCenterNet = round((float) $performanceRecords->where('is_black', true)->sum('center_amount'), 2);
         $totalCenterCosts = round($fixedCosts + $variableCosts, 2);
         $netCenterMargin = round($centerTotal - $totalCenterCosts, 2);
@@ -46,25 +52,10 @@ class DashboardService
         $previousTotalCenterCosts = round($previousFixedCosts + $previousVariableCosts, 2);
         $previousNetCenterMargin = round($previousCenterTotal - $previousTotalCenterCosts, 2);
 
-        $topByCount = $performanceRecords
-            ->groupBy(fn (PerformanceRecord $record) => $record->professional_name_snapshot ?: 'Non specificato')
-            ->map(fn (Collection $group, string $name): array => [
-                'professional_name' => $name ?: 'Non specificato',
-                'performances' => (int) $group->count(),
-            ])
-            ->sortByDesc('performances')
-            ->values()
-            ->first();
-
-        $topByRevenue = $performanceRecords
-            ->groupBy(fn (PerformanceRecord $record) => $record->professional_name_snapshot ?: 'Non specificato')
-            ->map(fn (Collection $group, string $name): array => [
-                'professional_name' => $name ?: 'Non specificato',
-                'revenue_total' => round((float) $group->sum('total_amount'), 2),
-            ])
-            ->sortByDesc('revenue_total')
-            ->values()
-            ->first();
+        $performanceCountRanking = $this->performanceCountRanking($performanceRecords);
+        $revenueRanking = $this->revenueRanking($performanceRecords);
+        $topByCount = $performanceCountRanking[0] ?? null;
+        $topByRevenue = $revenueRanking[0] ?? null;
 
         return [
             'filters' => [
@@ -86,11 +77,14 @@ class DashboardService
                 'total_fixed_costs' => $fixedCosts,
                 'total_variable_costs' => $variableCosts,
                 'average_performance_cost' => $averagePerformanceCost,
+                'average_performance_cost_excluding_black' => $averagePerformanceCostExcludingBlack,
                 'black' => $blackCenterNet,
                 'total_center_costs' => $totalCenterCosts,
                 'net_center_margin' => $netCenterMargin,
                 'top_by_performance_count' => $topByCount,
                 'top_by_revenue' => $topByRevenue,
+                'performance_count_ranking' => $performanceCountRanking,
+                'revenue_ranking' => $revenueRanking,
                 'comparisons' => [
                     'total_performances' => $this->buildComparison($totalPerformances, $previousTotalPerformances, 0),
                     'total_revenue_amount' => $this->buildComparison($revenueTotal, $previousRevenueTotal),
@@ -204,6 +198,68 @@ class DashboardService
             ->sortByDesc('total')
             ->values()
             ->all();
+    }
+
+    private function performanceCountRanking(Collection $records): array
+    {
+        return $this->groupPerformanceRecordsByProfessional($records)
+            ->map(function (Collection $group): array {
+                $professional = $this->professionalSummary($group);
+
+                return [
+                    ...$professional,
+                    'performances' => (int) $group->count(),
+                ];
+            })
+            ->sortBy([
+                ['performances', 'desc'],
+                ['professional_name', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function revenueRanking(Collection $records): array
+    {
+        return $this->groupPerformanceRecordsByProfessional($records)
+            ->map(function (Collection $group): array {
+                $professional = $this->professionalSummary($group);
+
+                return [
+                    ...$professional,
+                    'revenue_total' => round((float) $group->sum('total_amount'), 2),
+                ];
+            })
+            ->sortBy([
+                ['revenue_total', 'desc'],
+                ['professional_name', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function groupPerformanceRecordsByProfessional(Collection $records): Collection
+    {
+        return $records->groupBy(function (PerformanceRecord $record): string {
+            if ($record->professional_id) {
+                return 'id:'.$record->professional_id;
+            }
+
+            $snapshotName = trim((string) ($record->professional_name_snapshot ?: ''));
+
+            return 'name:'.strtolower($snapshotName !== '' ? $snapshotName : 'Non specificato');
+        });
+    }
+
+    private function professionalSummary(Collection $group): array
+    {
+        /** @var PerformanceRecord|null $firstRecord */
+        $firstRecord = $group->first();
+
+        return [
+            'professional_id' => $firstRecord?->professional_id,
+            'professional_name' => trim((string) ($firstRecord?->professional_name_snapshot ?: '')) ?: 'Non specificato',
+        ];
     }
 
     private function expenseCategorySplit(Collection $records): array

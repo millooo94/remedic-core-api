@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\Profile\UpdateProfileRequest;
 use App\Http\Requests\Api\V1\Profile\UploadAvatarRequest;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
+use App\Services\EmailVerificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -15,6 +16,11 @@ use Illuminate\Support\Facades\Storage;
 
 class ProfileController extends Controller
 {
+    public function __construct(
+        private readonly EmailVerificationService $emailVerificationService,
+    ) {
+    }
+
     public function show(Request $request): UserResource
     {
         return UserResource::make($request->user());
@@ -26,12 +32,12 @@ class ProfileController extends Controller
         $user = $request->user();
         $payload = $request->validated();
 
-        $emailChanged = mb_strtolower(trim((string) $user->email)) !== mb_strtolower(trim((string) $payload['email']));
+        $emailChanged = $user->email !== $payload['email'];
 
         $user->fill([
-            'name' => trim((string) $payload['name']),
-            'last_name' => trim((string) $payload['last_name']),
-            'email' => mb_strtolower(trim((string) $payload['email'])),
+            'name' => $payload['name'],
+            'last_name' => $payload['last_name'],
+            'email' => $payload['email'],
         ]);
 
         if ($emailChanged) {
@@ -40,17 +46,22 @@ class ProfileController extends Controller
 
         $user->save();
 
+        $verificationEmailSent = null;
+
         if ($emailChanged) {
             $user->tokens()->delete();
-            $user->sendEmailVerificationNotification();
+            $verificationEmailSent = $this->emailVerificationService->send($user, 'profile_email_change');
         }
 
         return response()->json([
-            'message' => $emailChanged
-                ? 'Profilo aggiornato. Verifica la nuova email per continuare ad accedere.'
-                : 'Profilo aggiornato con successo.',
+            'message' => match (true) {
+                ! $emailChanged => 'Profilo aggiornato con successo.',
+                $verificationEmailSent === true => 'Profilo aggiornato. Verifica la nuova email per continuare ad accedere.',
+                default => 'Profilo aggiornato. Non siamo riusciti a inviare la verifica alla nuova email. Puoi richiederne una nuova dalla pagina di accesso.',
+            },
             'user' => UserResource::make($user),
             'email_reverification_required' => $emailChanged,
+            'verification_email_sent' => $verificationEmailSent,
         ]);
     }
 

@@ -32,7 +32,10 @@ class ReminderServiceTest extends TestCase
         $sent = app(ReminderService::class)->sendDueReminders(now()->setDate(2026, 5, 20));
 
         $this->assertTrue($sent);
-        Mail::assertSent(CountingReminderMail::class);
+        Mail::assertSent(CountingReminderMail::class, function (CountingReminderMail $mail): bool {
+            return $mail->hasTo('humancaretelemedicine@gmail.com')
+                && ! $mail->hasCc('humancaretelemedicine@gmail.com');
+        });
     }
 
     #[Test]
@@ -54,5 +57,29 @@ class ReminderServiceTest extends TestCase
 
         $this->assertFalse($sent);
         Mail::assertNothingSent();
+    }
+
+    #[Test]
+    public function it_always_sends_a_copy_of_the_reminder_to_humancare_without_duplicate_cc_entries(): void
+    {
+        Mail::fake();
+
+        Reminder::query()->create([
+            'title' => 'Promemoria mensile',
+            'recipient_email' => 'coordinamento@remedic.it',
+            'subject' => 'Promemoria conteggio professionisti Remedic',
+            'body' => 'Verifica i conteggi mensili.',
+            'frequency' => 'monthly',
+            'day_of_month' => 20,
+            'is_active' => true,
+        ]);
+
+        $sent = app(ReminderService::class)->sendDueReminders(now()->setDate(2026, 5, 20));
+
+        $this->assertTrue($sent);
+        Mail::assertSent(CountingReminderMail::class, function (CountingReminderMail $mail): bool {
+            return $mail->hasTo('coordinamento@remedic.it')
+                && $mail->hasCc('humancaretelemedicine@gmail.com');
+        });
     }
 }
