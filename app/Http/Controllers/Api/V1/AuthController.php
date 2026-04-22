@@ -138,7 +138,7 @@ class AuthController extends Controller
 
     private function verificationRedirect(string $status)
     {
-        $frontendUrl = rtrim((string) config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:4200')), '/');
+        $frontendUrl = rtrim((string) (config('app.frontend_url') ?: (config('app.cors_allowed_origins')[0] ?? 'http://localhost:4200')), '/');
 
         return redirect()->away($frontendUrl.'/login?verification='.$status);
     }
