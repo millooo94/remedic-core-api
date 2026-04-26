@@ -45,12 +45,15 @@ class AutomaticExpenseGenerationService
                     'source' => 'automatic',
                     'generation_key' => $generationKey,
                     'expense_date' => $occurrenceDate->toDateString(),
+                    'competence_start_date' => $occurrenceDate->copy()->startOfMonth()->toDateString(),
+                    'competence_end_date' => $occurrenceDate->copy()->startOfMonth()->toDateString(),
+                    'competence_months_count' => 1,
                     'competence_month' => (int) $occurrenceDate->format('n'),
                     'competence_year' => (int) $occurrenceDate->format('Y'),
                     'description' => $template->name,
-                    'type' => $template->type?->value ?? $template->type,
-                    'amount' => number_format((float) $template->default_amount, 2, '.', ''),
-                    'payment_status' => 'da_pagare',
+                    'type' => 'fixed',
+                    'amount' => $this->normalizeMoneyAmount($template->default_amount),
+                    'payment_status' => 'pagata',
                     'notes' => $template->notes,
                 ]);
 
@@ -191,5 +194,16 @@ class AutomaticExpenseGenerationService
         return is_string($template->recurrence)
             ? $template->recurrence
             : $template->recurrence->value;
+    }
+
+    private function normalizeMoneyAmount(mixed $value): string
+    {
+        $normalized = is_string($value)
+            ? str_replace(',', '.', trim($value))
+            : $value;
+
+        $parsed = (float) $normalized;
+
+        return number_format(max(0.01, $parsed), 2, '.', '');
     }
 }

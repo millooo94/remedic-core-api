@@ -12,7 +12,7 @@ class EnsureAdminUser
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isAdmin() || ! $user->is_active) {
+        if (! $user || ! $user->isAdmin() || ! $user->is_active || ! $user->hasAdminApproval()) {
             abort(Response::HTTP_FORBIDDEN, 'Accesso non autorizzato.');
         }
 

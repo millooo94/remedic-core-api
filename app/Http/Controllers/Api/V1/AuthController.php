@@ -6,14 +6,17 @@ use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Auth\LoginRequest;
 use App\Http\Requests\Api\V1\Auth\RegisterRequest;
+use App\Http\Requests\Api\V1\Auth\ResendApprovalRequest;
 use App\Http\Requests\Api\V1\Auth\ResendVerificationRequest;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
+use App\Services\AdminApprovalService;
 use App\Services\EmailVerificationService;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,6 +24,7 @@ use Symfony\Component\HttpFoundation\Response;
 class AuthController extends Controller
 {
     public function __construct(
+        private readonly AdminApprovalService $adminApprovalService,
         private readonly EmailVerificationService $emailVerificationService,
     ) {
     }
@@ -30,6 +34,8 @@ class AuthController extends Controller
         $payload = $request->validated();
 
         try {
+            $isPrimaryAdmin = $this->adminApprovalService->isPrimaryAdminEmail($payload['email']);
+
             $user = User::query()->create([
                 'name' => $payload['name'],
                 'last_name' => $payload['last_name'],
@@ -37,6 +43,11 @@ class AuthController extends Controller
                 'password' => $payload['password'],
                 'role' => UserRole::Admin,
                 'is_active' => true,
+                'approval_requested_at' => now(),
+                'admin_approved_at' => $isPrimaryAdmin ? now() : null,
+                'approved_by_user_id' => null,
+                'rejected_at' => null,
+                'rejected_by_user_id' => null,
                 'email_verified_at' => null,
             ]);
         } catch (UniqueConstraintViolationException) {
@@ -46,13 +57,15 @@ class AuthController extends Controller
         }
 
         $verificationEmailSent = $this->emailVerificationService->send($user, 'register');
+        $approvalRequestSent = $this->adminApprovalService->sendAccessRequestNotification($user, 'register');
 
         return response()->json([
             'message' => $verificationEmailSent
-                ? 'Registrazione completata. Controlla la tua email per confermare l\'account.'
+                ? 'Registrazione completata. Conferma la tua email e attendi l\'approvazione dell\'amministratore prima di accedere.'
                 : 'Account creato correttamente, ma non siamo riusciti a inviare l\'email di verifica. Puoi richiederne una nuova dalla pagina di accesso.',
             'email' => $user->email,
             'verification_email_sent' => $verificationEmailSent,
+            'approval_request_sent' => $approvalRequestSent,
         ], Response::HTTP_CREATED);
     }
 
@@ -69,17 +82,25 @@ class AuthController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
+        if (! $user->hasVerifiedEmail()) {
+            return response()->json([
+                'message' => 'Devi prima confermare il tuo indirizzo email.',
+                'reason' => 'email_not_verified',
+                'email' => $user->email,
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         if (! $user->is_active) {
             return response()->json([
-                'message' => 'Il tuo account non e attivo. Contatta l\'amministrazione.',
+                'message' => 'Il tuo account non e attivo.',
                 'reason' => 'user_inactive',
             ], Response::HTTP_FORBIDDEN);
         }
 
-        if (! $user->hasVerifiedEmail()) {
+        if (! $user->hasAdminApproval()) {
             return response()->json([
-                'message' => 'Email non verificata. Controlla la tua casella o richiedi un nuovo invio.',
-                'reason' => 'email_not_verified',
+                'message' => 'La tua richiesta e in attesa di approvazione da parte dell\'amministratore.',
+                'reason' => 'admin_approval_pending',
                 'email' => $user->email,
             ], Response::HTTP_FORBIDDEN);
         }
@@ -116,6 +137,19 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Se l\'indirizzo esiste ed e verificabile, abbiamo inviato una nuova email di conferma.',
+        ]);
+    }
+
+    public function resendApprovalRequest(ResendApprovalRequest $request): JsonResponse
+    {
+        $user = User::query()->where('email', $request->validated('email'))->first();
+
+        if ($user && $user->is_active && $user->hasVerifiedEmail() && ! $user->hasAdminApproval()) {
+            $this->adminApprovalService->sendAccessRequestNotification($user, 'resend_approval_request');
+        }
+
+        return response()->json([
+            'message' => 'Se la richiesta e ancora in attesa, abbiamo avvisato nuovamente l\'amministratore.',
         ]);
     }
 
@@ -161,13 +195,84 @@ class AuthController extends Controller
             event(new Verified($user));
         }
 
-        return $this->verificationRedirect('verified');
+        return $this->verificationRedirect('verified', $user);
     }
 
-    private function verificationRedirect(string $status)
+    public function approveAccessRequest(Request $request, int $id, string $hash)
+    {
+        $user = $this->resolveApprovalTarget($request, $id, $hash);
+
+        if (! $user) {
+            return $this->approvalRedirect('invalid');
+        }
+
+        $this->adminApprovalService->approve($user);
+
+        return $this->approvalRedirect('approved', $user);
+    }
+
+    public function rejectAccessRequest(Request $request, int $id, string $hash)
+    {
+        $user = $this->resolveApprovalTarget($request, $id, $hash);
+
+        if (! $user) {
+            return $this->approvalRedirect('invalid');
+        }
+
+        $this->adminApprovalService->reject($user);
+
+        return $this->approvalRedirect('rejected', $user);
+    }
+
+    private function resolveApprovalTarget(Request $request, int $id, string $hash): ?User
+    {
+        if (! $request->hasValidSignature()) {
+            return null;
+        }
+
+        $user = User::query()->find($id);
+
+        if (! $user) {
+            return null;
+        }
+
+        if (! hash_equals((string) $hash, sha1($user->email))) {
+            return null;
+        }
+
+        return $user;
+    }
+
+    private function verificationRedirect(string $status, ?User $user = null)
+    {
+        $query = ['verification' => $status];
+
+        if ($status === 'verified' && $user) {
+            $query['approval'] = $user->hasAdminApproval()
+                ? 'approved'
+                : ($user->is_active ? 'pending' : 'rejected');
+            $query['email'] = $user->email;
+        }
+
+        return redirect()->away($this->frontendLoginUrl($query));
+    }
+
+    private function approvalRedirect(string $status, ?User $user = null)
+    {
+        $query = ['approval' => $status];
+
+        if ($user) {
+            $query['email'] = $user->email;
+        }
+
+        return redirect()->away($this->frontendLoginUrl($query));
+    }
+
+    private function frontendLoginUrl(array $query = []): string
     {
         $frontendUrl = rtrim((string) (config('app.frontend_url') ?: (config('app.cors_allowed_origins')[0] ?? 'http://localhost:4200')), '/');
+        $normalizedQuery = Arr::where($query, fn (mixed $value): bool => $value !== null && $value !== '');
 
-        return redirect()->away($frontendUrl.'/login?verification='.$status);
+        return $frontendUrl.'/login?'.http_build_query($normalizedQuery);
     }
 }

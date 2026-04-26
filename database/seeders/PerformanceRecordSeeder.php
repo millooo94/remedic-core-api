@@ -2,17 +2,34 @@
 
 namespace Database\Seeders;
 
+use App\Enums\UserRole;
+use App\Models\PerformanceRecord;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
+use App\Models\User;
 use App\Services\PerformanceRecordService;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class PerformanceRecordSeeder extends Seeder
 {
     public function run(): void
     {
-        $user = \App\Models\User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $primaryAdminEmail = mb_strtolower(trim((string) config('auth.primary_admin.email')));
+        $user = User::query()
+            ->when($primaryAdminEmail !== '', fn ($query) => $query->where('email', $primaryAdminEmail))
+            ->first()
+            ?? User::query()->where('role', UserRole::Admin)->first();
+
+        if (! $user) {
+            throw new RuntimeException('Nessun utente admin disponibile per il seeding dei record prestazionali. Esegui prima AdminUserSeeder.');
+        }
+
         $service = app(PerformanceRecordService::class);
+        $professionals = Professional::query()
+            ->get()
+            ->keyBy(fn (Professional $professional) => $this->normalizePersonKey($professional->full_name));
 
         $records = [
             ['professional' => 'Arena Sebastiano', 'service' => 'Visita neurologica', 'date' => '2026-02-18', 'unit_amount' => 120, 'mode' => 'percentage', 'percentage_value' => 70, 'payment_method' => 'card'],
@@ -25,19 +42,25 @@ class PerformanceRecordSeeder extends Seeder
             ['professional' => 'Liguori Livia', 'service' => 'Visita dermatologica', 'date' => '2026-05-23', 'unit_amount' => 100, 'mode' => 'fixed', 'fixed_amount' => 40, 'payment_method' => 'card'],
             ['professional' => 'Rapisarda Giovanni Mario', 'service' => 'Visita internistica', 'date' => '2026-06-10', 'unit_amount' => 125, 'mode' => 'percentage', 'percentage_value' => 60, 'payment_method' => 'cash'],
             ['professional' => 'Russo Ilenia', 'service' => 'Controllo nutrizionale', 'date' => '2026-06-21', 'unit_amount' => 60, 'mode' => 'percentage', 'percentage_value' => 50, 'payment_method' => 'card'],
-            ['professional' => 'ZappalÃ  Simona', 'service' => 'Biorivitalizzazione viso', 'date' => '2026-07-09', 'unit_amount' => 120, 'mode' => 'percentage', 'percentage_value' => 70, 'payment_method' => 'card'],
-            ['professional' => 'PatanÃ¨ Giorgia', 'service' => 'Supporto tecnico esame', 'date' => '2026-08-03', 'unit_amount' => 70, 'mode' => 'fixed', 'fixed_amount' => 30, 'payment_method' => 'cash'],
+            ['professional' => 'Zappala Simona', 'service' => 'Biorivitalizzazione viso', 'date' => '2026-07-09', 'unit_amount' => 120, 'mode' => 'percentage', 'percentage_value' => 70, 'payment_method' => 'card'],
+            ['professional' => 'Patane Giorgia', 'service' => 'Supporto tecnico esame', 'date' => '2026-08-03', 'unit_amount' => 70, 'mode' => 'fixed', 'fixed_amount' => 30, 'payment_method' => 'cash'],
         ];
 
         foreach ($records as $record) {
-            $professional = Professional::query()->where('full_name', $record['professional'])->firstOrFail();
+            $professionalName = (string) $record['professional'];
+            $professional = $professionals->get($this->normalizePersonKey($professionalName));
+
+            if (! $professional) {
+                throw new RuntimeException("Professionista non trovato nel seeding prestazioni: {$professionalName}");
+            }
+
             $link = ProfessionalService::query()
                 ->where('professional_id', $professional->id)
                 ->whereHas('service', fn ($query) => $query->where('display_name', $record['service']))
                 ->with('service')
                 ->first();
 
-            $service->create([
+            $payload = [
                 'performed_at' => $record['date'],
                 'professional_id' => $professional->id,
                 'service_id' => $link?->service_id,
@@ -49,7 +72,30 @@ class PerformanceRecordSeeder extends Seeder
                 'percentage_value' => $record['percentage_value'] ?? null,
                 'fixed_amount' => $record['fixed_amount'] ?? null,
                 'notes' => null,
-            ], $user);
+            ];
+
+            $existingRecord = PerformanceRecord::query()
+                ->where('performed_at', $record['date'])
+                ->where('professional_id', $professional->id)
+                ->where('service_name_snapshot', $record['service'])
+                ->first();
+
+            if ($existingRecord) {
+                $service->update($existingRecord, $payload, $user);
+                continue;
+            }
+
+            $service->create($payload, $user);
         }
+    }
+
+    private function normalizePersonKey(string $fullName): string
+    {
+        return Str::of($fullName)
+            ->replace(["\u{2019}", "\u{2018}", '`'], "'")
+            ->ascii()
+            ->lower()
+            ->squish()
+            ->value();
     }
 }

@@ -19,6 +19,11 @@ class UserFactory extends Factory
             'last_name' => fake()->lastName(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
+            'approval_requested_at' => now(),
+            'admin_approved_at' => now(),
+            'approved_by_user_id' => null,
+            'rejected_at' => null,
+            'rejected_by_user_id' => null,
             'password' => static::$password ??= Hash::make('password'),
             'role' => UserRole::Admin,
             'is_active' => true,
@@ -31,6 +36,14 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    public function pendingApproval(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'admin_approved_at' => null,
+            'approved_by_user_id' => null,
         ]);
     }
 }

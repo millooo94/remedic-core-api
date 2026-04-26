@@ -17,7 +17,7 @@ class PerformanceRecordResource extends JsonResource
             'category_name_snapshot' => $this->category_name_snapshot ?: 'Non specificato',
             'service_id' => $this->service_id,
             'service_name_snapshot' => $this->service_name_snapshot ?: 'Non specificato',
-            'quantity' => $this->quantity,
+            'quantity' => (int) $this->quantity,
             'unit_amount' => $this->unit_amount,
             'total_amount' => $this->total_amount,
             'calculation_mode' => $this->calculation_mode?->value ?? $this->calculation_mode,

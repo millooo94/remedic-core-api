@@ -28,6 +28,8 @@ class ProfessionalStatementService
 
         $payableRecords = $records->where('is_invoiced', false)->values();
         $alreadyInvoicedRecords = $records->where('is_invoiced', true)->values();
+        $payablePerformancesCount = (int) $payableRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
+        $alreadyInvoicedPerformancesCount = (int) $alreadyInvoicedRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $professionalTotal = round((float) $payableRecords->sum('professional_amount'), 2);
         $alreadyInvoicedAmount = round((float) $alreadyInvoicedRecords->sum('professional_amount'), 2);
         $fileStem = sprintf(
@@ -51,7 +53,7 @@ class ProfessionalStatementService
             'records' => $records->map(fn (PerformanceRecord $record) => [
                 'performed_at' => $record->performed_at?->toDateString(),
                 'service_name' => $record->service_name_snapshot,
-                'quantity' => (float) $record->quantity,
+                'quantity' => (int) $record->quantity,
                 'unit_amount' => (float) $record->unit_amount,
                 'total_amount' => (float) $record->total_amount,
                 'professional_amount' => (float) $record->professional_amount,
@@ -60,9 +62,9 @@ class ProfessionalStatementService
                 'notes' => $record->notes,
             ])->all(),
             'totals' => [
-                'performance_count' => $payableRecords->count(),
+                'performance_count' => $payablePerformancesCount,
                 'records_count' => $records->count(),
-                'already_invoiced_count' => $alreadyInvoicedRecords->count(),
+                'already_invoiced_count' => $alreadyInvoicedPerformancesCount,
                 'professional_amount' => $professionalTotal,
                 'already_invoiced_amount' => $alreadyInvoicedAmount,
             ],
@@ -74,7 +76,7 @@ class ProfessionalStatementService
                 sprintf("in allegato trovi il prospetto relativo all'intervallo %s.", $period['label']),
                 sprintf('Totale da fatturare a Humancare Telemedicine S.r.l.: %s.', $this->formatEuro($professionalTotal)),
                 $alreadyInvoicedRecords->isNotEmpty()
-                    ? sprintf('Prestazioni gia fatturate escluse dal conteggio: %d (%s).', $alreadyInvoicedRecords->count(), $this->formatEuro($alreadyInvoicedAmount))
+                    ? sprintf('Prestazioni gia fatturate escluse dal conteggio: %d (%s).', $alreadyInvoicedPerformancesCount, $this->formatEuro($alreadyInvoicedAmount))
                     : null,
                 '',
                 'Resto a disposizione per eventuali verifiche.',

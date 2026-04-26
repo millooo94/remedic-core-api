@@ -21,6 +21,7 @@ class StoreServiceRequest extends FormRequest
             'category_name' => ['nullable', 'string', 'max:190'],
             'canonical_name' => ['nullable', 'string', 'max:190'],
             'display_name' => ['required', 'string', 'max:190'],
+            'importo_prestazione' => ['nullable', 'numeric', 'min:0'],
             'default_duration_minutes' => ['nullable', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string'],

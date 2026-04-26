@@ -11,9 +11,9 @@ class PerformanceCalculationService
 {
     public function calculate(PerformanceCalculationInput $input): PerformanceCalculationResult
     {
-        $quantityHundredths = $this->toScaledInteger($input->quantity, 2, 'quantity');
+        $quantity = $this->toPositiveInteger($input->quantity, 'quantity');
         $unitAmountCents = $this->toScaledInteger($input->unitAmount, 2, 'unit_amount');
-        $totalCents = (int) round(($quantityHundredths * $unitAmountCents) / 100);
+        $totalCents = $quantity * $unitAmountCents;
 
         if ($input->calculationMode === CalculationMode::Percentage) {
             $percentageBasisPoints = $this->toScaledInteger((string) $input->percentageValue, 2, 'percentage_value');
@@ -28,7 +28,7 @@ class PerformanceCalculationService
             $centerCents = $totalCents - $professionalCents;
 
             return new PerformanceCalculationResult(
-                quantity: $this->fromScaledInteger($quantityHundredths, 2),
+                quantity: (string) $quantity,
                 unitAmount: $this->fromScaledInteger($unitAmountCents, 2),
                 totalAmount: $this->fromScaledInteger($totalCents, 2),
                 percentageValue: $this->fromScaledInteger($percentageBasisPoints, 2),
@@ -49,7 +49,7 @@ class PerformanceCalculationService
         $centerCents = $totalCents - $fixedCents;
 
         return new PerformanceCalculationResult(
-            quantity: $this->fromScaledInteger($quantityHundredths, 2),
+            quantity: (string) $quantity,
             unitAmount: $this->fromScaledInteger($unitAmountCents, 2),
             totalAmount: $this->fromScaledInteger($totalCents, 2),
             percentageValue: null,
@@ -81,5 +81,30 @@ class PerformanceCalculationService
     private function fromScaledInteger(int $value, int $scale): string
     {
         return number_format($value / (10 ** $scale), $scale, '.', '');
+    }
+
+    private function toPositiveInteger(?string $value, string $field): int
+    {
+        if ($value === null || trim($value) === '') {
+            throw ValidationException::withMessages([
+                $field => 'Valore obbligatorio.',
+            ]);
+        }
+
+        $normalized = trim($value);
+        if (! preg_match('/^\d+$/', $normalized)) {
+            throw ValidationException::withMessages([
+                $field => 'La quantita deve essere un numero intero.',
+            ]);
+        }
+
+        $parsed = (int) $normalized;
+        if ($parsed < 1) {
+            throw ValidationException::withMessages([
+                $field => 'La quantita deve essere maggiore o uguale a 1.',
+            ]);
+        }
+
+        return $parsed;
     }
 }

@@ -18,7 +18,6 @@ class ExpenseCategoryController extends Controller
             ExpenseCategory::query()
                 ->withCount(['records', 'templates'])
                 ->orderByDesc('is_active')
-                ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get(),
         );
@@ -28,17 +27,13 @@ class ExpenseCategoryController extends Controller
     {
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'type' => ['required', 'in:fixed,variable'],
             'is_active' => ['sometimes', 'boolean'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $category = ExpenseCategory::query()->create([
             'name' => trim($payload['name']),
             'slug' => Str::slug($payload['name']),
-            'type' => $payload['type'],
             'is_active' => $payload['is_active'] ?? true,
-            'sort_order' => $payload['sort_order'] ?? null,
         ]);
 
         return new ExpenseCategoryResource($category);
@@ -48,17 +43,13 @@ class ExpenseCategoryController extends Controller
     {
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'type' => ['required', 'in:fixed,variable'],
             'is_active' => ['sometimes', 'boolean'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $expenseCategory->fill([
             'name' => trim($payload['name']),
             'slug' => Str::slug($payload['name']),
-            'type' => $payload['type'],
             'is_active' => $payload['is_active'] ?? true,
-            'sort_order' => $payload['sort_order'] ?? null,
         ]);
         $expenseCategory->save();
 

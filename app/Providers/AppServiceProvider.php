@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\ExpenseRecord;
+use App\Observers\ExpenseRecordObserver;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -20,6 +22,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Carbon::setLocale(config('app.locale', 'it'));
         JsonResource::withoutWrapping();
+        ExpenseRecord::observe(ExpenseRecordObserver::class);
 
         VerifyEmail::createUrlUsing(function (object $notifiable): string {
             return URL::temporarySignedRoute(

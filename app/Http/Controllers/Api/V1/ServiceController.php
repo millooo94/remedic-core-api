@@ -74,6 +74,9 @@ class ServiceController extends Controller
             'category_id' => $resolvedCategoryId,
             'canonical_name' => $canonicalName,
             'display_name' => $displayName,
+            'importo_prestazione' => array_key_exists('importo_prestazione', $payload)
+                ? $payload['importo_prestazione']
+                : $service->importo_prestazione,
             'slug' => $service->exists ? $service->slug : Str::slug($categoryPrefix.' '.$baseSlug),
             'description' => null,
             'default_duration_minutes' => $payload['default_duration_minutes'] ?? null,

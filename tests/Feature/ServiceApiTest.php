@@ -32,13 +32,17 @@ class ServiceApiTest extends TestCase
         $this->postJson('/api/v1/services', [
             'category_id' => $category->id,
             'display_name' => 'Visita cardiologica',
+            'importo_prestazione' => 125.50,
             'default_duration_minutes' => 30,
             'professional_services' => [
-                ['professional_id' => $cardioProfessional->id],
+                [
+                    'professional_id' => $cardioProfessional->id,
+                ],
             ],
         ])->assertCreated()
             ->assertJsonPath('category.name', 'Cardiologia')
-            ->assertJsonPath('professional_services.0.professional_id', $cardioProfessional->id);
+            ->assertJsonPath('professional_services.0.professional_id', $cardioProfessional->id)
+            ->assertJsonPath('importo_prestazione', '125.50');
     }
 
     #[Test]
@@ -64,5 +68,29 @@ class ServiceApiTest extends TestCase
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['professional_services']);
     }
-}
 
+    #[Test]
+    public function it_rejects_invalid_optional_importo_values(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $category = ServiceCategory::factory()->create([
+            'name' => 'Cardiologia',
+            'slug' => 'cardiologia',
+        ]);
+
+        $professional = Professional::factory()->create([
+            'area_name' => 'Cardiologia',
+        ]);
+
+        $this->postJson('/api/v1/services', [
+            'category_id' => $category->id,
+            'display_name' => 'Visita cardiologica',
+            'importo_prestazione' => -10,
+            'professional_services' => [['professional_id' => $professional->id]],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'importo_prestazione',
+            ]);
+    }
+}

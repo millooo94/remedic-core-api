@@ -10,12 +10,12 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             AdminUserSeeder::class,
-            ProfessionalSeeder::class,
-            CatalogSeeder::class,
-            ExpenseCategorySeeder::class,
-            ApplicationSettingSeeder::class,
-            ExpenseSeeder::class,
-            PerformanceRecordSeeder::class,
+            // ProfessionalSeeder::class,
+            // CatalogSeeder::class,
+            // ExpenseCategorySeeder::class,
+            // ApplicationSettingSeeder::class,
+            // ExpenseSeeder::class,
+            // PerformanceRecordSeeder::class,
         ]);
     }
 }

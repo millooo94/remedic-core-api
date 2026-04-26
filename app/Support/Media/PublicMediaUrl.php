@@ -14,7 +14,7 @@ class PublicMediaUrl
         }
 
         $url = Storage::disk('public')->url($path);
-        $base = rtrim($request->getSchemeAndHttpHost(), '/');
+        $base = rtrim(self::requestBaseUrl($request), '/');
         if ($base === '') {
             return $url;
         }
@@ -47,6 +47,42 @@ class PublicMediaUrl
         return $base.'/'.$url;
     }
 
+    private static function requestBaseUrl(Request $request): string
+    {
+        $forwardedHost = self::firstForwardedValue((string) $request->headers->get('x-forwarded-host', ''));
+        $forwardedProto = self::firstForwardedValue((string) $request->headers->get('x-forwarded-proto', ''));
+        $forwardedPort = self::firstForwardedValue((string) $request->headers->get('x-forwarded-port', ''));
+
+        $host = trim($forwardedHost !== '' ? $forwardedHost : (string) $request->server('HTTP_HOST', $request->getHost()));
+        if ($host === '') {
+            return $request->getSchemeAndHttpHost();
+        }
+
+        $scheme = trim($forwardedProto !== '' ? $forwardedProto : self::requestScheme($request));
+        if ($scheme === '') {
+            $scheme = 'http';
+        }
+
+        if (str_contains($host, '://')) {
+            $parsedHost = parse_url($host);
+            $host = (string) ($parsedHost['host'] ?? $host);
+            $hostPort = isset($parsedHost['port']) ? (int) $parsedHost['port'] : null;
+        } else {
+            $parsedHost = parse_url($scheme.'://'.$host);
+            $host = (string) ($parsedHost['host'] ?? $host);
+            $hostPort = isset($parsedHost['port']) ? (int) $parsedHost['port'] : null;
+        }
+
+        $port = $hostPort
+            ?? self::normalizePort($forwardedPort)
+            ?? self::normalizePort((string) $request->server('SERVER_PORT', ''))
+            ?? self::defaultPort($scheme);
+
+        $normalizedPort = self::defaultPort($scheme) === $port ? '' : ':'.$port;
+
+        return strtolower($scheme).'://'.$host.$normalizedPort;
+    }
+
     private static function pathWithSuffix(array $parsed): ?string
     {
         $path = $parsed['path'] ?? null;
@@ -68,5 +104,42 @@ class PublicMediaUrl
     private static function defaultPort(string $scheme): int
     {
         return strtolower($scheme) === 'https' ? 443 : 80;
+    }
+
+    private static function firstForwardedValue(string $value): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        return trim(explode(',', $value)[0] ?? '');
+    }
+
+    private static function normalizePort(string $port): ?int
+    {
+        $port = trim($port);
+
+        if ($port === '' || ! ctype_digit($port)) {
+            return null;
+        }
+
+        return (int) $port;
+    }
+
+    private static function requestScheme(Request $request): string
+    {
+        $https = strtolower((string) $request->server('HTTPS', ''));
+
+        if ($https === 'on' || $https === '1') {
+            return 'https';
+        }
+
+        $scheme = trim((string) $request->server('REQUEST_SCHEME', ''));
+
+        if ($scheme !== '') {
+            return strtolower($scheme);
+        }
+
+        return $request->isSecure() ? 'https' : 'http';
     }
 }

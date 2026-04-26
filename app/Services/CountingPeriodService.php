@@ -37,7 +37,7 @@ class CountingPeriodService
         $rows = PerformanceRecord::query()
             ->whereDate('performed_at', '>=', $resolved['start_date'])
             ->whereDate('performed_at', '<=', $resolved['end_date'])
-            ->selectRaw('professional_id, professional_name_snapshot, COUNT(*) as performance_count, SUM(professional_amount) as professional_total, SUM(center_amount) as center_total')
+            ->selectRaw('professional_id, professional_name_snapshot, COALESCE(SUM(quantity), 0) as performance_count, SUM(professional_amount) as professional_total, SUM(center_amount) as center_total')
             ->groupBy('professional_id', 'professional_name_snapshot')
             ->orderBy('professional_name_snapshot')
             ->get()

@@ -49,7 +49,7 @@ class ProfessionalStatementApiTest extends TestCase
             'performed_at' => '2026-05-10',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
-            'quantity' => 1,
+            'quantity' => 2,
             'unit_amount' => 100,
             'payment_method' => 'card',
             'calculation_mode' => 'percentage',
@@ -61,7 +61,7 @@ class ProfessionalStatementApiTest extends TestCase
             'performed_at' => '2026-05-14',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
-            'quantity' => 1,
+            'quantity' => 3,
             'unit_amount' => 120,
             'payment_method' => 'cash',
             'calculation_mode' => 'percentage',
@@ -72,14 +72,14 @@ class ProfessionalStatementApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('professional.full_name', 'Bottaro Giuseppe')
             ->assertJsonPath('professional.iban', 'IT60X0542811101000000123456')
-            ->assertJsonPath('totals.performance_count', 1)
-            ->assertJsonPath('totals.already_invoiced_count', 1)
-            ->assertJsonPath('totals.professional_amount', 84)
-            ->assertJsonPath('totals.already_invoiced_amount', 70)
+            ->assertJsonPath('totals.performance_count', 3)
+            ->assertJsonPath('totals.already_invoiced_count', 2)
+            ->assertJsonPath('totals.professional_amount', 252)
+            ->assertJsonPath('totals.already_invoiced_amount', 140)
             ->assertJsonPath('records.0.is_invoiced', true)
             ->assertJsonPath('records.0.invoicing_status', 'Gia fatturata')
             ->assertJsonMissingPath('totals.center_amount')
-            ->assertJsonPath('message', 'Totale da fatturare a Humancare Telemedicine S.r.l.: € 84,00');
+            ->assertJsonPath('message', 'Totale da fatturare a Humancare Telemedicine S.r.l.: € 252,00');
 
         $this->get("/api/v1/professional-statements/{$professional->id}/pdf?start_date=2026-05-01&end_date=2026-05-31")
             ->assertOk();

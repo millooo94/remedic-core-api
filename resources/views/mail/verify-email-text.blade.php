@@ -6,10 +6,12 @@ Ciao {{ $recipientName }},
 Ciao,
 @endif
 
-abbiamo ricevuto una richiesta di verifica per questo indirizzo email.
+abbiamo ricevuto una richiesta di accesso alla dashboard privata Remedic.
 
-Per completare l'attivazione del tuo account Remedic, apri questo link:
+Per confermare il tuo indirizzo email e completare il primo passaggio di sicurezza, apri questo link:
 {{ $verificationUrl }}
+
+Dopo la conferma, l'accesso restera in attesa finche l'amministratore principale non approvera la richiesta.
 
 Se non hai creato tu l'account o non hai richiesto questa operazione, puoi ignorare il messaggio.
 

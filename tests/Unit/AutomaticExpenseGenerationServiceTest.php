@@ -17,7 +17,6 @@ class AutomaticExpenseGenerationServiceTest extends TestCase
     public function test_it_generates_monthly_cost_and_prevents_duplicates(): void
     {
         $category = ExpenseCategory::factory()->create([
-            'type' => 'fixed',
             'is_active' => true,
         ]);
 
@@ -46,6 +45,7 @@ class AutomaticExpenseGenerationServiceTest extends TestCase
             'expense_date' => '2026-04-01 00:00:00',
             'source' => 'automatic',
             'generation_key' => "expense-template:{$template->id}:2026-04-01",
+            'payment_status' => 'pagata',
         ]);
 
         $this->assertEquals(1, ExpenseRecord::query()->where('expense_template_id', $template->id)->count());

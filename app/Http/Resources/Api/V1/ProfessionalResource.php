@@ -11,7 +11,13 @@ class ProfessionalResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $areas = $this->relationLoaded('areas') ? $this->areas : collect();
+        $areas = $this->relationLoaded('areas')
+            ? $this->areas->sortBy(fn ($area) => [
+                $area->pivot?->sort_order ?? PHP_INT_MAX,
+                $area->pivot?->id ?? PHP_INT_MAX,
+                $area->id,
+            ])->values()
+            : collect();
         $areaNames = collect($areas)
             ->pluck('name')
             ->filter()
@@ -29,8 +35,10 @@ class ProfessionalResource extends JsonResource
 
         return [
             'id' => $this->id,
+            'subject_type' => $this->subject_type?->value ?? $this->subject_type,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
+            'company_name' => $this->company_name,
             'full_name' => $this->full_name,
             'area_name' => $this->area_name ?: ($areaNames->first() ?? null),
             'area_names' => $areaNames->all(),

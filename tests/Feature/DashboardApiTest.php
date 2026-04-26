@@ -69,7 +69,7 @@ class DashboardApiTest extends TestCase
             'performed_at' => '2026-03-12',
             'professional_id' => $secondProfessional->id,
             'service_id' => $service->id,
-            'quantity' => 1,
+            'quantity' => 3,
             'unit_amount' => 200,
             'payment_method' => 'card',
             'calculation_mode' => 'percentage',
@@ -91,7 +91,6 @@ class DashboardApiTest extends TestCase
         $expenseCategory = ExpenseCategory::factory()->create([
             'name' => 'Affitto',
             'slug' => 'affitto',
-            'type' => 'fixed',
         ]);
         ExpenseRecord::query()->create([
             'expense_category_id' => $expenseCategory->id,
@@ -106,20 +105,22 @@ class DashboardApiTest extends TestCase
 
         $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
             ->assertOk()
-            ->assertJsonPath('cards.total_performances', 3)
-            ->assertJsonPath('cards.total_center_amount', 185)
-            ->assertJsonPath('cards.total_professional_amount', 265)
+            ->assertJsonPath('cards.total_performances', 5)
+            ->assertJsonPath('cards.total_center_amount', 345)
+            ->assertJsonPath('cards.total_professional_amount', 505)
             ->assertJsonPath('cards.revenue_payment_breakdown.cash', 250)
-            ->assertJsonPath('cards.revenue_payment_breakdown.card', 200)
-            ->assertJsonPath('cards.average_performance_cost', 150)
-            ->assertJsonPath('cards.average_performance_cost_excluding_black', 175)
+            ->assertJsonPath('cards.revenue_payment_breakdown.card', 600)
+            ->assertJsonPath('cards.average_performance_cost', 170)
+            ->assertJsonPath('cards.average_performance_cost_excluding_black', 187.5)
             ->assertJsonPath('cards.total_fixed_costs', 20)
+            ->assertJsonPath('cards.total_variable_costs', 505)
+            ->assertJsonPath('cards.total_center_costs', 525)
             ->assertJsonPath('cards.black', 30)
-            ->assertJsonPath('cards.net_center_margin', 165)
+            ->assertJsonPath('cards.net_center_margin', 325)
             ->assertJsonPath('cards.top_by_performance_count.professional_name', 'Bianchi Luca')
-            ->assertJsonPath('cards.top_by_performance_count.performances', 2)
+            ->assertJsonPath('cards.top_by_performance_count.performances', 4)
             ->assertJsonPath('cards.top_by_revenue.professional_name', 'Bianchi Luca')
-            ->assertJsonPath('cards.top_by_revenue.revenue_total', 350)
+            ->assertJsonPath('cards.top_by_revenue.revenue_total', 750)
             ->assertJsonPath('cards.performance_count_ranking.0.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.performance_count_ranking.1.professional_name', 'Russo Ilenia')
             ->assertJsonPath('cards.revenue_ranking.0.professional_name', 'Bianchi Luca')
@@ -132,5 +133,86 @@ class DashboardApiTest extends TestCase
         $this->assertNotContains('undefined', array_column($payload['monthly_trends'], 'label'));
         $this->assertNotContains('undefined', array_column($payload['professional_split'], 'label'));
         $this->assertNotContains('undefined', array_column($payload['expense_category_split'], 'label'));
+        $this->assertSame($secondProfessional->id, $payload['professional_split'][0]['professional_id']);
+        $this->assertSame('Bianchi Luca', $payload['professional_split'][0]['professional_name']);
+    }
+
+    #[Test]
+    public function it_spreads_multimonth_expense_on_competence_months_in_dashboard(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $expenseCategory = ExpenseCategory::factory()->create([
+            'name' => 'Utenze',
+            'slug' => 'utenze',
+        ]);
+
+        ExpenseRecord::query()->create([
+            'expense_category_id' => $expenseCategory->id,
+            'expense_date' => '2026-05-10',
+            'competence_start_date' => '2026-03-01',
+            'competence_end_date' => '2026-04-01',
+            'competence_month' => 3,
+            'competence_year' => 2026,
+            'description' => 'Bolletta luce marzo-aprile',
+            'type' => 'fixed',
+            'amount' => 300,
+            'payment_status' => 'da_pagare',
+        ]);
+
+        $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_fixed_costs', 150)
+            ->assertJsonPath('cards.total_variable_costs', 0)
+            ->assertJsonPath('cards.total_center_costs', 150);
+
+        $this->getJson('/api/v1/dashboard/summary?month=4&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_fixed_costs', 150)
+            ->assertJsonPath('cards.total_variable_costs', 0)
+            ->assertJsonPath('cards.total_center_costs', 150);
+
+        $this->getJson('/api/v1/dashboard/summary?month=5&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_fixed_costs', 0)
+            ->assertJsonPath('cards.total_variable_costs', 0)
+            ->assertJsonPath('cards.total_center_costs', 0);
+    }
+
+    #[Test]
+    public function it_includes_the_full_competence_month_for_partial_custom_ranges(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $expenseCategory = ExpenseCategory::factory()->create([
+            'name' => 'Affitto',
+            'slug' => 'affitto',
+        ]);
+
+        ExpenseRecord::query()->create([
+            'expense_category_id' => $expenseCategory->id,
+            'expense_date' => '2026-04-23',
+            'competence_start_date' => '2026-04-01',
+            'competence_end_date' => '2026-04-01',
+            'competence_month' => 4,
+            'competence_year' => 2026,
+            'description' => 'Affitto aprile',
+            'type' => 'fixed',
+            'amount' => 30,
+            'payment_status' => 'pagata',
+        ]);
+
+        $this->getJson('/api/v1/dashboard/summary?date_from=2026-04-20&date_to=2026-04-26')
+            ->assertOk()
+            ->assertJsonPath('cards.total_fixed_costs', 30)
+            ->assertJsonPath('cards.total_variable_costs', 0)
+            ->assertJsonPath('cards.total_center_costs', 30);
+
+        $response = $this->getJson('/api/v1/dashboard/monthly-trends?date_from=2026-04-20&date_to=2026-04-26')
+            ->assertOk();
+
+        $this->assertEquals(30.0, $response->json('monthly_trends.0.fixed_costs'));
     }
 }

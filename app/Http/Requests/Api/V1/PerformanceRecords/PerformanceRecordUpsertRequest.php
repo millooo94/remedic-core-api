@@ -20,7 +20,7 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
             'service_name' => ['nullable', 'string', 'max:190'],
             'area_name' => ['nullable', 'string', 'max:120'],
             'performed_at' => ['required', 'date'],
-            'quantity' => ['required', 'numeric', 'gt:0'],
+            'quantity' => ['required', 'integer', 'min:1'],
             'unit_amount' => ['required', 'numeric', 'gt:0'],
             'payment_method' => ['required', 'in:cash,card'],
             'calculation_mode' => ['required', 'in:percentage,fixed'],
@@ -37,7 +37,7 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
         return [
             function (Validator $validator): void {
                 $mode = $this->input('calculation_mode');
-                $quantity = (float) $this->input('quantity', 0);
+                $quantity = (int) $this->input('quantity', 0);
                 $unitAmount = (float) $this->input('unit_amount', 0);
                 $totalAmount = round($quantity * $unitAmount, 2);
 
@@ -59,6 +59,13 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
 
                 if ((int) $this->input('service_id', 0) === 0 && blank($this->input('service_name'))) {
                     $validator->errors()->add('service_name', 'Se non selezioni una prestazione dal catalogo devi indicarne il nome.');
+                }
+
+                if ($this->boolean('is_black') && $this->boolean('is_invoiced')) {
+                    $message = 'Una prestazione black non puo essere segnata come fatturata.';
+
+                    $validator->errors()->add('is_black', $message);
+                    $validator->errors()->add('is_invoiced', $message);
                 }
             },
         ];

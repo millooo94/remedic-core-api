@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CashMovementController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
@@ -20,25 +21,29 @@ Route::prefix('v1')->group(function (): void {
         Route::post('register', [AuthController::class, 'register']);
         Route::post('login', [AuthController::class, 'login']);
         Route::post('email/resend', [AuthController::class, 'resendVerification']);
+        Route::post('approval/resend', [AuthController::class, 'resendApprovalRequest']);
         Route::get('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
             ->middleware(['signed', 'throttle:6,1'])
             ->name('verification.verify');
+        Route::get('access-requests/{id}/approve/{hash}', [AuthController::class, 'approveAccessRequest'])
+            ->middleware(['signed', 'throttle:6,1'])
+            ->name('access-requests.approve');
+        Route::get('access-requests/{id}/reject/{hash}', [AuthController::class, 'rejectAccessRequest'])
+            ->middleware(['signed', 'throttle:6,1'])
+            ->name('access-requests.reject');
 
         Route::middleware('auth:sanctum')->group(function (): void {
-            Route::get('me', [AuthController::class, 'me']);
             Route::post('logout', [AuthController::class, 'logout']);
             Route::post('email/verification-notification', [AuthController::class, 'resendVerificationForAuthenticated']);
         });
     });
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', 'verified', 'admin'])->group(function (): void {
+        Route::get('auth/me', [AuthController::class, 'me']);
         Route::get('profile', [ProfileController::class, 'show']);
         Route::put('profile', [ProfileController::class, 'update']);
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar']);
         Route::put('profile/password', [ProfileController::class, 'updatePassword']);
-    });
-
-    Route::middleware(['auth:sanctum', 'verified', 'admin'])->group(function (): void {
         Route::apiResource('professionals', ProfessionalController::class);
         Route::apiResource('services', ServiceController::class);
         Route::apiResource('performance-records', PerformanceRecordController::class);
@@ -50,6 +55,8 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('expense-categories', ExpenseCategoryController::class)->except(['show']);
         Route::apiResource('expense-templates', ExpenseTemplateController::class)->except(['show']);
         Route::apiResource('expense-records', ExpenseRecordController::class);
+        Route::get('cash-movements/summary', [CashMovementController::class, 'summary']);
+        Route::apiResource('cash-movements', CashMovementController::class);
         Route::apiResource('reminders', ReminderController::class)->except(['show']);
 
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);

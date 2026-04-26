@@ -157,7 +157,7 @@
             <tr>
                 <td>{{ \Illuminate\Support\Carbon::parse($record['performed_at'])->format('d/m/Y') }}</td>
                 <td>{{ $record['service_name'] }}</td>
-                <td class="text-right">{{ number_format($record['quantity'], 2, ',', '.') }}</td>
+                <td class="text-right">{{ number_format((int) $record['quantity'], 0, ',', '.') }}</td>
                 <td class="text-right">&euro; {{ number_format($record['total_amount'], 2, ',', '.') }}</td>
                 <td class="text-right">&euro; {{ number_format($record['professional_amount'], 2, ',', '.') }}</td>
                 <td>

@@ -14,6 +14,7 @@ class ServiceResource extends JsonResource
             'category_id' => $this->category_id,
             'display_name' => $this->display_name,
             'slug' => $this->slug,
+            'importo_prestazione' => $this->importo_prestazione,
             'default_duration_minutes' => $this->default_duration_minutes,
             'is_active' => (bool) $this->is_active,
             'notes' => $this->notes,

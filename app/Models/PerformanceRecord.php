@@ -7,6 +7,7 @@ use App\Enums\PaymentMethod;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PerformanceRecord extends Model
 {
@@ -39,7 +40,7 @@ class PerformanceRecord extends Model
     {
         return [
             'performed_at' => 'date',
-            'quantity' => 'decimal:2',
+            'quantity' => 'integer',
             'unit_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'percentage_value' => 'decimal:2',
@@ -61,6 +62,16 @@ class PerformanceRecord extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    public function cashMovement(): HasOne
+    {
+        return $this->hasOne(CashMovement::class, 'source_performance_record_id');
+    }
+
+    public function linkedExpenseRecord(): HasOne
+    {
+        return $this->hasOne(ExpenseRecord::class, 'source_performance_record_id');
     }
 
     public function creator(): BelongsTo

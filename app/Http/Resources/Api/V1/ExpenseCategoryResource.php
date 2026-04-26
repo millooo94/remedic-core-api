@@ -13,9 +13,7 @@ class ExpenseCategoryResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'slug' => $this->slug,
-            'type' => $this->type?->value ?? $this->type,
             'is_active' => (bool) $this->is_active,
-            'sort_order' => $this->sort_order,
             'records_count' => $this->whenCounted('records'),
             'templates_count' => $this->whenCounted('templates'),
         ];

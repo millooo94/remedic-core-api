@@ -2,6 +2,9 @@
 
 use App\Models\User;
 
+$primaryAdminEmail = mb_strtolower(trim((string) env('PRIMARY_ADMIN_EMAIL', 'humancaretelemedicine@gmail.com')));
+$primaryAdminEmail = $primaryAdminEmail !== '' ? $primaryAdminEmail : 'humancaretelemedicine@gmail.com';
+
 return [
 
     /*
@@ -113,5 +116,17 @@ return [
     */
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+
+    'primary_admin' => [
+        'email' => $primaryAdminEmail,
+        'name' => trim((string) env('PRIMARY_ADMIN_NAME', 'Remedic')),
+        'last_name' => trim((string) env('PRIMARY_ADMIN_LAST_NAME', 'Admin')),
+        'initial_password' => env('PRIMARY_ADMIN_PASSWORD'),
+    ],
+
+    'access_approval' => [
+        'link_expire_minutes' => (int) env('ACCESS_APPROVAL_LINK_EXPIRE_MINUTES', 60 * 24 * 7),
+        'display_timezone' => env('ACCESS_APPROVAL_DISPLAY_TIMEZONE', 'Europe/Rome'),
+    ],
 
 ];

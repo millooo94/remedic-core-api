@@ -20,6 +20,7 @@ class ProfessionalValidationApiTest extends TestCase
         Sanctum::actingAs($user);
 
         $this->postJson('/api/v1/professionals', [
+            'subject_type' => 'individual',
             'first_name' => 'Mario',
             'last_name' => 'Rossi',
             'area_name' => 'Cardiologia',
@@ -29,5 +30,40 @@ class ProfessionalValidationApiTest extends TestCase
         ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['iban']);
+    }
+
+    #[Test]
+    public function it_requires_company_name_when_subject_type_is_company(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/v1/professionals', [
+            'subject_type' => 'company',
+            'area_name' => 'Cardiologia',
+            'area_names' => ['Cardiologia'],
+            'is_active' => true,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_name']);
+    }
+
+    #[Test]
+    public function it_rejects_company_name_when_subject_type_is_individual(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/v1/professionals', [
+            'subject_type' => 'individual',
+            'first_name' => 'Mario',
+            'last_name' => 'Rossi',
+            'company_name' => 'Studio Rossi SRL',
+            'area_name' => 'Cardiologia',
+            'area_names' => ['Cardiologia'],
+            'is_active' => true,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_name']);
     }
 }

@@ -22,6 +22,8 @@ class PerformanceRecordService
     public function __construct(
         private readonly PerformanceCalculationService $calculationService,
         private readonly PerformanceRecordFilters $filters,
+        private readonly CashMovementService $cashMovementService,
+        private readonly PerformanceExpenseSyncService $performanceExpenseSyncService,
     ) {
     }
 
@@ -38,6 +40,8 @@ class PerformanceRecordService
     {
         return DB::transaction(function () use ($payload, $actor): PerformanceRecord {
             $record = PerformanceRecord::query()->create($this->buildAttributes($payload, $actor));
+            $this->cashMovementService->syncFromPerformanceRecord($record, $actor);
+            $this->performanceExpenseSyncService->syncFromPerformanceRecord($record);
             $this->audit($actor, 'performance_record', $record->id, 'created', null, $record->toArray());
 
             return $record->load(['professional', 'service.category']);
@@ -50,6 +54,9 @@ class PerformanceRecordService
             $before = $performanceRecord->toArray();
             $performanceRecord->fill($this->buildAttributes($payload, $actor, $performanceRecord));
             $performanceRecord->save();
+            $performanceRecord->refresh();
+            $this->cashMovementService->syncFromPerformanceRecord($performanceRecord, $actor);
+            $this->performanceExpenseSyncService->syncFromPerformanceRecord($performanceRecord);
             $this->audit($actor, 'performance_record', $performanceRecord->id, 'updated', $before, $performanceRecord->fresh()->toArray());
 
             return $performanceRecord->load(['professional', 'service.category']);
@@ -60,6 +67,8 @@ class PerformanceRecordService
     {
         DB::transaction(function () use ($performanceRecord, $actor): void {
             $before = $performanceRecord->toArray();
+            $this->cashMovementService->deleteForPerformanceRecord($performanceRecord, $actor);
+            $this->performanceExpenseSyncService->deleteForPerformanceRecord($performanceRecord);
             $performanceRecord->delete();
             $this->audit($actor, 'performance_record', $performanceRecord->id, 'deleted', $before, null);
         });
@@ -103,6 +112,15 @@ class PerformanceRecordService
         }
 
         $manualArea = isset($payload['area_name']) ? trim((string) $payload['area_name']) : '';
+        $isInvoiced = (bool) ($payload['is_invoiced'] ?? $existing?->is_invoiced ?? false);
+        $isBlack = (bool) ($payload['is_black'] ?? $existing?->is_black ?? false);
+
+        if ($isBlack && $isInvoiced) {
+            throw ValidationException::withMessages([
+                'is_black' => 'Una prestazione black non puo essere segnata come fatturata.',
+                'is_invoiced' => 'Una prestazione black non puo essere segnata come fatturata.',
+            ]);
+        }
 
         return [
             'performed_at' => $performedAt->toDateString(),
@@ -122,8 +140,8 @@ class PerformanceRecordService
             'payment_method' => PaymentMethod::tryFrom((string) ($payload['payment_method'] ?? ''))?->value
                 ?? $existing?->payment_method?->value
                 ?? PaymentMethod::Card->value,
-            'is_invoiced' => (bool) ($payload['is_invoiced'] ?? $existing?->is_invoiced ?? false),
-            'is_black' => (bool) ($payload['is_black'] ?? $existing?->is_black ?? false),
+            'is_invoiced' => $isInvoiced,
+            'is_black' => $isBlack,
             'notes' => $payload['notes'] ?? null,
             'created_by' => $existing?->created_by ?? $actor->id,
             'updated_by' => $actor->id,

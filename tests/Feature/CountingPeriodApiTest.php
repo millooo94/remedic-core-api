@@ -55,7 +55,7 @@ class CountingPeriodApiTest extends TestCase
             'performed_at' => '2026-03-10',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
-            'quantity' => 1,
+            'quantity' => 2,
             'unit_amount' => 100,
             'payment_method' => 'card',
             'calculation_mode' => 'percentage',
@@ -65,7 +65,7 @@ class CountingPeriodApiTest extends TestCase
             'performed_at' => '2026-04-11',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
-            'quantity' => 1,
+            'quantity' => 3,
             'unit_amount' => 100,
             'payment_method' => 'cash',
             'calculation_mode' => 'fixed',
@@ -74,9 +74,10 @@ class CountingPeriodApiTest extends TestCase
 
         $this->getJson("/api/v1/counting-periods/{$period->id}/summary")
             ->assertOk()
-            ->assertJsonPath('rows.0.performance_count', 2)
-            ->assertJsonPath('rows.0.professional_total', 100)
-            ->assertJsonPath('rows.0.center_total', 100)
-            ->assertJsonPath('rows.0.message', 'Totale da fatturare a Humancare Telemedicine S.r.l.: € 100,00');
+            ->assertJsonPath('rows.0.performance_count', 5)
+            ->assertJsonPath('rows.0.professional_total', 170)
+            ->assertJsonPath('rows.0.center_total', 330)
+            ->assertJsonPath('rows.0.message', 'Totale da fatturare a Humancare Telemedicine S.r.l.: € 170,00');
     }
 }
+

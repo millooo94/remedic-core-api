@@ -15,6 +15,7 @@ class Service extends Model
         'category_id',
         'canonical_name',
         'display_name',
+        'importo_prestazione',
         'slug',
         'description',
         'default_duration_minutes',
@@ -25,6 +26,7 @@ class Service extends Model
     protected function casts(): array
     {
         return [
+            'importo_prestazione' => 'decimal:2',
             'default_duration_minutes' => 'integer',
             'is_active' => 'boolean',
         ];

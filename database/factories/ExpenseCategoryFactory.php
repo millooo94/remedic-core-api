@@ -20,9 +20,7 @@ class ExpenseCategoryFactory extends Factory
         return [
             'name' => $name,
             'slug' => Str::slug($name),
-            'type' => $name === 'Marketing' ? 'variable' : 'fixed',
             'is_active' => true,
-            'sort_order' => 1,
         ];
     }
 }

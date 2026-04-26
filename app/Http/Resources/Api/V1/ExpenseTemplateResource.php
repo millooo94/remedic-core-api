@@ -17,7 +17,7 @@ class ExpenseTemplateResource extends JsonResource
             'id' => $this->id,
             'category_id' => $this->category_id,
             'name' => $this->name,
-            'type' => $this->type?->value ?? $this->type,
+            'type' => 'fixed',
             'recurrence' => $this->recurrence?->value ?? $this->recurrence,
             'default_amount' => $this->default_amount,
             'start_date' => optional($this->start_date)->toDateString(),

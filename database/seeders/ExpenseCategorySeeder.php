@@ -11,28 +11,27 @@ class ExpenseCategorySeeder extends Seeder
     public function run(): void
     {
         $categories = [
-            ['name' => 'Affitto', 'type' => 'fixed'],
-            ['name' => 'Utenze', 'type' => 'fixed'],
-            ['name' => 'Software', 'type' => 'fixed'],
-            ['name' => 'Marketing', 'type' => 'variable'],
-            ['name' => 'Consulenze', 'type' => 'variable'],
-            ['name' => 'Materiali sanitari', 'type' => 'variable'],
-            ['name' => 'Cancelleria', 'type' => 'variable'],
-            ['name' => 'Attrezzature', 'type' => 'variable'],
-            ['name' => 'Personale', 'type' => 'fixed'],
-            ['name' => 'Pulizie', 'type' => 'fixed'],
-            ['name' => 'Manutenzione', 'type' => 'variable'],
-            ['name' => 'Altro', 'type' => 'variable'],
+            'Affitto',
+            'Utenze',
+            'Software',
+            'Marketing',
+            'Consulenze',
+            'Materiali sanitari',
+            'Cancelleria',
+            'Attrezzature',
+            'Personale',
+            'Pulizie',
+            'Manutenzione',
+            'Professionisti',
+            'Altro',
         ];
 
-        foreach ($categories as $index => $category) {
+        foreach ($categories as $categoryName) {
             ExpenseCategory::query()->updateOrCreate(
-                ['slug' => Str::slug($category['name'])],
+                ['slug' => Str::slug($categoryName)],
                 [
-                    'name' => $category['name'],
-                    'type' => $category['type'],
+                    'name' => $categoryName,
                     'is_active' => true,
-                    'sort_order' => $index + 1,
                 ],
             );
         }

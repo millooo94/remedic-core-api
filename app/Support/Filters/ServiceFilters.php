@@ -26,7 +26,9 @@ class ServiceFilters
                                 foreach ($terms as $term) {
                                     $nameQuery->where(function (Builder $singleTermQuery) use ($term): void {
                                         $singleTermQuery
-                                            ->where('first_name', 'like', "%{$term}%")
+                                            ->where('full_name', 'like', "%{$term}%")
+                                            ->orWhere('company_name', 'like', "%{$term}%")
+                                            ->orWhere('first_name', 'like', "%{$term}%")
                                             ->orWhere('last_name', 'like', "%{$term}%");
                                     });
                                 }
@@ -36,6 +38,14 @@ class ServiceFilters
                 });
             })
             ->when($filters['category_id'] ?? null, fn (Builder $builder, mixed $categoryId) => $builder->where('category_id', $categoryId))
+            ->when($filters['category_name'] ?? null, function (Builder $builder, mixed $categoryName): void {
+                $normalized = mb_strtolower(trim((string) $categoryName));
+                if ($normalized === '') {
+                    return;
+                }
+
+                $builder->whereHas('category', fn (Builder $categoryQuery) => $categoryQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalized]));
+            })
             ->when($filters['professional_id'] ?? null, fn (Builder $builder, mixed $professionalId) => $builder->whereHas('professionalServices', fn (Builder $linkQuery) => $linkQuery->where('professional_id', $professionalId)))
             ->when(isset($filters['is_active']) && $filters['is_active'] !== '', fn (Builder $builder) => $builder->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)));
     }

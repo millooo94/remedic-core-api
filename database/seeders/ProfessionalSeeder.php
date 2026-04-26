@@ -43,6 +43,8 @@ class ProfessionalSeeder extends Seeder
                 ['full_name' => trim($professional['last_name'].' '.$professional['first_name'])],
                 [
                     ...$professional,
+                    'subject_type' => 'individual',
+                    'company_name' => null,
                     'full_name' => trim($professional['last_name'].' '.$professional['first_name']),
                     'area_name' => $normalizedArea,
                     'email' => null,

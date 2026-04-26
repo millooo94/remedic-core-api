@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ProfessionalSubjectType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Professionals\StoreProfessionalRequest;
 use App\Http\Requests\Api\V1\Professionals\UpdateProfessionalRequest;
@@ -22,8 +23,7 @@ class ProfessionalController extends Controller
     {
         $professionals = Professional::query()
             ->with('areas')
-            ->orderBy('last_name')
-            ->orderBy('first_name')
+            ->orderBy('full_name')
             ->get();
 
         return ProfessionalResource::collection($professionals);
@@ -89,13 +89,19 @@ class ProfessionalController extends Controller
 
     private function attributes(array $payload, array $areaNames): array
     {
-        $firstName = trim($payload['first_name']);
-        $lastName = trim($payload['last_name']);
+        $subjectType = ProfessionalSubjectType::from((string) $payload['subject_type']);
+        $firstName = isset($payload['first_name']) ? trim((string) $payload['first_name']) : null;
+        $lastName = isset($payload['last_name']) ? trim((string) $payload['last_name']) : null;
+        $companyName = isset($payload['company_name']) ? trim((string) $payload['company_name']) : null;
 
         return [
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'full_name' => trim($lastName.' '.$firstName),
+            'subject_type' => $subjectType->value,
+            'first_name' => $subjectType === ProfessionalSubjectType::Individual ? $firstName : null,
+            'last_name' => $subjectType === ProfessionalSubjectType::Individual ? $lastName : null,
+            'company_name' => $subjectType === ProfessionalSubjectType::Company ? $companyName : null,
+            'full_name' => $subjectType === ProfessionalSubjectType::Company
+                ? (string) $companyName
+                : trim(((string) $lastName).' '.((string) $firstName)),
             'area_name' => $areaNames[0] ?? (ProfessionalAreaOptions::normalize($payload['area_name'] ?? null) ?? trim((string) ($payload['area_name'] ?? ''))),
             'email' => $payload['email'] ?? null,
             'iban' => IbanFormatter::normalize($payload['iban'] ?? null),
@@ -122,20 +128,28 @@ class ProfessionalController extends Controller
 
     private function syncAreas(Professional $professional, array $areaNames): void
     {
-        $areaIds = collect($areaNames)
-            ->map(function (string $areaName): int {
+        $areaSyncData = collect($areaNames)
+            ->values()
+            ->map(function (string $areaName, int $index): array {
                 $slug = Str::slug($areaName);
-
-                return (int) ServiceCategory::query()->firstOrCreate(
+                $categoryId = (int) ServiceCategory::query()->firstOrCreate(
                     ['slug' => $slug],
                     ['name' => $areaName, 'is_active' => true],
                 )->id;
+
+                return [
+                    'id' => $categoryId,
+                    'sort_order' => $index,
+                ];
             })
-            ->unique()
+            ->unique('id')
             ->values()
+            ->mapWithKeys(fn (array $entry): array => [
+                $entry['id'] => ['sort_order' => $entry['sort_order']],
+            ])
             ->all();
 
-        $professional->areas()->sync($areaIds);
+        $professional->areas()->sync($areaSyncData);
     }
 
     private function storeAvatar(StoreProfessionalRequest|UpdateProfessionalRequest $request, int $professionalId): ?string

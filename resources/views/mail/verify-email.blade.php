@@ -1,6 +1,6 @@
 <x-remedic-mail
     title="Conferma il tuo indirizzo email"
-    preheader="Conferma l'email per attivare il tuo account Remedic."
+    preheader="Conferma l'email per completare la richiesta di accesso a Remedic."
     eyebrow="Accesso Remedic"
     :intro="$recipientName !== '' ? 'Ciao '.$recipientName.',' : 'Ciao,'"
     action-text="Conferma email"
@@ -8,8 +8,8 @@
     footer-note="Questa email viene inviata automaticamente per proteggere l'accesso al tuo account Remedic."
 >
     <p style="margin:0 0 16px;">
-        Abbiamo ricevuto una richiesta di verifica per questo indirizzo email. Confermalo per completare
-        l'attivazione del tuo account e accedere in sicurezza alla piattaforma.
+        Abbiamo ricevuto una richiesta di accesso alla dashboard privata Remedic. Conferma questo indirizzo email
+        per validare la tua identita e completare il primo passaggio di sicurezza.
     </p>
 
     <p style="margin:0 0 16px;">
@@ -18,6 +18,7 @@
     </p>
 
     <p style="margin:0;">
-        Dopo la conferma verrai reindirizzato alla pagina di accesso e potrai iniziare a usare Remedic normalmente.
+        Dopo la conferma verrai reindirizzato alla pagina di accesso. L'ingresso alla dashboard restera comunque bloccato
+        finche l'amministratore principale non approvera la richiesta.
     </p>
 </x-remedic-mail>

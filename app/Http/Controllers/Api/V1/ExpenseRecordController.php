@@ -30,12 +30,12 @@ class ExpenseRecordController extends Controller
     {
         $record = $this->service->create($request->validated(), $request->user());
 
-        return new ExpenseRecordResource($record->load(['category', 'template']));
+        return new ExpenseRecordResource($record->load(['category', 'template', 'competenceAllocations']));
     }
 
     public function show(ExpenseRecord $expenseRecord): ExpenseRecordResource
     {
-        return new ExpenseRecordResource($expenseRecord->load(['category', 'template']));
+        return new ExpenseRecordResource($expenseRecord->load(['category', 'template', 'competenceAllocations']));
     }
 
     public function update(UpdateExpenseRecordRequest $request, ExpenseRecord $expenseRecord): ExpenseRecordResource
