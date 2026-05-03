@@ -77,7 +77,7 @@ class ServiceController extends Controller
             'importo_prestazione' => array_key_exists('importo_prestazione', $payload)
                 ? $payload['importo_prestazione']
                 : $service->importo_prestazione,
-            'slug' => $service->exists ? $service->slug : Str::slug($categoryPrefix.' '.$baseSlug),
+            'slug' => $service->exists ? $service->slug : $this->buildUniqueSlug($service, $categoryPrefix, $baseSlug),
             'description' => null,
             'default_duration_minutes' => $payload['default_duration_minutes'] ?? null,
             'is_active' => $payload['is_active'] ?? true,
@@ -142,5 +142,24 @@ class ServiceController extends Controller
                 'is_active' => true,
             ],
         );
+    }
+
+    private function buildUniqueSlug(Service $service, string $categoryPrefix, string $baseSlug): string
+    {
+        $rootSlug = Str::slug(trim($categoryPrefix.' '.$baseSlug)) ?: 'servizio';
+        $candidate = $rootSlug;
+        $suffix = 2;
+
+        while (
+            Service::query()
+                ->when($service->exists, fn ($query) => $query->whereKeyNot($service->id))
+                ->where('slug', $candidate)
+                ->exists()
+        ) {
+            $candidate = $rootSlug.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $candidate;
     }
 }

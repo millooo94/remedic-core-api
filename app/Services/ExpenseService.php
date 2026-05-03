@@ -2,27 +2,65 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentStatus;
 use App\Models\ExpenseRecord;
 use App\Models\User;
 use App\Support\Filters\ExpenseRecordFilters;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ExpenseService
 {
     public function __construct(
         private readonly ExpenseRecordFilters $filters,
+        private readonly PerformancePaymentStatusSyncService $paymentStatusSyncService,
     ) {
     }
 
     public function baseQuery(array $filters = []): Builder
     {
-        $query = ExpenseRecord::query()->with(['category', 'template', 'competenceAllocations']);
-
-        $this->filters->apply($query, $filters);
+        $query = $this->filteredQuery($filters)->with(['category', 'template', 'competenceAllocations']);
 
         return $this->filters->applySort($query, $filters['sort'] ?? null);
+    }
+
+    public function summary(array $filters = []): array
+    {
+        $query = $this->filteredQuery($filters);
+
+        $fixedCosts = round((float) (clone $query)
+            ->where('type', 'fixed')
+            ->sum('amount'), 2);
+        $variableCosts = round((float) (clone $query)
+            ->where('type', 'variable')
+            ->sum('amount'), 2);
+        $unpaidCosts = round((float) (clone $query)
+            ->where('payment_status', PaymentStatus::DaPagare->value)
+            ->sum('amount'), 2);
+
+        return [
+            'filters' => [
+                'q' => $filters['q'] ?? null,
+                'type' => $filters['type'] ?? null,
+                'expense_category_id' => isset($filters['expense_category_id']) ? (int) $filters['expense_category_id'] : null,
+                'payment_status' => $filters['payment_status'] ?? null,
+                'month' => isset($filters['month']) ? (int) $filters['month'] : null,
+                'year' => isset($filters['year']) ? (int) $filters['year'] : null,
+                'competence_date_from' => $filters['competence_date_from'] ?? null,
+                'competence_date_to' => $filters['competence_date_to'] ?? null,
+                'date_from' => $filters['date_from'] ?? null,
+                'date_to' => $filters['date_to'] ?? null,
+            ],
+            'totals' => [
+                'records_count' => (clone $query)->count(),
+                'total_costs' => round($fixedCosts + $variableCosts, 2),
+                'fixed_costs' => $fixedCosts,
+                'variable_costs' => $variableCosts,
+                'unpaid_costs' => $unpaidCosts,
+            ],
+        ];
     }
 
     public function create(array $payload, User $actor): ExpenseRecord
@@ -32,10 +70,32 @@ class ExpenseService
 
     public function update(ExpenseRecord $expenseRecord, array $payload, User $actor): ExpenseRecord
     {
+        if ($expenseRecord->source_performance_record_id !== null) {
+            $expenseRecord->fill([
+                'payment_status' => $this->paymentStatusSyncService->normalize($payload['payment_status'] ?? null),
+            ]);
+            $expenseRecord->save();
+
+            return $expenseRecord->fresh(['category', 'template', 'competenceAllocations']);
+        }
+
         $expenseRecord->fill($this->buildAttributes($payload));
         $expenseRecord->save();
 
         return $expenseRecord->fresh(['category', 'template', 'competenceAllocations']);
+    }
+
+    public function delete(ExpenseRecord $expenseRecord, User $actor): void
+    {
+        if ($expenseRecord->source_performance_record_id !== null) {
+            throw ValidationException::withMessages([
+                'expense_record' => 'Questo costo e collegato a una prestazione effettuata. Puoi modificarne solo lo stato pagamento oppure intervenire direttamente dalla prestazione collegata.',
+            ]);
+        }
+
+        DB::transaction(function () use ($expenseRecord): void {
+            $expenseRecord->delete();
+        });
     }
 
     private function buildAttributes(array $payload): array
@@ -87,6 +147,15 @@ class ExpenseService
         }
 
         return $expenseDate->copy()->startOfMonth();
+    }
+
+    private function filteredQuery(array $filters = []): Builder
+    {
+        $query = ExpenseRecord::query();
+
+        $this->filters->apply($query, $filters);
+
+        return $query;
     }
 
     private function resolveCompetenceEnd(array $payload, Carbon $competenceStart): Carbon

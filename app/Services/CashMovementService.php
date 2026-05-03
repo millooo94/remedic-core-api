@@ -5,14 +5,17 @@ namespace App\Services;
 use App\Enums\CashBoxType;
 use App\Enums\CashMovementType;
 use App\Enums\PaymentMethod;
+use App\Mail\CashMovementDeletedWarningMail;
 use App\Models\AuditLog;
 use App\Models\CashMovement;
 use App\Models\PerformanceRecord;
+use App\Support\Numbers\ScaledNumber;
 use App\Models\User;
 use App\Support\Filters\CashMovementFilters;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -75,8 +78,6 @@ class CashMovementService
     public function update(CashMovement $cashMovement, array $payload, User $actor): CashMovement
     {
         return DB::transaction(function () use ($cashMovement, $payload, $actor): CashMovement {
-            $this->ensureManualMutationAllowed($cashMovement);
-
             $before = $cashMovement->toArray();
             $originalBox = $this->resolveCashBoxType($cashMovement->cash_box_type);
 
@@ -99,9 +100,28 @@ class CashMovementService
 
     public function delete(CashMovement $cashMovement, User $actor): void
     {
-        DB::transaction(function () use ($cashMovement, $actor): void {
-            $this->ensureManualMutationAllowed($cashMovement);
-            $this->deleteExistingMovement($cashMovement, $actor, 'movement');
+        $warningPayload = DB::transaction(function () use ($cashMovement, $actor): array {
+            $before = $this->deleteExistingMovement($cashMovement, $actor, 'movement');
+
+            return $this->warningPayloadForDeletedMovement($before, $actor);
+        });
+
+        $this->sendDeletionWarning($warningPayload);
+    }
+
+    public function reset(User $actor): int
+    {
+        return DB::transaction(function () use ($actor): int {
+            $summary = [
+                'count' => CashMovement::query()->count(),
+                'total_amount' => $this->formatDecimal((float) (CashMovement::query()->sum('amount') ?? 0)),
+            ];
+
+            CashMovement::query()->delete();
+
+            $this->audit($actor, 'cash_movement', null, 'reset', $summary, null);
+
+            return (int) $summary['count'];
         });
     }
 
@@ -170,7 +190,9 @@ class CashMovementService
             'movement_type' => $this->resolveMovementType($payload['movement_type'])->value,
             'cash_box_type' => $this->resolveCashBoxType($payload['cash_box_type'])->value,
             'counterparty_name' => $this->resolveCounterpartyName($payload, $existing),
-            'amount' => $this->formatDecimal((float) str_replace(',', '.', (string) $payload['amount'])),
+            'amount' => $this->formatDecimal(
+                ScaledNumber::toScaledInteger($payload['amount'], 2, 'amount', true, 'Valore obbligatorio.', 'Valore numerico non valido.') / 100,
+            ),
             'reason' => $this->resolveNullableText($payload, 'reason', $existing?->reason, 190),
             'notes' => $this->resolveNullableText($payload, 'notes', $existing?->notes, 2000),
             'source_performance_record_id' => $existing?->source_performance_record_id,
@@ -295,7 +317,7 @@ class CashMovementService
         return number_format((float) $value, 2, '.', '');
     }
 
-    private function deleteExistingMovement(CashMovement $cashMovement, User $actor, string $errorKey): void
+    private function deleteExistingMovement(CashMovement $cashMovement, User $actor, string $errorKey): array
     {
         $before = $cashMovement->toArray();
         $box = $this->resolveCashBoxType($cashMovement->cash_box_type);
@@ -304,17 +326,8 @@ class CashMovementService
         $this->recalculateBalancesForBox($box, $errorKey);
 
         $this->audit($actor, 'cash_movement', $cashMovement->id, 'deleted', $before, null);
-    }
 
-    private function ensureManualMutationAllowed(CashMovement $cashMovement): void
-    {
-        if ($cashMovement->source_performance_record_id === null) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'movement' => 'Questo movimento e gestito automaticamente dalla prestazione effettuata collegata. Modificala o eliminala dalla sezione Prestazioni Effettuate.',
-        ]);
+        return $before;
     }
 
     private function findPerformanceRecordMovement(PerformanceRecord $performanceRecord): ?CashMovement
@@ -377,5 +390,39 @@ class CashMovementService
             'new_values' => $newValues,
             'created_at' => now(),
         ]);
+    }
+
+    private function warningPayloadForDeletedMovement(array $before, User $actor): array
+    {
+        $deletedAt = now();
+        $movementType = CashMovementType::tryFrom((string) ($before['movement_type'] ?? '')) ?? CashMovementType::Versamento;
+        $cashBoxType = CashBoxType::tryFrom((string) ($before['cash_box_type'] ?? '')) ?? CashBoxType::Fatturati;
+        $actorName = trim((string) ($actor->name ?? ''));
+        $fallbackActorName = trim((string) (($actor->first_name ?? '').' '.($actor->last_name ?? '')));
+        $resolvedActorName = $actorName !== '' ? $actorName : ($fallbackActorName !== '' ? $fallbackActorName : 'Utente non specificato');
+        $reason = trim((string) ($before['reason'] ?? ''));
+        $notes = trim((string) ($before['notes'] ?? ''));
+
+        return [
+            'movement_id' => (int) ($before['id'] ?? 0),
+            'deleted_at_label' => $deletedAt->format('d/m/Y H:i:s'),
+            'movement_type_label' => $movementType->label(),
+            'cash_box_label' => $cashBoxType->label(),
+            'amount_label' => '€ '.$this->formatDecimal((float) ($before['amount'] ?? 0)),
+            'reason_label' => $reason !== '' ? $reason : 'Non indicata',
+            'notes_label' => $notes !== '' ? $notes : 'Nessuna nota',
+            'actor_label' => trim($resolvedActorName.' <'.($actor->email ?? 'email non disponibile').'>'),
+        ];
+    }
+
+    private function sendDeletionWarning(array $warningPayload): void
+    {
+        $recipients = config('mail.cash_warning_recipients', []);
+
+        if (! is_array($recipients) || $recipients === []) {
+            return;
+        }
+
+        Mail::to($recipients)->send(new CashMovementDeletedWarningMail($warningPayload));
     }
 }

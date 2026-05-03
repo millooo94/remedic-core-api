@@ -4,9 +4,13 @@ namespace App\Models;
 
 use App\Enums\CalculationMode;
 use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
+use App\Enums\PerformanceSplitMode;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PerformanceRecord extends Model
@@ -15,6 +19,7 @@ class PerformanceRecord extends Model
 
     protected $fillable = [
         'performed_at',
+        'patient_id',
         'professional_id',
         'professional_name_snapshot',
         'category_name_snapshot',
@@ -23,12 +28,15 @@ class PerformanceRecord extends Model
         'quantity',
         'unit_amount',
         'total_amount',
+        'direct_cost',
         'calculation_mode',
+        'split_mode',
         'percentage_value',
         'fixed_amount',
         'professional_amount',
         'center_amount',
         'payment_method',
+        'payment_status',
         'is_invoiced',
         'is_black',
         'notes',
@@ -43,20 +51,36 @@ class PerformanceRecord extends Model
             'quantity' => 'integer',
             'unit_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            'direct_cost' => 'decimal:2',
             'percentage_value' => 'decimal:2',
             'fixed_amount' => 'decimal:2',
             'professional_amount' => 'decimal:2',
             'center_amount' => 'decimal:2',
             'payment_method' => PaymentMethod::class,
+            'payment_status' => PaymentStatus::class,
             'is_invoiced' => 'boolean',
             'is_black' => 'boolean',
             'calculation_mode' => CalculationMode::class,
+            'split_mode' => PerformanceSplitMode::class,
         ];
     }
 
     public function professional(): BelongsTo
     {
         return $this->belongsTo(Professional::class);
+    }
+
+    public function patient(): BelongsTo
+    {
+        return $this->belongsTo(Patient::class);
+    }
+
+    public function patients(): BelongsToMany
+    {
+        return $this->belongsToMany(Patient::class)
+            ->withPivot('sort_order')
+            ->orderByPivot('sort_order')
+            ->orderBy('patients.id');
     }
 
     public function service(): BelongsTo
@@ -72,6 +96,19 @@ class PerformanceRecord extends Model
     public function linkedExpenseRecord(): HasOne
     {
         return $this->hasOne(ExpenseRecord::class, 'source_performance_record_id');
+    }
+
+    public function linkedExpenseRecords(): HasMany
+    {
+        return $this->hasMany(ExpenseRecord::class, 'source_performance_record_id')
+            ->orderBy('id');
+    }
+
+    public function splits(): HasMany
+    {
+        return $this->hasMany(PerformanceRecordSplit::class)
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 
     public function creator(): BelongsTo

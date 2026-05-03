@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1\Services;
 
 use App\Models\Professional;
+use App\Models\Service;
 use App\Models\ServiceCategory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -21,7 +22,7 @@ class StoreServiceRequest extends FormRequest
             'category_name' => ['nullable', 'string', 'max:190'],
             'canonical_name' => ['nullable', 'string', 'max:190'],
             'display_name' => ['required', 'string', 'max:190'],
-            'importo_prestazione' => ['nullable', 'numeric', 'min:0'],
+            'importo_prestazione' => ['nullable', 'integer', 'min:0'],
             'default_duration_minutes' => ['nullable', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string'],
@@ -37,6 +38,13 @@ class StoreServiceRequest extends FormRequest
             'professional_services.*.source_platform' => ['nullable', 'string', 'max:120'],
             'professional_services.*.source_notes' => ['nullable', 'string'],
             'professional_services.*.is_active' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'importo_prestazione.integer' => "L'importo prestazione deve essere un numero intero senza centesimi.",
         ];
     }
 
@@ -89,6 +97,35 @@ class StoreServiceRequest extends FormRequest
                 $validator->errors()->add(
                     'professional_services',
                     "I professionisti selezionati devono appartenere all'area scelta.",
+                );
+            }
+
+            $displayName = trim((string) $this->input('display_name', ''));
+            if ($displayName === '') {
+                return;
+            }
+
+            $existingServiceId = (int) ($this->route('service')?->id ?? 0);
+            $duplicateServiceQuery = Service::query()
+                ->when(
+                    $existingServiceId > 0,
+                    fn ($query) => $query->whereKeyNot($existingServiceId),
+                )
+                ->whereRaw('LOWER(TRIM(display_name)) = ?', [mb_strtolower($displayName)]);
+
+            if ($category !== null) {
+                $duplicateServiceQuery->where('category_id', $category->id);
+            } else {
+                $duplicateServiceQuery->whereHas(
+                    'category',
+                    fn ($categoryQuery) => $categoryQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedCategoryName]),
+                );
+            }
+
+            if ($duplicateServiceQuery->exists()) {
+                $validator->errors()->add(
+                    'display_name',
+                    "Esiste gia una prestazione con questo nome nell'area selezionata. Modifica quella esistente per aggiungere altri professionisti.",
                 );
             }
         });

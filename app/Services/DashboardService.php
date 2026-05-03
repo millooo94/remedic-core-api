@@ -3,8 +3,13 @@
 namespace App\Services;
 
 use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
+use App\Enums\PerformanceSplitMode;
+use App\Enums\PerformanceSplitSubjectType;
+use App\Models\ExpenseRecord;
 use App\Models\ExpenseRecordCompetence;
 use App\Models\PerformanceRecord;
+use App\Models\PerformanceRecordSplit;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -18,52 +23,66 @@ class DashboardService
         $performanceRecords = $this->performanceRecordsForRange($startDate, $endDate);
         $previousPerformanceRecords = $this->performanceRecordsForRange($previousStartDate, $previousEndDate);
 
-        $expenseAllocations = $this->expenseAllocationsForRange($startDate, $endDate);
-        $previousExpenseAllocations = $this->expenseAllocationsForRange($previousStartDate, $previousEndDate);
+        $fixedExpenseAllocations = $this->expenseAllocationsForRange($startDate, $endDate, 'fixed');
+        $previousFixedExpenseAllocations = $this->expenseAllocationsForRange($previousStartDate, $previousEndDate, 'fixed');
+        $variableExpenseRecords = $this->expenseRecordsForRange($startDate, $endDate, 'variable');
+        $previousVariableExpenseRecords = $this->expenseRecordsForRange($previousStartDate, $previousEndDate, 'variable');
 
-        $fixedCosts = round((float) $expenseAllocations
-            ->filter(fn (ExpenseRecordCompetence $allocation) => ($allocation->expenseRecord?->type?->value ?? $allocation->expenseRecord?->type) === 'fixed')
-            ->sum('allocated_amount'), 2);
-        $variableCosts = round((float) $expenseAllocations
-            ->filter(fn (ExpenseRecordCompetence $allocation) => ($allocation->expenseRecord?->type?->value ?? $allocation->expenseRecord?->type) === 'variable')
-            ->sum('allocated_amount'), 2);
+        $fixedCosts = round((float) $fixedExpenseAllocations->sum('allocated_amount'), 2);
+        $variableCosts = round((float) $variableExpenseRecords->sum('amount'), 2);
         $centerTotal = round((float) $performanceRecords->sum('center_amount'), 2);
         $professionalTotal = round((float) $performanceRecords->sum('professional_amount'), 2);
         $revenueTotal = round((float) $performanceRecords->sum('total_amount'), 2);
-        $cashRevenueTotal = round((float) $performanceRecords->where('payment_method', PaymentMethod::Cash)->sum('total_amount'), 2);
+        $cashPerformanceRecords = $performanceRecords->where('payment_method', PaymentMethod::Cash);
+        $cashRevenueTotal = round((float) $cashPerformanceRecords->sum('total_amount'), 2);
+        $cashBlackRevenueTotal = round((float) $cashPerformanceRecords->where('is_black', true)->sum('total_amount'), 2);
+        $cashFatturatiRevenueTotal = round((float) $cashPerformanceRecords->where('is_black', false)->sum('total_amount'), 2);
         $cardRevenueTotal = round((float) $performanceRecords->where('payment_method', PaymentMethod::Card)->sum('total_amount'), 2);
         $totalPerformances = (int) $performanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
+        $blackPerformances = (int) $performanceRecords
+            ->where('is_black', true)
+            ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
+        $nonBlackPerformances = (int) $performanceRecords
+            ->where('is_black', false)
+            ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $averagePerformanceCost = $totalPerformances > 0
             ? round($revenueTotal / $totalPerformances, 2)
             : 0.0;
+        $averageCenterGainPerPerformance = $totalPerformances > 0
+            ? round($centerTotal / $totalPerformances, 2)
+            : 0.0;
         $nonBlackPerformanceRecords = $performanceRecords->where('is_black', false);
         $nonBlackRevenueTotal = round((float) $nonBlackPerformanceRecords->sum('total_amount'), 2);
+        $nonBlackCenterTotal = round((float) $nonBlackPerformanceRecords->sum('center_amount'), 2);
         $nonBlackPerformanceCount = (int) $nonBlackPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $averagePerformanceCostExcludingBlack = $nonBlackPerformanceCount > 0
             ? round($nonBlackRevenueTotal / $nonBlackPerformanceCount, 2)
             : 0.0;
+        $averageCenterGainPerPerformanceExcludingBlack = $nonBlackPerformanceCount > 0
+            ? round($nonBlackCenterTotal / $nonBlackPerformanceCount, 2)
+            : 0.0;
         $blackCenterNet = round((float) $performanceRecords->where('is_black', true)->sum('center_amount'), 2);
         $totalCenterCosts = round($fixedCosts + $variableCosts, 2);
-        $netCenterMargin = round($revenueTotal - $totalCenterCosts, 2);
+        $netCenterMargin = round(($centerTotal + $professionalTotal) - $totalCenterCosts, 2);
 
-        $previousFixedCosts = round((float) $previousExpenseAllocations
-            ->filter(fn (ExpenseRecordCompetence $allocation) => ($allocation->expenseRecord?->type?->value ?? $allocation->expenseRecord?->type) === 'fixed')
-            ->sum('allocated_amount'), 2);
-        $previousVariableCosts = round((float) $previousExpenseAllocations
-            ->filter(fn (ExpenseRecordCompetence $allocation) => ($allocation->expenseRecord?->type?->value ?? $allocation->expenseRecord?->type) === 'variable')
-            ->sum('allocated_amount'), 2);
+        $previousFixedCosts = round((float) $previousFixedExpenseAllocations->sum('allocated_amount'), 2);
+        $previousVariableCosts = round((float) $previousVariableExpenseRecords->sum('amount'), 2);
         $previousCenterTotal = round((float) $previousPerformanceRecords->sum('center_amount'), 2);
         $previousProfessionalTotal = round((float) $previousPerformanceRecords->sum('professional_amount'), 2);
         $previousRevenueTotal = round((float) $previousPerformanceRecords->sum('total_amount'), 2);
         $previousTotalPerformances = (int) $previousPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $previousBlackCenterNet = round((float) $previousPerformanceRecords->where('is_black', true)->sum('center_amount'), 2);
         $previousTotalCenterCosts = round($previousFixedCosts + $previousVariableCosts, 2);
-        $previousNetCenterMargin = round($previousRevenueTotal - $previousTotalCenterCosts, 2);
+        $previousNetCenterMargin = round(($previousCenterTotal + $previousProfessionalTotal) - $previousTotalCenterCosts, 2);
 
         $performanceCountRanking = $this->performanceCountRanking($performanceRecords);
         $revenueRanking = $this->revenueRanking($performanceRecords);
+        $specializationRanking = $this->specializationRanking($performanceRecords);
+        $serviceRanking = $this->serviceRanking($performanceRecords);
         $topByCount = $performanceCountRanking[0] ?? null;
         $topByRevenue = $revenueRanking[0] ?? null;
+        $topBySpecialization = $specializationRanking[0] ?? null;
+        $topByService = $serviceRanking[0] ?? null;
 
         return [
             'filters' => [
@@ -75,24 +94,39 @@ class DashboardService
             ],
             'cards' => [
                 'total_performances' => $totalPerformances,
+                'performance_type_breakdown' => [
+                    'black' => $blackPerformances,
+                    'non_black' => $nonBlackPerformances,
+                ],
                 'total_center_amount' => $centerTotal,
                 'total_professional_amount' => $professionalTotal,
                 'total_revenue_amount' => $revenueTotal,
                 'revenue_payment_breakdown' => [
                     'cash' => $cashRevenueTotal,
                     'card' => $cardRevenueTotal,
+                    'cash_breakdown' => [
+                        'black' => $cashBlackRevenueTotal,
+                        'fatturati' => $cashFatturatiRevenueTotal,
+                    ],
                 ],
                 'total_fixed_costs' => $fixedCosts,
                 'total_variable_costs' => $variableCosts,
                 'average_performance_cost' => $averagePerformanceCost,
                 'average_performance_cost_excluding_black' => $averagePerformanceCostExcludingBlack,
+                'average_center_gain_performance' => $averageCenterGainPerPerformance,
+                'average_center_gain_performance_excluding_black' => $averageCenterGainPerPerformanceExcludingBlack,
                 'black' => $blackCenterNet,
                 'total_center_costs' => $totalCenterCosts,
                 'net_center_margin' => $netCenterMargin,
+                'professional_amount_breakdown' => $this->professionalAmountBreakdown($performanceRecords),
                 'top_by_performance_count' => $topByCount,
                 'top_by_revenue' => $topByRevenue,
+                'top_by_specialization' => $topBySpecialization,
+                'top_by_service' => $topByService,
                 'performance_count_ranking' => $performanceCountRanking,
                 'revenue_ranking' => $revenueRanking,
+                'specialization_ranking' => $specializationRanking,
+                'service_ranking' => $serviceRanking,
                 'comparisons' => [
                     'total_performances' => $this->buildComparison($totalPerformances, $previousTotalPerformances, 0),
                     'total_revenue_amount' => $this->buildComparison($revenueTotal, $previousRevenueTotal),
@@ -114,6 +148,7 @@ class DashboardService
         [$startDate, $endDate] = $this->resolveRange($filters);
 
         $performanceRecords = PerformanceRecord::query()
+            ->with('splits')
             ->whereDate('performed_at', '>=', $startDate)
             ->whereDate('performed_at', '<=', $endDate)
             ->get();
@@ -194,16 +229,13 @@ class DashboardService
 
     private function professionalSplit(Collection $records): array
     {
-        return $this->groupPerformanceRecordsByProfessional($records)
-            ->map(function (Collection $group): array {
-                $professional = $this->professionalSummary($group);
-
-                return [
-                    ...$professional,
-                    'label' => $professional['professional_name'],
-                    'total' => round((float) $group->sum('professional_amount'), 2),
-                ];
-            })
+        return $this->professionalAllocationGroups($records)
+            ->map(fn (Collection $group) => [
+                'professional_id' => $group->first()['professional_id'],
+                'professional_name' => $group->first()['professional_name'],
+                'label' => $group->first()['professional_name'],
+                'total' => round((float) $group->sum('amount'), 2),
+            ])
             ->sortBy([
                 ['total', 'desc'],
                 ['professional_name', 'asc'],
@@ -214,15 +246,12 @@ class DashboardService
 
     private function performanceCountRanking(Collection $records): array
     {
-        return $this->groupPerformanceRecordsByProfessional($records)
-            ->map(function (Collection $group): array {
-                $professional = $this->professionalSummary($group);
-
-                return [
-                    ...$professional,
-                    'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
-                ];
-            })
+        return $this->professionalAllocationGroups($records)
+            ->map(fn (Collection $group) => [
+                'professional_id' => $group->first()['professional_id'],
+                'professional_name' => $group->first()['professional_name'],
+                'performances' => (int) $group->sum('performances'),
+            ])
             ->sortBy([
                 ['performances', 'desc'],
                 ['professional_name', 'asc'],
@@ -233,15 +262,12 @@ class DashboardService
 
     private function revenueRanking(Collection $records): array
     {
-        return $this->groupPerformanceRecordsByProfessional($records)
-            ->map(function (Collection $group): array {
-                $professional = $this->professionalSummary($group);
-
-                return [
-                    ...$professional,
-                    'revenue_total' => round((float) $group->sum('total_amount'), 2),
-                ];
-            })
+        return $this->professionalAllocationGroups($records)
+            ->map(fn (Collection $group) => [
+                'professional_id' => $group->first()['professional_id'],
+                'professional_name' => $group->first()['professional_name'],
+                'revenue_total' => round((float) $group->sum('revenue_total'), 2),
+            ])
             ->sortBy([
                 ['revenue_total', 'desc'],
                 ['professional_name', 'asc'],
@@ -250,28 +276,125 @@ class DashboardService
             ->all();
     }
 
-    private function groupPerformanceRecordsByProfessional(Collection $records): Collection
+    private function professionalAllocationGroups(Collection $records): Collection
     {
-        return $records->groupBy(function (PerformanceRecord $record): string {
-            if ($record->professional_id) {
-                return 'id:'.$record->professional_id;
-            }
+        return $this->professionalAllocations($records)
+            ->groupBy(function (array $allocation): string {
+                if (! empty($allocation['professional_id'])) {
+                    return 'id:'.$allocation['professional_id'];
+                }
 
-            $snapshotName = trim((string) ($record->professional_name_snapshot ?: ''));
-
-            return 'name:'.strtolower($snapshotName !== '' ? $snapshotName : 'Non specificato');
-        });
+                return 'name:'.strtolower(trim((string) $allocation['professional_name']) ?: 'Non specificato');
+            });
     }
 
-    private function professionalSummary(Collection $group): array
+    private function professionalAmountBreakdown(Collection $records): array
     {
-        /** @var PerformanceRecord|null $firstRecord */
-        $firstRecord = $group->first();
+        $allocations = $this->professionalAllocations($records);
+        $total = round((float) $allocations->sum('amount'), 2);
+        $liquidated = round((float) $allocations
+            ->filter(fn (array $allocation) => $allocation['payment_status'] === PaymentStatus::Pagata->value)
+            ->sum('amount'), 2);
+        $toLiquidate = round($total - $liquidated, 2);
 
         return [
-            'professional_id' => $firstRecord?->professional_id,
-            'professional_name' => trim((string) ($firstRecord?->professional_name_snapshot ?: '')) ?: 'Non specificato',
+            'total' => $total,
+            'liquidated' => $liquidated,
+            'to_liquidate' => $toLiquidate,
+            'liquidated_percent' => $total > 0 ? round(($liquidated / $total) * 100, 2) : 0.0,
+            'to_liquidate_percent' => $total > 0 ? round(($toLiquidate / $total) * 100, 2) : 0.0,
         ];
+    }
+
+    private function specializationRanking(Collection $records): array
+    {
+        return $records
+            ->groupBy(fn (PerformanceRecord $record) => $this->normalizedRankingLabel($record->category_name_snapshot))
+            ->map(fn (Collection $group, string $label) => [
+                'label' => $label,
+                'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
+                'revenue_total' => round((float) $group->sum('total_amount'), 2),
+            ])
+            ->sortBy([
+                ['performances', 'desc'],
+                ['revenue_total', 'desc'],
+                ['label', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function serviceRanking(Collection $records): array
+    {
+        return $records
+            ->groupBy(fn (PerformanceRecord $record) => $this->normalizedRankingLabel($record->service_name_snapshot))
+            ->map(fn (Collection $group, string $label) => [
+                'label' => $label,
+                'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
+                'revenue_total' => round((float) $group->sum('total_amount'), 2),
+            ])
+            ->sortBy([
+                ['performances', 'desc'],
+                ['revenue_total', 'desc'],
+                ['label', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function professionalAllocations(Collection $records): Collection
+    {
+        $rows = collect();
+
+        /** @var PerformanceRecord $record */
+        foreach ($records as $record) {
+            $splitMode = $record->split_mode?->value ?? $record->split_mode;
+            if ($splitMode === PerformanceSplitMode::Advanced->value) {
+                /** @var Collection<int, PerformanceRecordSplit> $splits */
+                $splits = $record->relationLoaded('splits')
+                    ? $record->splits
+                    : $record->splits()->with('professional')->get();
+
+                $professionalRows = $splits
+                    ->filter(fn (PerformanceRecordSplit $split) => ($split->subject_type?->value ?? $split->subject_type) === PerformanceSplitSubjectType::Professional->value)
+                    ->groupBy(fn (PerformanceRecordSplit $split) => $split->professional_id ?: ('name:'.strtolower(trim((string) $split->professional_name_snapshot))));
+
+                foreach ($professionalRows as $group) {
+                    /** @var PerformanceRecordSplit|null $first */
+                    $first = $group->first();
+                    $amount = round((float) $group->sum('amount'), 2);
+
+                    $rows->push([
+                        'professional_id' => $first?->professional_id,
+                        'professional_name' => trim((string) ($first?->professional_name_snapshot ?: $first?->professional?->full_name ?: 'Non specificato')) ?: 'Non specificato',
+                        'amount' => $amount,
+                        'performances' => (int) $record->quantity,
+                        'revenue_total' => $amount,
+                        'payment_status' => $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value,
+                    ]);
+                }
+
+                continue;
+            }
+
+            $rows->push([
+                'professional_id' => $record->professional_id,
+                'professional_name' => trim((string) ($record->professional_name_snapshot ?: '')) ?: 'Non specificato',
+                'amount' => (float) $record->professional_amount,
+                'performances' => (int) $record->quantity,
+                'revenue_total' => (float) $record->total_amount,
+                'payment_status' => $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value,
+            ]);
+        }
+
+        return $rows;
+    }
+
+    private function normalizedRankingLabel(?string $value): string
+    {
+        $label = trim((string) $value);
+
+        return $label !== '' ? $label : 'Non specificato';
     }
 
     private function expenseCategorySplit(Collection $allocations): array
@@ -337,20 +460,39 @@ class DashboardService
     private function performanceRecordsForRange(string $startDate, string $endDate): Collection
     {
         return PerformanceRecord::query()
+            ->with('splits')
             ->whereDate('performed_at', '>=', $startDate)
             ->whereDate('performed_at', '<=', $endDate)
             ->get();
     }
 
-    private function expenseAllocationsForRange(string $startDate, string $endDate): Collection
+    private function expenseAllocationsForRange(string $startDate, string $endDate, ?string $type = null): Collection
     {
         [$monthStartDate, $monthEndDate] = $this->resolveCompetenceMonthBounds($startDate, $endDate);
 
-        return ExpenseRecordCompetence::query()
+        $query = ExpenseRecordCompetence::query()
             ->with('expenseRecord.category')
             ->whereDate('competence_date', '>=', $monthStartDate)
-            ->whereDate('competence_date', '<=', $monthEndDate)
-            ->get();
+            ->whereDate('competence_date', '<=', $monthEndDate);
+
+        if ($type !== null) {
+            $query->whereHas('expenseRecord', fn ($expenseQuery) => $expenseQuery->where('type', $type));
+        }
+
+        return $query->get();
+    }
+
+    private function expenseRecordsForRange(string $startDate, string $endDate, ?string $type = null): Collection
+    {
+        $query = ExpenseRecord::query()
+            ->whereDate('expense_date', '>=', $startDate)
+            ->whereDate('expense_date', '<=', $endDate);
+
+        if ($type !== null) {
+            $query->where('type', $type);
+        }
+
+        return $query->get();
     }
 
     private function resolveCompetenceMonthBounds(string $startDate, string $endDate): array

@@ -52,9 +52,21 @@ class ProfessionalStatementApiTest extends TestCase
             'quantity' => 2,
             'unit_amount' => 100,
             'payment_method' => 'card',
+            'payment_status' => 'pagata',
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
-            'is_invoiced' => true,
+        ], $user);
+
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-05-12',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'quantity' => 1,
+            'unit_amount' => 100,
+            'payment_method' => 'cash',
+            'payment_status' => 'da_pagare',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
         ], $user);
 
         app(PerformanceRecordService::class)->create([
@@ -64,22 +76,28 @@ class ProfessionalStatementApiTest extends TestCase
             'quantity' => 3,
             'unit_amount' => 120,
             'payment_method' => 'cash',
+            'payment_status' => 'pagata',
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
+            'is_invoiced' => true,
         ], $user);
 
         $this->getJson("/api/v1/professional-statements/{$professional->id}?start_date=2026-05-01&end_date=2026-05-31")
             ->assertOk()
             ->assertJsonPath('professional.full_name', 'Bottaro Giuseppe')
             ->assertJsonPath('professional.iban', 'IT60X0542811101000000123456')
+            ->assertJsonCount(2, 'records')
             ->assertJsonPath('totals.performance_count', 3)
-            ->assertJsonPath('totals.already_invoiced_count', 2)
-            ->assertJsonPath('totals.professional_amount', 252)
-            ->assertJsonPath('totals.already_invoiced_amount', 140)
-            ->assertJsonPath('records.0.is_invoiced', true)
-            ->assertJsonPath('records.0.invoicing_status', 'Gia fatturata')
+            ->assertJsonPath('totals.already_liquidated_count', 2)
+            ->assertJsonPath('totals.professional_amount', 210)
+            ->assertJsonPath('totals.already_liquidated_amount', 140)
+            ->assertJsonPath('records.0.is_invoiced', false)
+            ->assertJsonPath('records.0.payment_status_label', 'Liquidata')
+            ->assertJsonPath('records.0.notes', 'Gia liquidata')
+            ->assertJsonPath('records.1.payment_status_label', 'Da liquidare')
+            ->assertJsonPath('records.1.invoicing_status', 'Da fatturare')
             ->assertJsonMissingPath('totals.center_amount')
-            ->assertJsonPath('message', 'Totale da fatturare a Humancare Telemedicine S.r.l.: € 252,00');
+            ->assertJsonPath('message', 'Totale quote professionista da fatturare: € 210,00');
 
         $this->get("/api/v1/professional-statements/{$professional->id}/pdf?start_date=2026-05-01&end_date=2026-05-31")
             ->assertOk();

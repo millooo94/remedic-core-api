@@ -2,13 +2,18 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentStatus;
+use App\Enums\PerformanceSplitMode;
+use App\Enums\PerformanceSplitSubjectType;
 use App\Exports\ProfessionalStatementWorkbookExport;
 use App\Models\PerformanceRecord;
+use App\Models\PerformanceRecordSplit;
 use App\Models\Professional;
 use App\Support\Professionals\IbanFormatter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -20,18 +25,50 @@ class ProfessionalStatementService
         $period = $this->resolvePeriod($startDate, $endDate);
 
         $records = PerformanceRecord::query()
-            ->where('professional_id', $professional->id)
+            ->with('splits')
             ->whereDate('performed_at', '>=', $period['start_date'])
             ->whereDate('performed_at', '<=', $period['end_date'])
+            ->where('is_invoiced', false)
+            ->where(function ($query) use ($professional): void {
+                $query
+                    ->where(function ($standard) use ($professional): void {
+                        $standard
+                            ->where(function ($modeQuery): void {
+                                $modeQuery
+                                    ->whereNull('split_mode')
+                                    ->orWhere('split_mode', PerformanceSplitMode::Standard->value);
+                            })
+                            ->where('professional_id', $professional->id);
+                    })
+                    ->orWhere(function ($advanced) use ($professional): void {
+                        $advanced
+                            ->where('split_mode', PerformanceSplitMode::Advanced->value)
+                            ->whereHas('splits', function ($splitQuery) use ($professional): void {
+                                $splitQuery
+                                    ->where('subject_type', PerformanceSplitSubjectType::Professional->value)
+                                    ->where('professional_id', $professional->id);
+                            });
+                    });
+            })
             ->orderBy('performed_at')
             ->get();
 
-        $payableRecords = $records->where('is_invoiced', false)->values();
-        $alreadyInvoicedRecords = $records->where('is_invoiced', true)->values();
-        $payablePerformancesCount = (int) $payableRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
-        $alreadyInvoicedPerformancesCount = (int) $alreadyInvoicedRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
-        $professionalTotal = round((float) $payableRecords->sum('professional_amount'), 2);
-        $alreadyInvoicedAmount = round((float) $alreadyInvoicedRecords->sum('professional_amount'), 2);
+        $recordsWithAmounts = $records
+            ->map(fn (PerformanceRecord $record): array => [
+                'record' => $record,
+                'allocated_amount' => $this->allocatedAmountForProfessional($record, $professional->id),
+            ])
+            ->filter(fn (array $row) => $row['allocated_amount'] > 0)
+            ->values();
+
+        $alreadyLiquidatedRecords = $recordsWithAmounts
+            ->filter(fn (array $row) => $this->paymentStatusValue($row['record']) === PaymentStatus::Pagata->value)
+            ->values();
+
+        $performanceCount = (int) $recordsWithAmounts->sum(fn (array $row) => (int) $row['record']->quantity);
+        $alreadyLiquidatedCount = (int) $alreadyLiquidatedRecords->sum(fn (array $row) => (int) $row['record']->quantity);
+        $professionalTotal = round((float) $recordsWithAmounts->sum('allocated_amount'), 2);
+        $alreadyLiquidatedAmount = round((float) $alreadyLiquidatedRecords->sum('allocated_amount'), 2);
         $fileStem = sprintf(
             '%s-%s-%s',
             Str::slug($professional->full_name),
@@ -50,39 +87,41 @@ class ProfessionalStatementService
             ],
             'period' => $period,
             'generated_at' => now()->toIso8601String(),
-            'records' => $records->map(fn (PerformanceRecord $record) => [
-                'performed_at' => $record->performed_at?->toDateString(),
-                'service_name' => $record->service_name_snapshot,
-                'quantity' => (int) $record->quantity,
-                'unit_amount' => (float) $record->unit_amount,
-                'total_amount' => (float) $record->total_amount,
-                'professional_amount' => (float) $record->professional_amount,
-                'is_invoiced' => (bool) $record->is_invoiced,
-                'invoicing_status' => $record->is_invoiced ? 'Gia fatturata' : 'Da fatturare',
-                'notes' => $record->notes,
+            'records' => $recordsWithAmounts->map(fn (array $row) => [
+                'performed_at' => $row['record']->performed_at?->toDateString(),
+                'service_name' => $row['record']->service_name_snapshot,
+                'quantity' => (int) $row['record']->quantity,
+                'unit_amount' => (float) $row['record']->unit_amount,
+                'total_amount' => (float) $row['record']->total_amount,
+                'professional_amount' => (float) $row['allocated_amount'],
+                'payment_status' => $this->paymentStatusValue($row['record']),
+                'payment_status_label' => $this->paymentStatusLabel($row['record']),
+                'is_invoiced' => false,
+                'invoicing_status' => 'Da fatturare',
+                'notes' => $this->statementNotesFor($row['record']),
             ])->all(),
             'totals' => [
-                'performance_count' => $payablePerformancesCount,
-                'records_count' => $records->count(),
-                'already_invoiced_count' => $alreadyInvoicedPerformancesCount,
+                'performance_count' => $performanceCount,
+                'records_count' => $recordsWithAmounts->count(),
+                'already_liquidated_count' => $alreadyLiquidatedCount,
                 'professional_amount' => $professionalTotal,
-                'already_invoiced_amount' => $alreadyInvoicedAmount,
+                'already_liquidated_amount' => $alreadyLiquidatedAmount,
             ],
-            'message' => sprintf('Totale da fatturare a Humancare Telemedicine S.r.l.: %s', $this->formatEuro($professionalTotal)),
+            'message' => sprintf('Totale quote professionista da fatturare: %s', $this->formatEuro($professionalTotal)),
             'email_subject' => sprintf('Invio prospetto %s - %s', $professional->full_name, $period['label']),
             'email_body' => implode("\n", array_filter([
                 'Buongiorno,',
                 '',
-                sprintf("in allegato trovi il prospetto relativo all'intervallo %s.", $period['label']),
-                sprintf('Totale da fatturare a Humancare Telemedicine S.r.l.: %s.', $this->formatEuro($professionalTotal)),
-                $alreadyInvoicedRecords->isNotEmpty()
-                    ? sprintf('Prestazioni gia fatturate escluse dal conteggio: %d (%s).', $alreadyInvoicedPerformancesCount, $this->formatEuro($alreadyInvoicedAmount))
+                sprintf("in allegato trovi il prospetto relativo alle prestazioni non ancora fatturate dell'intervallo %s.", $period['label']),
+                sprintf('Totale quote professionista da fatturare nel periodo: %s.', $this->formatEuro($professionalTotal)),
+                $alreadyLiquidatedRecords->isNotEmpty()
+                    ? sprintf('Tra le quote ancora da fatturare, %d risultano gia liquidate per %s.', $alreadyLiquidatedCount, $this->formatEuro($alreadyLiquidatedAmount))
                     : null,
                 '',
                 'Resto a disposizione per eventuali verifiche.',
                 '',
                 'Cordiali saluti',
-            ], fn (?string $line) => $line !== null)),
+            ], static fn (?string $line) => $line !== null)),
             'file_name_pdf' => $fileStem.'.pdf',
             'file_name_excel' => $fileStem.'.xlsx',
         ];
@@ -107,6 +146,24 @@ class ProfessionalStatementService
             new ProfessionalStatementWorkbookExport($statement),
             $statement['file_name_excel'],
         );
+    }
+
+    private function allocatedAmountForProfessional(PerformanceRecord $record, int $professionalId): float
+    {
+        $splitMode = $record->split_mode?->value ?? $record->split_mode;
+        if ($splitMode === PerformanceSplitMode::Advanced->value) {
+            /** @var Collection<int, PerformanceRecordSplit> $splits */
+            $splits = $record->relationLoaded('splits') ? $record->splits : $record->splits()->get();
+
+            return round((float) $splits
+                ->filter(fn (PerformanceRecordSplit $split) => ($split->subject_type?->value ?? $split->subject_type) === PerformanceSplitSubjectType::Professional->value)
+                ->where('professional_id', $professionalId)
+                ->sum('amount'), 2);
+        }
+
+        return (int) $record->professional_id === $professionalId
+            ? round((float) $record->professional_amount, 2)
+            : 0.0;
     }
 
     private function resolvePeriod(?string $startDate, ?string $endDate): array
@@ -142,6 +199,34 @@ class ProfessionalStatementService
 
     private function formatEuro(float $amount): string
     {
-        return '€ '.number_format($amount, 2, ',', '.');
+        return "\u{20AC} ".number_format($amount, 2, ',', '.');
+    }
+
+    private function paymentStatusValue(PerformanceRecord $record): string
+    {
+        return $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value;
+    }
+
+    private function paymentStatusLabel(PerformanceRecord $record): string
+    {
+        return $this->paymentStatusValue($record) === PaymentStatus::Pagata->value
+            ? 'Liquidata'
+            : 'Da liquidare';
+    }
+
+    private function statementNotesFor(PerformanceRecord $record): ?string
+    {
+        $parts = [];
+
+        if ($this->paymentStatusValue($record) === PaymentStatus::Pagata->value) {
+            $parts[] = 'Gia liquidata';
+        }
+
+        $note = trim((string) ($record->notes ?? ''));
+        if ($note !== '') {
+            $parts[] = $note;
+        }
+
+        return $parts !== [] ? implode(' | ', $parts) : null;
     }
 }

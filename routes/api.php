@@ -7,6 +7,10 @@ use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseRecordController;
 use App\Http\Controllers\Api\V1\ExpenseTemplateController;
+use App\Http\Controllers\Api\V1\MarketingCampaignController;
+use App\Http\Controllers\Api\V1\MarketingSegmentController;
+use App\Http\Controllers\Api\V1\MarketingWhatsAppController;
+use App\Http\Controllers\Api\V1\PatientController;
 use App\Http\Controllers\Api\V1\PerformanceRecordController;
 use App\Http\Controllers\Api\V1\ProfessionalController;
 use App\Http\Controllers\Api\V1\ProfessionalStatementController;
@@ -46,6 +50,17 @@ Route::prefix('v1')->group(function (): void {
         Route::put('profile/password', [ProfileController::class, 'updatePassword']);
         Route::apiResource('professionals', ProfessionalController::class);
         Route::apiResource('services', ServiceController::class);
+        Route::get('patients/options', [PatientController::class, 'options']);
+        Route::post('patients/import', [PatientController::class, 'import']);
+        Route::apiResource('patients', PatientController::class);
+        Route::post('marketing-segments/preview', [MarketingSegmentController::class, 'preview']);
+        Route::get('marketing-segments/{marketingSegment}/campaign-preview', [MarketingSegmentController::class, 'campaignPreview']);
+        Route::apiResource('marketing-segments', MarketingSegmentController::class);
+        Route::get('marketing-whatsapp/status', [MarketingWhatsAppController::class, 'status']);
+        Route::post('marketing-whatsapp/reconnect', [MarketingWhatsAppController::class, 'reconnect']);
+        Route::post('marketing-campaigns/{marketingCampaign}/send-test', [MarketingCampaignController::class, 'sendTest']);
+        Route::post('marketing-campaigns/{marketingCampaign}/launch', [MarketingCampaignController::class, 'launch']);
+        Route::apiResource('marketing-campaigns', MarketingCampaignController::class);
         Route::apiResource('performance-records', PerformanceRecordController::class);
         Route::apiResource('counting-periods', CountingPeriodController::class);
 
@@ -54,7 +69,9 @@ Route::prefix('v1')->group(function (): void {
 
         Route::apiResource('expense-categories', ExpenseCategoryController::class)->except(['show']);
         Route::apiResource('expense-templates', ExpenseTemplateController::class)->except(['show']);
+        Route::get('expense-records/summary', [ExpenseRecordController::class, 'summary']);
         Route::apiResource('expense-records', ExpenseRecordController::class);
+        Route::post('cash-movements/reset', [CashMovementController::class, 'reset']);
         Route::get('cash-movements/summary', [CashMovementController::class, 'summary']);
         Route::apiResource('cash-movements', CashMovementController::class);
         Route::apiResource('reminders', ReminderController::class)->except(['show']);

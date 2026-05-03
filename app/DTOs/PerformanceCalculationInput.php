@@ -10,6 +10,7 @@ readonly class PerformanceCalculationInput
         public CalculationMode $calculationMode,
         public string $quantity,
         public string $unitAmount,
+        public ?string $directCost = null,
         public ?string $percentageValue = null,
         public ?string $fixedAmount = null,
     ) {

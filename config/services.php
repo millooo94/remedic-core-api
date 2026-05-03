@@ -35,4 +35,26 @@ return [
         ],
     ],
 
+    'twilio' => [
+        'account_sid' => env('TWILIO_ACCOUNT_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'sms_from' => env('TWILIO_SMS_FROM', 'REMEDIC'),
+        'default_country_code' => env('TWILIO_DEFAULT_COUNTRY_CODE', '+39'),
+    ],
+
+    'whatsapp_puppeteer' => [
+        'base_url' => env('WHATSAPP_PUPPETEER_BASE_URL', 'http://127.0.0.1:3101'),
+        'token' => env('WHATSAPP_PUPPETEER_TOKEN'),
+        'timeout_seconds' => (int) env('WHATSAPP_PUPPETEER_TIMEOUT_SECONDS', 15),
+    ],
+
+    'geocoding' => [
+        'provider_url' => env('GEOCODING_PROVIDER_URL', 'https://nominatim.openstreetmap.org/search'),
+        'user_agent' => env('GEOCODING_USER_AGENT', 'RemedicCore/1.0 (+https://core.remedic.it)'),
+        'timeout_seconds' => (int) env('GEOCODING_TIMEOUT_SECONDS', 8),
+        'remedic_address' => env('MARKETING_REMEDIC_ADDRESS', 'Via Salvatore Vigo 97/H, Acireale, 95024'),
+        'remedic_lat' => env('MARKETING_REMEDIC_LAT', 37.6108),
+        'remedic_lng' => env('MARKETING_REMEDIC_LNG', 15.1659),
+    ],
+
 ];

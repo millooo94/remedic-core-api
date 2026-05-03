@@ -32,7 +32,7 @@ class ServiceApiTest extends TestCase
         $this->postJson('/api/v1/services', [
             'category_id' => $category->id,
             'display_name' => 'Visita cardiologica',
-            'importo_prestazione' => 125.50,
+            'importo_prestazione' => 125,
             'default_duration_minutes' => 30,
             'professional_services' => [
                 [
@@ -42,7 +42,34 @@ class ServiceApiTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('category.name', 'Cardiologia')
             ->assertJsonPath('professional_services.0.professional_id', $cardioProfessional->id)
-            ->assertJsonPath('importo_prestazione', '125.50');
+            ->assertJsonPath('importo_prestazione', '125.00');
+    }
+
+    #[Test]
+    public function it_creates_service_with_multiple_professionals_from_the_same_area(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $category = ServiceCategory::factory()->create([
+            'name' => 'Dermatologia',
+            'slug' => 'dermatologia',
+        ]);
+
+        $professionals = Professional::factory()->count(3)->create([
+            'area_name' => 'Dermatologia',
+        ]);
+
+        $response = $this->postJson('/api/v1/services', [
+            'category_id' => $category->id,
+            'display_name' => 'Prima visita dermatologica',
+            'importo_prestazione' => 120,
+            'professional_services' => $professionals
+                ->map(fn (Professional $professional) => ['professional_id' => $professional->id])
+                ->values()
+                ->all(),
+        ])->assertCreated();
+
+        $this->assertCount(3, $response->json('professional_services'));
     }
 
     #[Test]
@@ -91,6 +118,64 @@ class ServiceApiTest extends TestCase
         ])->assertUnprocessable()
             ->assertJsonValidationErrors([
                 'importo_prestazione',
+            ]);
+    }
+
+    #[Test]
+    public function it_rejects_decimal_importo_values(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $category = ServiceCategory::factory()->create([
+            'name' => 'Cardiologia',
+            'slug' => 'cardiologia',
+        ]);
+
+        $professional = Professional::factory()->create([
+            'area_name' => 'Cardiologia',
+        ]);
+
+        $this->postJson('/api/v1/services', [
+            'category_id' => $category->id,
+            'display_name' => 'Visita cardiologica',
+            'importo_prestazione' => 125.50,
+            'professional_services' => [['professional_id' => $professional->id]],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'importo_prestazione',
+            ]);
+    }
+
+    #[Test]
+    public function it_rejects_duplicate_service_name_within_the_same_area(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $category = ServiceCategory::factory()->create([
+            'name' => 'Dermatologia',
+            'slug' => 'dermatologia',
+        ]);
+
+        $firstProfessional = Professional::factory()->create([
+            'area_name' => 'Dermatologia',
+        ]);
+        $secondProfessional = Professional::factory()->create([
+            'area_name' => 'Dermatologia',
+        ]);
+
+        $this->postJson('/api/v1/services', [
+            'category_id' => $category->id,
+            'display_name' => 'Prima visita dermatologica',
+            'professional_services' => [['professional_id' => $firstProfessional->id]],
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/services', [
+            'category_id' => $category->id,
+            'display_name' => 'Prima visita dermatologica',
+            'professional_services' => [['professional_id' => $secondProfessional->id]],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'display_name',
             ]);
     }
 }

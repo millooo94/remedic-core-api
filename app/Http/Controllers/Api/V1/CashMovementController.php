@@ -34,6 +34,13 @@ class CashMovementController extends Controller
         return response()->json($this->service->summary($request->filters()));
     }
 
+    public function reset(Request $request): JsonResponse
+    {
+        return response()->json([
+            'deleted_count' => $this->service->reset($request->user()),
+        ]);
+    }
+
     public function store(StoreCashMovementRequest $request): JsonResponse
     {
         $movement = $this->service->create($request->validated(), $request->user());

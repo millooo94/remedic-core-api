@@ -5,12 +5,14 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\ExpenseCategory;
 use App\Models\ExpenseRecord;
+use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Services\PerformanceRecordService;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
@@ -58,9 +60,11 @@ class DashboardApiTest extends TestCase
             'performed_at' => '2026-03-10',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'cash',
+            'payment_status' => 'pagata',
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => true,
@@ -69,6 +73,7 @@ class DashboardApiTest extends TestCase
             'performed_at' => '2026-03-12',
             'professional_id' => $secondProfessional->id,
             'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(3),
             'quantity' => 3,
             'unit_amount' => 200,
             'payment_method' => 'card',
@@ -80,9 +85,11 @@ class DashboardApiTest extends TestCase
             'performed_at' => '2026-03-15',
             'professional_id' => $secondProfessional->id,
             'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
             'quantity' => 1,
             'unit_amount' => 150,
             'payment_method' => 'cash',
+            'payment_status' => 'pagata',
             'calculation_mode' => 'percentage',
             'percentage_value' => 50,
             'is_black' => false,
@@ -106,25 +113,40 @@ class DashboardApiTest extends TestCase
         $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
             ->assertOk()
             ->assertJsonPath('cards.total_performances', 5)
+            ->assertJsonPath('cards.performance_type_breakdown.black', 1)
+            ->assertJsonPath('cards.performance_type_breakdown.non_black', 4)
             ->assertJsonPath('cards.total_center_amount', 345)
             ->assertJsonPath('cards.total_professional_amount', 505)
             ->assertJsonPath('cards.revenue_payment_breakdown.cash', 250)
             ->assertJsonPath('cards.revenue_payment_breakdown.card', 600)
+            ->assertJsonPath('cards.revenue_payment_breakdown.cash_breakdown.black', 100)
+            ->assertJsonPath('cards.revenue_payment_breakdown.cash_breakdown.fatturati', 150)
             ->assertJsonPath('cards.average_performance_cost', 170)
             ->assertJsonPath('cards.average_performance_cost_excluding_black', 187.5)
+            ->assertJsonPath('cards.average_center_gain_performance', 69)
+            ->assertJsonPath('cards.average_center_gain_performance_excluding_black', 78.75)
             ->assertJsonPath('cards.total_fixed_costs', 20)
             ->assertJsonPath('cards.total_variable_costs', 505)
             ->assertJsonPath('cards.total_center_costs', 525)
             ->assertJsonPath('cards.black', 30)
             ->assertJsonPath('cards.net_center_margin', 325)
+            ->assertJsonPath('cards.professional_amount_breakdown.total', 505)
+            ->assertJsonPath('cards.professional_amount_breakdown.liquidated', 145)
+            ->assertJsonPath('cards.professional_amount_breakdown.to_liquidate', 360)
             ->assertJsonPath('cards.top_by_performance_count.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.top_by_performance_count.performances', 4)
             ->assertJsonPath('cards.top_by_revenue.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.top_by_revenue.revenue_total', 750)
+            ->assertJsonPath('cards.top_by_specialization.label', 'Nutrizione')
+            ->assertJsonPath('cards.top_by_specialization.performances', 5)
+            ->assertJsonPath('cards.top_by_service.label', 'Controllo nutrizionale')
+            ->assertJsonPath('cards.top_by_service.performances', 5)
             ->assertJsonPath('cards.performance_count_ranking.0.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.performance_count_ranking.1.professional_name', 'Russo Ilenia')
             ->assertJsonPath('cards.revenue_ranking.0.professional_name', 'Bianchi Luca')
-            ->assertJsonPath('cards.revenue_ranking.1.professional_name', 'Russo Ilenia');
+            ->assertJsonPath('cards.revenue_ranking.1.professional_name', 'Russo Ilenia')
+            ->assertJsonPath('cards.specialization_ranking.0.label', 'Nutrizione')
+            ->assertJsonPath('cards.service_ranking.0.label', 'Controllo nutrizionale');
 
         $response = $this->getJson('/api/v1/dashboard/monthly-trends?year=2026')
             ->assertOk();
@@ -181,6 +203,55 @@ class DashboardApiTest extends TestCase
     }
 
     #[Test]
+    public function it_reflects_direct_cost_on_net_center_margin_cards(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $professional = Professional::factory()->create([
+            'full_name' => 'Russo Ilenia',
+            'area_name' => 'Nutrizione',
+        ]);
+        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $service = Service::factory()->create([
+            'category_id' => $category->id,
+            'display_name' => 'Controllo nutrizionale',
+            'canonical_name' => 'Controllo nutrizionale',
+            'slug' => 'nutrizione-controllo-nutrizionale',
+        ]);
+        ProfessionalService::query()->create([
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'price_amount' => 100,
+            'is_active' => true,
+        ]);
+
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-10',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 100,
+            'direct_cost' => 20,
+            'payment_method' => 'card',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+            'is_black' => false,
+        ], $user);
+
+        $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_revenue_amount', 100)
+            ->assertJsonPath('cards.total_professional_amount', 56)
+            ->assertJsonPath('cards.total_center_amount', 24)
+            ->assertJsonPath('cards.average_center_gain_performance', 24)
+            ->assertJsonPath('cards.total_variable_costs', 76)
+            ->assertJsonPath('cards.total_center_costs', 76)
+            ->assertJsonPath('cards.net_center_margin', 4);
+    }
+
+    #[Test]
     public function it_includes_the_full_competence_month_for_partial_custom_ranges(): void
     {
         $user = User::factory()->create(['role' => UserRole::Admin]);
@@ -214,5 +285,204 @@ class DashboardApiTest extends TestCase
             ->assertOk();
 
         $this->assertEquals(30.0, $response->json('monthly_trends.0.fixed_costs'));
+    }
+
+    #[Test]
+    public function it_uses_exact_variable_expense_dates_for_partial_custom_ranges(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $professional = Professional::factory()->create([
+            'full_name' => 'Russo Ilenia',
+            'area_name' => 'Nutrizione',
+        ]);
+        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $service = Service::factory()->create([
+            'category_id' => $category->id,
+            'display_name' => 'Controllo nutrizionale',
+            'canonical_name' => 'Controllo nutrizionale',
+            'slug' => 'nutrizione-controllo-nutrizionale',
+        ]);
+        ProfessionalService::query()->create([
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'price_amount' => 100,
+            'is_active' => true,
+        ]);
+
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-10',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 100,
+            'payment_method' => 'card',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+            'is_black' => false,
+        ], $user);
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-25',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(2),
+            'quantity' => 2,
+            'unit_amount' => 100,
+            'payment_method' => 'card',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+            'is_black' => false,
+        ], $user);
+
+        $expenseCategory = ExpenseCategory::factory()->create([
+            'name' => 'Affitto',
+            'slug' => 'affitto',
+        ]);
+        ExpenseRecord::query()->create([
+            'expense_category_id' => $expenseCategory->id,
+            'expense_date' => '2026-03-05',
+            'competence_start_date' => '2026-03-01',
+            'competence_end_date' => '2026-03-01',
+            'competence_month' => 3,
+            'competence_year' => 2026,
+            'description' => 'Affitto marzo',
+            'type' => 'fixed',
+            'amount' => 30,
+            'payment_status' => 'pagata',
+        ]);
+
+        $this->getJson('/api/v1/dashboard/summary?date_from=2026-03-20&date_to=2026-03-31')
+            ->assertOk()
+            ->assertJsonPath('cards.total_performances', 2)
+            ->assertJsonPath('cards.total_revenue_amount', 200)
+            ->assertJsonPath('cards.total_professional_amount', 140)
+            ->assertJsonPath('cards.total_variable_costs', 140)
+            ->assertJsonPath('cards.total_fixed_costs', 30)
+            ->assertJsonPath('cards.total_center_costs', 170);
+    }
+
+    #[Test]
+    public function it_reflects_advanced_split_amounts_in_professional_rankings(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $technician = Professional::factory()->create(['full_name' => 'Tecnico EMG', 'area_name' => 'Neurofisiologia']);
+        $neurologist = Professional::factory()->create(['full_name' => 'Neurologo EMG', 'area_name' => 'Neurologia']);
+        $category = ServiceCategory::factory()->create(['name' => 'Neurologia', 'slug' => 'neurologia']);
+        $service = Service::factory()->create([
+            'category_id' => $category->id,
+            'display_name' => 'EMG',
+            'canonical_name' => 'EMG',
+            'slug' => 'neurologia-emg',
+        ]);
+        ProfessionalService::query()->create([
+            'professional_id' => $technician->id,
+            'service_id' => $service->id,
+            'price_amount' => 150,
+            'is_active' => true,
+        ]);
+
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-10',
+            'professional_id' => $technician->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 150,
+            'payment_method' => 'card',
+            'split_mode' => 'advanced',
+            'advanced_splits' => [
+                ['subject_type' => 'professional', 'professional_id' => $technician->id, 'amount' => 50],
+                ['subject_type' => 'professional', 'professional_id' => $neurologist->id, 'amount' => 70],
+                ['subject_type' => 'center', 'amount' => 30],
+            ],
+        ], $user);
+
+        $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_center_amount', 30)
+            ->assertJsonPath('cards.total_professional_amount', 120)
+            ->assertJsonPath('cards.performance_count_ranking.0.professional_name', 'Neurologo EMG')
+            ->assertJsonPath('cards.revenue_ranking.0.professional_name', 'Neurologo EMG')
+            ->assertJsonPath('cards.revenue_ranking.0.revenue_total', 70);
+
+        $this->getJson('/api/v1/dashboard/monthly-trends?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('professional_split.0.professional_name', 'Neurologo EMG')
+            ->assertJsonPath('professional_split.0.total', 70);
+    }
+
+    #[Test]
+    public function it_backfills_historical_direct_costs_into_variable_costs(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $professional = Professional::factory()->create([
+            'full_name' => 'Russo Ilenia',
+            'area_name' => 'Nutrizione',
+        ]);
+        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $service = Service::factory()->create([
+            'category_id' => $category->id,
+            'display_name' => 'Controllo nutrizionale',
+            'canonical_name' => 'Controllo nutrizionale',
+            'slug' => 'nutrizione-controllo-nutrizionale',
+        ]);
+        ProfessionalService::query()->create([
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'price_amount' => 100,
+            'is_active' => true,
+        ]);
+
+        $record = app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-10',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 100,
+            'direct_cost' => 20,
+            'payment_method' => 'card',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+            'is_black' => false,
+        ], $user);
+
+        ExpenseRecord::query()
+            ->where('source_performance_record_id', $record->id)
+            ->where('generation_key', 'performance:'.$record->id.':direct-cost')
+            ->delete();
+
+        $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_professional_amount', 56)
+            ->assertJsonPath('cards.total_variable_costs', 56);
+
+        Artisan::call('performance-records:resync-expenses');
+
+        $this->assertDatabaseHas('expense_records', [
+            'source_performance_record_id' => $record->id,
+            'generation_key' => 'performance:'.$record->id.':direct-cost',
+            'amount' => 20,
+        ]);
+
+        $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_professional_amount', 56)
+            ->assertJsonPath('cards.total_variable_costs', 76);
+    }
+
+    private function createPatientIds(int $count): array
+    {
+        return Patient::factory()
+            ->count($count)
+            ->create()
+            ->pluck('id')
+            ->all();
     }
 }

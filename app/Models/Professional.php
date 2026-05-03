@@ -52,4 +52,9 @@ class Professional extends Model
     {
         return $this->hasMany(PerformanceRecord::class);
     }
+
+    public function performanceRecordSplits(): HasMany
+    {
+        return $this->hasMany(PerformanceRecordSplit::class);
+    }
 }

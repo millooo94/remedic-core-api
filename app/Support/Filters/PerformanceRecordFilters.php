@@ -13,11 +13,19 @@ class PerformanceRecordFilters
                 $builder->where(function (Builder $nested) use ($search): void {
                     $nested
                         ->where('professional_name_snapshot', 'like', "%{$search}%")
+                        ->orWhereHas('patients', function (Builder $patientQuery) use ($search): void {
+                            $patientQuery
+                                ->where('full_name', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        })
                         ->orWhere('category_name_snapshot', 'like', "%{$search}%")
                         ->orWhere('service_name_snapshot', 'like', "%{$search}%")
                         ->orWhere('notes', 'like', "%{$search}%");
                 });
             })
+            ->when($filters['patient_id'] ?? null, fn (Builder $builder, mixed $patientId) => $builder->whereHas('patients', fn (Builder $nested) => $nested->where('patients.id', $patientId)))
+            ->when($filters['only_unreconciled'] ?? null, fn (Builder $builder) => $builder->doesntHave('patients'))
             ->when($filters['professional_id'] ?? null, fn (Builder $builder, mixed $professionalId) => $builder->where('professional_id', $professionalId))
             ->when($filters['area_name'] ?? null, fn (Builder $builder, string $areaName) => $builder->where('category_name_snapshot', $areaName))
             ->when($filters['service_id'] ?? null, fn (Builder $builder, mixed $serviceId) => $builder->where('service_id', $serviceId))
@@ -33,7 +41,7 @@ class PerformanceRecordFilters
         $field = ltrim((string) $sort, '-');
 
         return match ($field) {
-            'performed_at', 'professional_name_snapshot', 'category_name_snapshot', 'service_name_snapshot', 'quantity', 'total_amount', 'professional_amount', 'center_amount' => $query->orderBy($field, $direction),
+            'performed_at', 'professional_name_snapshot', 'category_name_snapshot', 'service_name_snapshot', 'quantity', 'total_amount', 'professional_amount', 'center_amount', 'payment_status' => $query->orderBy($field, $direction),
             default => $query->orderBy('performed_at', 'desc')->orderBy('id', 'desc'),
         };
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Expenses\ExpenseRecordQueryRequest;
 use App\Http\Requests\Api\V1\Expenses\StoreExpenseRecordRequest;
 use App\Http\Requests\Api\V1\Expenses\UpdateExpenseRecordRequest;
 use App\Http\Resources\Api\V1\ExpenseRecordResource;
@@ -18,12 +19,17 @@ class ExpenseRecordController extends Controller
     ) {
     }
 
-    public function index(Request $request)
+    public function index(ExpenseRecordQueryRequest $request)
     {
         $perPage = (int) $request->integer('per_page', 20);
-        $records = $this->service->baseQuery($request->all())->paginate($perPage)->withQueryString();
+        $records = $this->service->baseQuery($request->filters())->paginate($perPage)->withQueryString();
 
         return ExpenseRecordResource::collection($records);
+    }
+
+    public function summary(ExpenseRecordQueryRequest $request): array
+    {
+        return $this->service->summary($request->filters());
     }
 
     public function store(StoreExpenseRecordRequest $request): ExpenseRecordResource
@@ -45,9 +51,9 @@ class ExpenseRecordController extends Controller
         return new ExpenseRecordResource($record);
     }
 
-    public function destroy(ExpenseRecord $expenseRecord): Response
+    public function destroy(Request $request, ExpenseRecord $expenseRecord): Response
     {
-        $expenseRecord->delete();
+        $this->service->delete($expenseRecord, $request->user());
 
         return response()->noContent();
     }

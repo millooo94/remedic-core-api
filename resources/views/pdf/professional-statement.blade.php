@@ -43,10 +43,20 @@
             line-height: 1.45;
         }
         h2 { margin: 0 0 10px; font-size: 14px; }
+        .records-table {
+            table-layout: fixed;
+        }
         .records-table th, .records-table td {
             padding: 9px 10px;
             border: 1px solid #deeaee;
             vertical-align: top;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .records-table .date-cell {
+            white-space: nowrap;
+            overflow-wrap: normal;
+            word-break: normal;
         }
         .records-table th {
             background: #ebf6f8;
@@ -57,6 +67,13 @@
         }
         .text-right { text-align: right; }
         .muted { color: #5f7383; }
+        .service-cell {
+            line-height: 1.4;
+        }
+        .note-cell {
+            font-size: 9.5px;
+            line-height: 1.45;
+        }
         .status-badge {
             display: inline-block;
             padding: 4px 8px;
@@ -67,14 +84,14 @@
             border: 1px solid transparent;
         }
         .status-badge.pending {
-            color: #0f667d;
-            background: #e8f5f8;
-            border-color: #c7e4eb;
-        }
-        .status-badge.invoiced {
             color: #6a4f11;
             background: #f8f1d5;
             border-color: #ead9a4;
+        }
+        .status-badge.liquidated {
+            color: #0f667d;
+            background: #e8f5f8;
+            border-color: #c7e4eb;
         }
         .footer-table { margin-top: 18px; }
         .footer-table td {
@@ -117,12 +134,12 @@
                 <td class="meta-value">{{ $statement['period']['label'] }}</td>
             </tr>
             <tr>
-                <td class="meta-label">Prestazioni conteggiate</td>
+                <td class="meta-label">Prestazioni da fatturare</td>
                 <td class="meta-value">{{ $statement['totals']['performance_count'] }}</td>
             </tr>
             <tr>
-                <td class="meta-label">Gia fatturate</td>
-                <td class="meta-value">{{ $statement['totals']['already_invoiced_count'] }}</td>
+                <td class="meta-label">Gia liquidate</td>
+                <td class="meta-value">{{ $statement['totals']['already_liquidated_count'] }}</td>
             </tr>
             <tr>
                 <td class="meta-label">Totale da fatturare</td>
@@ -131,45 +148,45 @@
         </table>
 
         <div class="message-box">{{ $statement['message'] }}</div>
-        @if (($statement['totals']['already_invoiced_count'] ?? 0) > 0)
+        @if (($statement['totals']['already_liquidated_count'] ?? 0) > 0)
             <div class="message-note">
-                Prestazioni gia fatturate escluse dal calcolo: {{ $statement['totals']['already_invoiced_count'] }}
-                per un totale di &euro; {{ number_format($statement['totals']['already_invoiced_amount'], 2, ',', '.') }}.
+                Tra le quote ancora da fatturare, {{ $statement['totals']['already_liquidated_count'] }}
+                risultano gia liquidate per un totale di &euro; {{ number_format($statement['totals']['already_liquidated_amount'], 2, ',', '.') }}.
             </div>
         @endif
     </div>
 
-    <h2>Prestazioni considerate</h2>
+    <h2>Prestazioni da fatturare</h2>
     <table class="records-table">
         <thead>
         <tr>
-            <th style="width: 72px;">Data</th>
-            <th>Prestazione</th>
-            <th style="width: 64px;" class="text-right">Quantita</th>
-            <th style="width: 110px;" class="text-right">Importo Prestazione</th>
-            <th style="width: 110px;" class="text-right">Quota Professionista</th>
-            <th style="width: 110px;">Fatturazione</th>
-            <th style="width: 140px;">Note</th>
+            <th style="width: 12%;">Data</th>
+            <th style="width: 22%;">Prestazione</th>
+            <th style="width: 7%;" class="text-right">Quantita</th>
+            <th style="width: 13%;" class="text-right">Importo Prestazione</th>
+            <th style="width: 13%;" class="text-right">Quota Professionista</th>
+            <th style="width: 13%;">Liquidazione</th>
+            <th style="width: 20%;">Note</th>
         </tr>
         </thead>
         <tbody>
         @forelse ($statement['records'] as $record)
             <tr>
-                <td>{{ \Illuminate\Support\Carbon::parse($record['performed_at'])->format('d/m/Y') }}</td>
-                <td>{{ $record['service_name'] }}</td>
+                <td class="date-cell">{{ \Illuminate\Support\Carbon::parse($record['performed_at'])->format('d/m/Y') }}</td>
+                <td class="service-cell">{{ $record['service_name'] }}</td>
                 <td class="text-right">{{ number_format((int) $record['quantity'], 0, ',', '.') }}</td>
                 <td class="text-right">&euro; {{ number_format($record['total_amount'], 2, ',', '.') }}</td>
                 <td class="text-right">&euro; {{ number_format($record['professional_amount'], 2, ',', '.') }}</td>
                 <td>
-                    <span class="status-badge {{ $record['is_invoiced'] ? 'invoiced' : 'pending' }}">
-                        {{ $record['invoicing_status'] }}
+                    <span class="status-badge {{ $record['payment_status'] === 'pagata' ? 'liquidated' : 'pending' }}">
+                        {{ $record['payment_status_label'] }}
                     </span>
                 </td>
-                <td>{{ $record['notes'] ?: '—' }}</td>
+                <td class="note-cell">{{ $record['notes'] ?: '-' }}</td>
             </tr>
         @empty
             <tr>
-                <td colspan="7" class="muted">Nessuna prestazione registrata nell'intervallo selezionato.</td>
+                <td colspan="7" class="muted">Nessuna prestazione non fatturata nell'intervallo selezionato.</td>
             </tr>
         @endforelse
         </tbody>

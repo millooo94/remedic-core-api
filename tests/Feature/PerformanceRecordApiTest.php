@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\CashMovement;
 use App\Models\ExpenseRecord;
+use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
 use App\Models\Service;
@@ -41,14 +42,17 @@ class PerformanceRecordApiTest extends TestCase
             'price_amount' => 100,
             'is_active' => true,
         ]);
+        $patient = Patient::factory()->create();
 
         $this->postJson('/api/v1/performance-records', [
             'performed_at' => '2026-04-10',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => [$patient->id],
             'quantity' => 1,
             'unit_amount' => 100,
-            'payment_method' => 'card',
+            'direct_cost' => 0,
+            'payment_method' => 'cash',
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => true,
@@ -57,9 +61,12 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonPath('category_name_snapshot', 'Cardiologia')
             ->assertJsonPath('service_name_snapshot', 'Visita cardiologica')
             ->assertJsonPath('total_amount', '100.00')
+            ->assertJsonPath('direct_cost', '0.00')
+            ->assertJsonPath('net_divisible_amount', '100.00')
             ->assertJsonPath('professional_amount', '70.00')
             ->assertJsonPath('center_amount', '30.00')
-            ->assertJsonPath('payment_method', 'card')
+            ->assertJsonPath('payment_method', 'cash')
+            ->assertJsonPath('payment_status', 'da_pagare')
             ->assertJsonPath('is_black', true);
 
         $this->assertDatabaseHas('expense_records', [
@@ -78,47 +85,75 @@ class PerformanceRecordApiTest extends TestCase
     }
 
     #[Test]
-    public function it_creates_automatic_cash_movements_for_cash_performance_records_in_the_expected_cash_box(): void
+    public function it_saves_multiple_patients_when_quantity_matches(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+        $firstPatient = Patient::factory()->create();
+        $secondPatient = Patient::factory()->create();
+
+        $response = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'quantity' => 2,
+            'patient_ids' => [$firstPatient->id, $secondPatient->id],
+            'payment_method' => 'cash',
+        ]))->assertCreated()
+            ->assertJsonPath('quantity', 2)
+            ->assertJsonPath('patient_id', $firstPatient->id)
+            ->assertJsonPath('patient_ids.0', $firstPatient->id)
+            ->assertJsonPath('patient_ids.1', $secondPatient->id);
+
+        $recordId = (int) $response->json('id');
+
+        $this->assertDatabaseHas('patient_performance_record', [
+            'performance_record_id' => $recordId,
+            'patient_id' => $firstPatient->id,
+            'sort_order' => 0,
+        ]);
+        $this->assertDatabaseHas('patient_performance_record', [
+            'performance_record_id' => $recordId,
+            'patient_id' => $secondPatient->id,
+            'sort_order' => 1,
+        ]);
+    }
+
+    #[Test]
+    public function it_rejects_when_patient_count_does_not_match_quantity(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+        $patient = Patient::factory()->create();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'quantity' => 2,
+            'patient_ids' => [$patient->id],
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['patient_ids']);
+    }
+
+    #[Test]
+    public function it_keeps_cash_movements_manual_even_for_cash_performance_records(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
 
         ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
 
-        $response = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
             'payment_method' => 'cash',
             'is_black' => false,
             'performed_at' => '2026-04-10',
             'unit_amount' => 135,
         ]))->assertCreated();
 
-        $performanceRecordId = $response->json('id');
-
-        $this->assertDatabaseHas('cash_movements', [
-            'source_performance_record_id' => $performanceRecordId,
-            'movement_type' => 'versamento',
-            'cash_box_type' => 'fatturati',
-            'amount' => '135.00',
-            'counterparty_name' => 'Bottaro Giuseppe',
-        ]);
-
-        $movement = CashMovement::query()->where('source_performance_record_id', $performanceRecordId)->firstOrFail();
-
-        $this->assertSame('Incasso prestazione: Visita cardiologica', $movement->reason);
-        $this->assertStringContainsString('Generato automaticamente dalla prestazione effettuata', (string) $movement->notes);
-
-        $blackResponse = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
             'payment_method' => 'cash',
             'is_black' => true,
             'performed_at' => '2026-04-11',
             'unit_amount' => 90,
         ]))->assertCreated();
 
-        $this->assertDatabaseHas('cash_movements', [
-            'source_performance_record_id' => $blackResponse->json('id'),
-            'movement_type' => 'versamento',
-            'cash_box_type' => 'black',
-            'amount' => '90.00',
-        ]);
+        $this->assertDatabaseCount('cash_movements', 0);
     }
 
     #[Test]
@@ -137,7 +172,7 @@ class PerformanceRecordApiTest extends TestCase
     }
 
     #[Test]
-    public function it_updates_the_linked_cash_movement_and_removes_it_when_payment_switches_to_card(): void
+    public function it_updates_performance_records_without_creating_or_syncing_cash_movements(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
 
@@ -150,56 +185,72 @@ class PerformanceRecordApiTest extends TestCase
             'unit_amount' => 100,
         ]))->assertCreated()->json();
 
+        $this->assertDatabaseCount('cash_movements', 0);
+
         $this->putJson('/api/v1/performance-records/'.$created['id'], $this->performancePayload($professional, $service, [
             'payment_method' => 'cash',
             'is_black' => true,
             'performed_at' => '2026-04-12',
             'unit_amount' => 160,
+            'direct_cost' => 20,
             'notes' => 'Aggiornamento test',
-        ]))->assertOk();
+        ]))->assertOk()
+            ->assertJsonPath('direct_cost', '20.00')
+            ->assertJsonPath('net_divisible_amount', '140.00')
+            ->assertJsonPath('professional_amount', '98.00')
+            ->assertJsonPath('center_amount', '42.00');
 
-        $movement = CashMovement::query()->where('source_performance_record_id', $created['id'])->firstOrFail();
+        $linkedExpenses = ExpenseRecord::query()
+            ->where('source_performance_record_id', $created['id'])
+            ->get()
+            ->keyBy('generation_key');
 
-        $this->assertSame('black', $movement->cash_box_type->value);
-        $this->assertSame('160.00', $movement->amount);
-        $this->assertSame('2026-04-12', $movement->movement_date?->toDateString());
-        $this->assertDatabaseCount('cash_movements', 1);
-
-        $expense = ExpenseRecord::query()->where('source_performance_record_id', $created['id'])->firstOrFail();
-        $this->assertSame('2026-04-12', $expense->expense_date?->toDateString());
-        $this->assertSame(4, $expense->competence_month);
-        $this->assertSame(2026, $expense->competence_year);
-        $this->assertSame('Bottaro Giuseppe', $expense->supplier);
-        $this->assertSame('112.00', $expense->amount);
-        $this->assertSame('variable', $expense->type->value);
+        $this->assertCount(2, $linkedExpenses);
+        $this->assertSame('2026-04-12', $linkedExpenses['performance:'.$created['id'].':standard']->expense_date?->toDateString());
+        $this->assertSame(4, $linkedExpenses['performance:'.$created['id'].':standard']->competence_month);
+        $this->assertSame(2026, $linkedExpenses['performance:'.$created['id'].':standard']->competence_year);
+        $this->assertSame('Bottaro Giuseppe', $linkedExpenses['performance:'.$created['id'].':standard']->supplier);
+        $this->assertSame('98.00', $linkedExpenses['performance:'.$created['id'].':standard']->amount);
+        $this->assertSame('20.00', $linkedExpenses['performance:'.$created['id'].':direct-cost']->amount);
+        $this->assertNull($linkedExpenses['performance:'.$created['id'].':direct-cost']->supplier);
+        $this->assertSame('variable', $linkedExpenses['performance:'.$created['id'].':direct-cost']->type->value);
 
         $this->putJson('/api/v1/performance-records/'.$created['id'], $this->performancePayload($professional, $service, [
             'payment_method' => 'card',
-            'is_black' => true,
+            'is_black' => false,
             'performed_at' => '2026-04-12',
             'unit_amount' => 160,
         ]))->assertOk();
 
-        $this->assertDatabaseMissing('cash_movements', [
-            'source_performance_record_id' => $created['id'],
-        ]);
+        $this->assertDatabaseCount('cash_movements', 0);
     }
 
     #[Test]
-    public function it_deletes_the_linked_cash_movement_when_the_performance_record_is_deleted(): void
+    public function it_deletes_performance_records_without_touching_manual_cash_movements(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
 
         ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $manualMovement = CashMovement::query()->create([
+            'movement_date' => '2026-04-08',
+            'cash_box_type' => 'fatturati',
+            'movement_type' => 'versamento',
+            'counterparty_name' => 'Manuale',
+            'amount' => '50.00',
+            'reason' => 'Fondo cassa',
+            'notes' => null,
+            'balance_after' => '50.00',
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
 
         $created = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
             'payment_method' => 'cash',
             'is_black' => false,
         ]))->assertCreated()->json();
 
-        $this->assertDatabaseHas('cash_movements', [
-            'source_performance_record_id' => $created['id'],
-        ]);
         $this->assertDatabaseHas('expense_records', [
             'source_performance_record_id' => $created['id'],
         ]);
@@ -207,8 +258,8 @@ class PerformanceRecordApiTest extends TestCase
         $this->deleteJson('/api/v1/performance-records/'.$created['id'])
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('cash_movements', [
-            'source_performance_record_id' => $created['id'],
+        $this->assertDatabaseHas('cash_movements', [
+            'id' => $manualMovement->id,
         ]);
         $this->assertDatabaseMissing('expense_records', [
             'source_performance_record_id' => $created['id'],
@@ -221,11 +272,13 @@ class PerformanceRecordApiTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
 
         $professional = Professional::factory()->create();
+        $patient = Patient::factory()->create();
 
         $this->postJson('/api/v1/performance-records', [
             'performed_at' => '2026-04-10',
             'professional_id' => $professional->id,
             'service_name' => 'Prestazione manuale',
+            'patient_ids' => [$patient->id],
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'cash',
@@ -233,6 +286,200 @@ class PerformanceRecordApiTest extends TestCase
             'fixed_amount' => 120,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['fixed_amount']);
+    }
+
+    #[Test]
+    public function it_applies_direct_cost_before_percentage_split(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $response = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'unit_amount' => 100,
+            'direct_cost' => 20,
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+        ]))->assertCreated()
+            ->assertJsonPath('total_amount', '100.00')
+            ->assertJsonPath('direct_cost', '20.00')
+            ->assertJsonPath('net_divisible_amount', '80.00')
+            ->assertJsonPath('professional_amount', '56.00')
+            ->assertJsonPath('center_amount', '24.00');
+
+        $recordId = (int) $response->json('id');
+        $this->assertDatabaseHas('expense_records', [
+            'source_performance_record_id' => $recordId,
+            'generation_key' => 'performance:'.$recordId.':standard',
+            'amount' => 56,
+        ]);
+        $this->assertDatabaseHas('expense_records', [
+            'source_performance_record_id' => $recordId,
+            'generation_key' => 'performance:'.$recordId.':direct-cost',
+            'amount' => 20,
+        ]);
+    }
+
+    #[Test]
+    public function it_creates_an_advanced_split_record_for_emg_and_syncs_professional_expenses(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $technician, 'service' => $service] = $this->createProfessionalServiceContext();
+        $neurologist = Professional::factory()->create([
+            'full_name' => 'Verdi Marta',
+            'area_name' => 'Neurologia',
+        ]);
+        $patient = Patient::factory()->create();
+
+        $response = $this->postJson('/api/v1/performance-records', [
+            'performed_at' => '2026-04-18',
+            'professional_id' => $technician->id,
+            'service_id' => $service->id,
+            'patient_ids' => [$patient->id],
+            'quantity' => 1,
+            'unit_amount' => 170,
+            'direct_cost' => 20,
+            'payment_method' => 'card',
+            'split_mode' => 'advanced',
+            'advanced_splits' => [
+                ['subject_type' => 'professional', 'professional_id' => $technician->id, 'amount' => 50],
+                ['subject_type' => 'professional', 'professional_id' => $neurologist->id, 'amount' => 70],
+                ['subject_type' => 'center', 'amount' => 30],
+            ],
+        ])->assertCreated()
+            ->assertJsonPath('split_mode', 'advanced')
+            ->assertJsonPath('total_amount', '170.00')
+            ->assertJsonPath('direct_cost', '20.00')
+            ->assertJsonPath('net_divisible_amount', '150.00')
+            ->assertJsonPath('professional_amount', '120.00')
+            ->assertJsonPath('center_amount', '30.00')
+            ->assertJsonCount(3, 'advanced_splits');
+
+        $recordId = (int) $response->json('id');
+
+        $this->assertDatabaseCount('performance_record_splits', 3);
+        $this->assertDatabaseHas('performance_record_splits', [
+            'performance_record_id' => $recordId,
+            'subject_type' => 'professional',
+            'professional_id' => $technician->id,
+            'amount' => 50,
+        ]);
+        $this->assertDatabaseHas('performance_record_splits', [
+            'performance_record_id' => $recordId,
+            'subject_type' => 'professional',
+            'professional_id' => $neurologist->id,
+            'amount' => 70,
+        ]);
+        $this->assertDatabaseHas('performance_record_splits', [
+            'performance_record_id' => $recordId,
+            'subject_type' => 'center',
+            'professional_id' => null,
+            'amount' => 30,
+        ]);
+
+        $this->assertDatabaseHas('expense_records', [
+            'source_performance_record_id' => $recordId,
+            'supplier' => 'Bottaro Giuseppe',
+            'amount' => 50,
+        ]);
+        $this->assertDatabaseHas('expense_records', [
+            'source_performance_record_id' => $recordId,
+            'supplier' => 'Verdi Marta',
+            'amount' => 70,
+        ]);
+        $this->assertDatabaseHas('expense_records', [
+            'source_performance_record_id' => $recordId,
+            'generation_key' => 'performance:'.$recordId.':direct-cost',
+            'amount' => 20,
+        ]);
+    }
+
+    #[Test]
+    public function it_syncs_payment_status_from_performance_record_to_linked_expenses(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $created = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'payment_status' => 'pagata',
+        ]))->assertCreated()
+            ->assertJsonPath('payment_status', 'pagata')
+            ->json();
+
+        $expense = ExpenseRecord::query()->where('source_performance_record_id', $created['id'])->firstOrFail();
+        $this->assertSame('pagata', $expense->payment_status->value);
+
+        $this->putJson('/api/v1/performance-records/'.$created['id'], $this->performancePayload($professional, $service, [
+            'payment_status' => 'da_pagare',
+        ]))->assertOk()
+            ->assertJsonPath('payment_status', 'da_pagare');
+
+        $this->assertDatabaseHas('performance_records', [
+            'id' => $created['id'],
+            'payment_status' => 'da_pagare',
+        ]);
+        $this->assertDatabaseHas('expense_records', [
+            'id' => $expense->id,
+            'payment_status' => 'da_pagare',
+        ]);
+    }
+
+    #[Test]
+    public function it_rejects_direct_cost_higher_than_total_amount(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'unit_amount' => 100,
+            'direct_cost' => 101,
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['direct_cost']);
+    }
+
+    #[Test]
+    public function it_rejects_decimal_money_inputs_for_performance_records(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+        $patient = Patient::factory()->create();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'unit_amount' => '100.50',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['unit_amount']);
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'direct_cost' => '20.50',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['direct_cost']);
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'calculation_mode' => 'fixed',
+            'fixed_amount' => '30.50',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['fixed_amount']);
+
+        $this->postJson('/api/v1/performance-records', [
+            'performed_at' => '2026-04-18',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => [$patient->id],
+            'quantity' => 1,
+            'unit_amount' => 150,
+            'direct_cost' => 0,
+            'payment_method' => 'card',
+            'split_mode' => 'advanced',
+            'advanced_splits' => [
+                ['subject_type' => 'professional', 'professional_id' => $professional->id, 'amount' => '50.50'],
+                ['subject_type' => 'center', 'amount' => '99.50'],
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['advanced_splits.0.amount', 'advanced_splits.1.amount']);
     }
 
     #[Test]
@@ -260,6 +507,20 @@ class PerformanceRecordApiTest extends TestCase
             'is_invoiced' => true,
         ]))->assertUnprocessable()
             ->assertJsonValidationErrors(['is_black', 'is_invoiced']);
+    }
+
+    #[Test]
+    public function it_rejects_black_records_paid_by_card(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'is_black' => true,
+            'payment_method' => 'card',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['payment_method']);
     }
 
     private function createProfessionalServiceContext(): array
@@ -290,13 +551,17 @@ class PerformanceRecordApiTest extends TestCase
 
     private function performancePayload(Professional $professional, Service $service, array $overrides = []): array
     {
+        $defaultPatientId = Patient::factory()->create()->id;
+
         return array_merge([
             'performed_at' => '2026-04-10',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => [$defaultPatientId],
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'card',
+            'payment_status' => 'da_pagare',
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => false,

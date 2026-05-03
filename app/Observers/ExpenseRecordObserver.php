@@ -4,11 +4,13 @@ namespace App\Observers;
 
 use App\Models\ExpenseRecord;
 use App\Services\ExpenseCompetenceAllocationService;
+use App\Services\PerformancePaymentStatusSyncService;
 
 class ExpenseRecordObserver
 {
     public function __construct(
         private readonly ExpenseCompetenceAllocationService $allocationService,
+        private readonly PerformancePaymentStatusSyncService $paymentStatusSyncService,
     ) {
     }
 
@@ -19,6 +21,10 @@ class ExpenseRecordObserver
 
     public function updated(ExpenseRecord $expenseRecord): void
     {
+        if ($expenseRecord->source_performance_record_id !== null && $expenseRecord->wasChanged('payment_status')) {
+            $this->paymentStatusSyncService->syncPerformanceAndSiblingExpensesFromExpense($expenseRecord);
+        }
+
         if (! $this->shouldResync($expenseRecord)) {
             return;
         }

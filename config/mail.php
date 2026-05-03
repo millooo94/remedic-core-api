@@ -7,6 +7,10 @@ $mailScheme = is_string($mailScheme) ? strtolower(trim($mailScheme)) : $mailSche
 $mailEncryption = is_string($mailEncryption) ? strtolower(trim($mailEncryption)) : $mailEncryption;
 $mailScheme = $mailScheme === '' ? null : $mailScheme;
 $mailEncryption = $mailEncryption === '' ? null : $mailEncryption;
+$cashWarningRecipients = array_values(array_filter(array_map(
+    static fn (string $recipient): string => trim($recipient),
+    explode(',', (string) env('MAIL_CASH_WARNING_RECIPIENTS', 'humancaretelemedicine@gmail.com,camillomusmeci.dev@gmail.com')),
+)));
 
 if (! in_array($mailScheme, ['smtp', 'smtps', null], true)) {
     $mailScheme = match (true) {
@@ -142,5 +146,9 @@ return [
     ],
 
     'reminder_copy_recipient' => env('MAIL_REMINDER_COPY_RECIPIENT', 'humancaretelemedicine@gmail.com'),
+
+    'cash_warning_recipients' => $cashWarningRecipients === []
+        ? ['humancaretelemedicine@gmail.com', 'camillomusmeci.dev@gmail.com']
+        : $cashWarningRecipients,
 
 ];

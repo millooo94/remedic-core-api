@@ -16,6 +16,8 @@ class PerformanceRecordQueryRequest extends FormRequest
     {
         return [
             'q' => ['nullable', 'string', 'max:120'],
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'only_unreconciled' => ['nullable', 'boolean'],
             'professional_id' => ['nullable', 'integer', 'exists:professionals,id'],
             'area_name' => ['nullable', 'string', 'max:150'],
             'service_id' => ['nullable', 'integer', 'exists:services,id'],
@@ -40,6 +42,8 @@ class PerformanceRecordQueryRequest extends FormRequest
                 '-professional_amount',
                 'center_amount',
                 '-center_amount',
+                'payment_status',
+                '-payment_status',
             ])],
             'per_page' => ['nullable', 'integer', 'between:1,100'],
         ];

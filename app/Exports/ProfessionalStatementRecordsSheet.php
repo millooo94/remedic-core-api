@@ -21,11 +21,11 @@ class ProfessionalStatementRecordsSheet implements FromArray, ShouldAutoSize, Wi
     public function array(): array
     {
         $rows = [
-            ['RIEPILOGO PRESTAZIONI CONSIDERATE'],
+            ['RIEPILOGO PRESTAZIONI DA FATTURARE'],
             ['Professionista: '.$this->statement['professional']['full_name']],
             ['Intervallo: '.$this->statement['period']['label']],
             [],
-            ['Data', 'Prestazione', 'Quantita', 'Importo Prestazione', 'Quota Professionista', 'Fatturazione', 'Note'],
+            ['Data', 'Prestazione', 'Quantita', 'Importo Prestazione', 'Quota Professionista', 'Liquidazione', 'Note'],
         ];
 
         foreach ($this->statement['records'] as $record) {
@@ -35,23 +35,23 @@ class ProfessionalStatementRecordsSheet implements FromArray, ShouldAutoSize, Wi
                 $record['quantity'],
                 $record['total_amount'],
                 $record['professional_amount'],
-                $record['invoicing_status'],
+                $record['payment_status_label'],
                 $record['notes'],
             ];
         }
 
         $rows[] = [];
-        $rows[] = ['', '', '', '', 'Totale da fatturare', $this->statement['totals']['professional_amount'], ''];
+        $rows[] = ['', '', '', '', 'Totale quote da fatturare', $this->statement['totals']['professional_amount'], ''];
 
-        if (($this->statement['totals']['already_invoiced_count'] ?? 0) > 0) {
+        if (($this->statement['totals']['already_liquidated_count'] ?? 0) > 0) {
             $rows[] = [
                 '',
                 '',
                 '',
                 '',
-                'Gia fatturate escluse',
-                $this->statement['totals']['already_invoiced_amount'],
-                $this->statement['totals']['already_invoiced_count'].' prestazioni',
+                'Di cui gia liquidate',
+                $this->statement['totals']['already_liquidated_amount'],
+                $this->statement['totals']['already_liquidated_count'].' prestazioni',
             ];
         }
 
@@ -68,8 +68,8 @@ class ProfessionalStatementRecordsSheet implements FromArray, ShouldAutoSize, Wi
                 $dataStartRow = 6;
                 $dataEndRow = max($dataStartRow - 1, 5 + count($this->statement['records']));
                 $totalRow = $dataEndRow + 2;
-                $excludedRow = ($this->statement['totals']['already_invoiced_count'] ?? 0) > 0 ? $dataEndRow + 3 : null;
-                $messageRow = $excludedRow ? $dataEndRow + 4 : $dataEndRow + 3;
+                $highlightRow = ($this->statement['totals']['already_liquidated_count'] ?? 0) > 0 ? $dataEndRow + 3 : null;
+                $messageRow = $highlightRow ? $dataEndRow + 4 : $dataEndRow + 3;
 
                 $sheet->mergeCells('A1:G1');
                 $sheet->mergeCells('A2:G2');
@@ -139,21 +139,21 @@ class ProfessionalStatementRecordsSheet implements FromArray, ShouldAutoSize, Wi
                     ->getAlignment()
                     ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-                if ($excludedRow) {
-                    $sheet->getStyle("E{$excludedRow}:G{$excludedRow}")->applyFromArray([
-                        'font' => ['size' => 10, 'bold' => true, 'color' => ['rgb' => '6A4F11']],
-                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8F1D5']],
+                if ($highlightRow) {
+                    $sheet->getStyle("E{$highlightRow}:G{$highlightRow}")->applyFromArray([
+                        'font' => ['size' => 10, 'bold' => true, 'color' => ['rgb' => '0F667D']],
+                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E8F5F8']],
                         'borders' => [
                             'allBorders' => [
                                 'borderStyle' => Border::BORDER_THIN,
-                                'color' => ['rgb' => 'E4D7A7'],
+                                'color' => ['rgb' => 'C7E4EB'],
                             ],
                         ],
                     ]);
-                    $sheet->getStyle("F{$excludedRow}")
+                    $sheet->getStyle("F{$highlightRow}")
                         ->getNumberFormat()
                         ->setFormatCode('#,##0.00 [$EUR-410]');
-                    $sheet->getStyle("F{$excludedRow}")
+                    $sheet->getStyle("F{$highlightRow}")
                         ->getAlignment()
                         ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
                 }
@@ -172,7 +172,7 @@ class ProfessionalStatementRecordsSheet implements FromArray, ShouldAutoSize, Wi
 
                 $sheet->getColumnDimension('B')->setWidth(48);
                 $sheet->getColumnDimension('F')->setWidth(24);
-                $sheet->getColumnDimension('G')->setWidth(38);
+                $sheet->getColumnDimension('G')->setWidth(48);
 
                 foreach ([1 => 24, 5 => 22, $messageRow => 32] as $row => $height) {
                     $sheet->getRowDimension($row)->setRowHeight($height);

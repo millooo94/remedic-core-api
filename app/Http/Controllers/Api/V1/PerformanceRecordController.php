@@ -38,7 +38,7 @@ class PerformanceRecordController extends Controller
 
     public function show(PerformanceRecord $performanceRecord): PerformanceRecordResource
     {
-        return new PerformanceRecordResource($performanceRecord->load(['professional', 'service.category']));
+        return new PerformanceRecordResource($performanceRecord->load(['patient', 'patients', 'professional', 'service.category', 'splits.professional']));
     }
 
     public function update(UpdatePerformanceRecordRequest $request, PerformanceRecord $performanceRecord): PerformanceRecordResource

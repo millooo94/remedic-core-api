@@ -5,6 +5,7 @@ namespace App\Services;
 use App\DTOs\PerformanceCalculationInput;
 use App\DTOs\PerformanceCalculationResult;
 use App\Enums\CalculationMode;
+use App\Support\Numbers\ScaledNumber;
 use Illuminate\Validation\ValidationException;
 
 class PerformanceCalculationService
@@ -12,11 +13,26 @@ class PerformanceCalculationService
     public function calculate(PerformanceCalculationInput $input): PerformanceCalculationResult
     {
         $quantity = $this->toPositiveInteger($input->quantity, 'quantity');
-        $unitAmountCents = $this->toScaledInteger($input->unitAmount, 2, 'unit_amount');
+        $unitAmountCents = ScaledNumber::toScaledInteger($input->unitAmount, 2, 'unit_amount');
         $totalCents = $quantity * $unitAmountCents;
+        $directCostCents = ScaledNumber::toScaledInteger((string) ($input->directCost ?? '0'), 2, 'direct_cost');
+
+        if ($directCostCents < 0) {
+            throw ValidationException::withMessages([
+                'direct_cost' => 'Il costo diretto prestazione deve essere maggiore o uguale a 0.',
+            ]);
+        }
+
+        if ($directCostCents > $totalCents) {
+            throw ValidationException::withMessages([
+                'direct_cost' => 'Il costo diretto prestazione non puo superare l\'importo prestazione.',
+            ]);
+        }
+
+        $netDivisibleCents = $totalCents - $directCostCents;
 
         if ($input->calculationMode === CalculationMode::Percentage) {
-            $percentageBasisPoints = $this->toScaledInteger((string) $input->percentageValue, 2, 'percentage_value');
+            $percentageBasisPoints = ScaledNumber::toScaledInteger((string) $input->percentageValue, 2, 'percentage_value');
 
             if ($percentageBasisPoints < 0 || $percentageBasisPoints > 10_000) {
                 throw ValidationException::withMessages([
@@ -24,63 +40,43 @@ class PerformanceCalculationService
                 ]);
             }
 
-            $professionalCents = (int) round($totalCents * $percentageBasisPoints / 10_000);
-            $centerCents = $totalCents - $professionalCents;
+            $professionalCents = (int) round($netDivisibleCents * $percentageBasisPoints / 10_000);
+            $centerCents = $netDivisibleCents - $professionalCents;
 
             return new PerformanceCalculationResult(
                 quantity: (string) $quantity,
-                unitAmount: $this->fromScaledInteger($unitAmountCents, 2),
-                totalAmount: $this->fromScaledInteger($totalCents, 2),
-                percentageValue: $this->fromScaledInteger($percentageBasisPoints, 2),
+                unitAmount: ScaledNumber::fromScaledInteger($unitAmountCents, 2),
+                totalAmount: ScaledNumber::fromScaledInteger($totalCents, 2),
+                directCost: ScaledNumber::fromScaledInteger($directCostCents, 2),
+                netDivisibleAmount: ScaledNumber::fromScaledInteger($netDivisibleCents, 2),
+                percentageValue: ScaledNumber::fromScaledInteger($percentageBasisPoints, 2),
                 fixedAmount: null,
-                professionalAmount: $this->fromScaledInteger($professionalCents, 2),
-                centerAmount: $this->fromScaledInteger($centerCents, 2),
+                professionalAmount: ScaledNumber::fromScaledInteger($professionalCents, 2),
+                centerAmount: ScaledNumber::fromScaledInteger($centerCents, 2),
             );
         }
 
-        $fixedCents = $this->toScaledInteger((string) $input->fixedAmount, 2, 'fixed_amount');
+        $fixedCents = ScaledNumber::toScaledInteger((string) $input->fixedAmount, 2, 'fixed_amount');
 
-        if ($fixedCents > $totalCents) {
+        if ($fixedCents > $netDivisibleCents) {
             throw ValidationException::withMessages([
-                'fixed_amount' => 'L\'importo forfettario non puo superare l\'importo prestazione.',
+                'fixed_amount' => 'L\'importo forfettario non puo superare la base netta da dividere.',
             ]);
         }
 
-        $centerCents = $totalCents - $fixedCents;
+        $centerCents = $netDivisibleCents - $fixedCents;
 
         return new PerformanceCalculationResult(
             quantity: (string) $quantity,
-            unitAmount: $this->fromScaledInteger($unitAmountCents, 2),
-            totalAmount: $this->fromScaledInteger($totalCents, 2),
+            unitAmount: ScaledNumber::fromScaledInteger($unitAmountCents, 2),
+            totalAmount: ScaledNumber::fromScaledInteger($totalCents, 2),
+            directCost: ScaledNumber::fromScaledInteger($directCostCents, 2),
+            netDivisibleAmount: ScaledNumber::fromScaledInteger($netDivisibleCents, 2),
             percentageValue: null,
-            fixedAmount: $this->fromScaledInteger($fixedCents, 2),
-            professionalAmount: $this->fromScaledInteger($fixedCents, 2),
-            centerAmount: $this->fromScaledInteger($centerCents, 2),
+            fixedAmount: ScaledNumber::fromScaledInteger($fixedCents, 2),
+            professionalAmount: ScaledNumber::fromScaledInteger($fixedCents, 2),
+            centerAmount: ScaledNumber::fromScaledInteger($centerCents, 2),
         );
-    }
-
-    private function toScaledInteger(?string $value, int $scale, string $field): int
-    {
-        if ($value === null || $value === '') {
-            throw ValidationException::withMessages([
-                $field => 'Valore obbligatorio.',
-            ]);
-        }
-
-        $normalized = str_replace(',', '.', trim($value));
-
-        if (! is_numeric($normalized)) {
-            throw ValidationException::withMessages([
-                $field => 'Valore numerico non valido.',
-            ]);
-        }
-
-        return (int) round(((float) $normalized) * (10 ** $scale));
-    }
-
-    private function fromScaledInteger(int $value, int $scale): string
-    {
-        return number_format($value / (10 ** $scale), $scale, '.', '');
     }
 
     private function toPositiveInteger(?string $value, string $field): int

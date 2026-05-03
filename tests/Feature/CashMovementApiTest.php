@@ -3,13 +3,15 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Mail\CashMovementDeletedWarningMail;
+use App\Models\CashMovement;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
-use App\Models\CashMovement;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -145,9 +147,79 @@ class CashMovementApiTest extends TestCase
     }
 
     #[Test]
-    public function it_blocks_manual_updates_and_deletions_for_movements_linked_to_performance_records(): void
+    public function it_sends_warning_emails_when_a_manual_cash_movement_is_deleted(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create([
+            'role' => UserRole::Admin,
+            'name' => 'Mario Rossi',
+            'email' => 'mario.rossi@example.test',
+        ]);
+        Sanctum::actingAs($user);
+
+        $movement = $this->postJson('/api/v1/cash-movements', [
+            'movement_date' => '2026-04-10',
+            'movement_type' => 'versamento',
+            'cash_box_type' => 'fatturati',
+            'amount' => 100,
+            'reason' => 'Incasso giornata',
+            'notes' => 'Eliminazione di prova',
+        ])->assertCreated()->json();
+
+        $this->deleteJson('/api/v1/cash-movements/'.$movement['id'])
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('cash_movements', [
+            'id' => $movement['id'],
+        ]);
+
+        Mail::assertSent(CashMovementDeletedWarningMail::class, function (CashMovementDeletedWarningMail $mail) use ($movement): bool {
+            return $mail->hasTo('humancaretelemedicine@gmail.com')
+                && $mail->hasTo('camillomusmeci.dev@gmail.com')
+                && $mail->details['movement_id'] === $movement['id']
+                && $mail->details['movement_type_label'] === 'Versamento'
+                && str_contains($mail->details['actor_label'], 'mario.rossi@example.test');
+        });
+    }
+
+    #[Test]
+    public function it_resets_all_cash_movements(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $this->postJson('/api/v1/cash-movements', [
+            'movement_date' => '2026-04-10',
+            'movement_type' => 'versamento',
+            'cash_box_type' => 'fatturati',
+            'amount' => 100,
+            'reason' => 'Incasso giornata',
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/cash-movements', [
+            'movement_date' => '2026-04-11',
+            'movement_type' => 'versamento',
+            'cash_box_type' => 'black',
+            'amount' => 40,
+            'reason' => 'Contanti black',
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/cash-movements/reset')
+            ->assertOk()
+            ->assertJsonPath('deleted_count', 2);
+
+        $this->assertDatabaseCount('cash_movements', 0);
+
+        $this->getJson('/api/v1/cash-movements/summary')
+            ->assertOk()
+            ->assertJsonPath('totals.current_balance', '0.00');
+    }
+
+    #[Test]
+    public function it_allows_updating_and_deleting_legacy_linked_movements_manually(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
 
         ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
 
@@ -158,26 +230,41 @@ class CashMovementApiTest extends TestCase
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'cash',
+            'payment_status' => 'da_pagare',
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => false,
         ])->assertCreated()->json();
 
-        $movement = CashMovement::query()
-            ->where('source_performance_record_id', $performanceRecord['id'])
-            ->firstOrFail();
+        $movement = CashMovement::query()->create([
+            'movement_date' => '2026-04-10',
+            'movement_type' => 'versamento',
+            'cash_box_type' => 'fatturati',
+            'counterparty_name' => 'Legacy link',
+            'amount' => '100.00',
+            'reason' => 'Movimento legacy',
+            'notes' => 'Collegamento storico',
+            'source_performance_record_id' => $performanceRecord['id'],
+            'balance_after' => '100.00',
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
 
         $this->putJson('/api/v1/cash-movements/'.$movement->id, [
             'movement_date' => '2026-04-10',
             'movement_type' => 'versamento',
             'cash_box_type' => 'fatturati',
             'amount' => 120,
-        ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['movement']);
+            'reason' => 'Movimento legacy aggiornato',
+        ])->assertOk()
+            ->assertJsonPath('amount', '120.00');
 
         $this->deleteJson('/api/v1/cash-movements/'.$movement->id)
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['movement']);
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('cash_movements', [
+            'id' => $movement->id,
+        ]);
     }
 
     private function createProfessionalServiceContext(): array
