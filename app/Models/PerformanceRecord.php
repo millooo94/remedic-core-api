@@ -39,6 +39,7 @@ class PerformanceRecord extends Model
         'payment_status',
         'is_invoiced',
         'is_black',
+        'is_promo',
         'notes',
         'created_by',
         'updated_by',
@@ -60,6 +61,7 @@ class PerformanceRecord extends Model
             'payment_status' => PaymentStatus::class,
             'is_invoiced' => 'boolean',
             'is_black' => 'boolean',
+            'is_promo' => 'boolean',
             'calculation_mode' => CalculationMode::class,
             'split_mode' => PerformanceSplitMode::class,
         ];

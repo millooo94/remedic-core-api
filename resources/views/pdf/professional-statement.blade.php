@@ -53,10 +53,16 @@
             overflow-wrap: anywhere;
             word-break: break-word;
         }
+        .records-table th {
+            white-space: nowrap;
+        }
         .records-table .date-cell {
             white-space: nowrap;
             overflow-wrap: normal;
             word-break: normal;
+        }
+        .records-table .status-cell {
+            white-space: nowrap;
         }
         .records-table th {
             background: #ebf6f8;
@@ -82,6 +88,7 @@
             line-height: 1.1;
             font-weight: 700;
             border: 1px solid transparent;
+            white-space: nowrap;
         }
         .status-badge.pending {
             color: #6a4f11;
@@ -161,12 +168,12 @@
         <thead>
         <tr>
             <th style="width: 12%;">Data</th>
-            <th style="width: 22%;">Prestazione</th>
+            <th style="width: 24%;">Prestazione</th>
             <th style="width: 7%;" class="text-right">Quantita</th>
             <th style="width: 13%;" class="text-right">Importo Prestazione</th>
             <th style="width: 13%;" class="text-right">Quota Professionista</th>
-            <th style="width: 13%;">Liquidazione</th>
-            <th style="width: 20%;">Note</th>
+            <th style="width: 15%;">Liquidazione</th>
+            <th style="width: 16%;">Note</th>
         </tr>
         </thead>
         <tbody>
@@ -177,7 +184,7 @@
                 <td class="text-right">{{ number_format((int) $record['quantity'], 0, ',', '.') }}</td>
                 <td class="text-right">&euro; {{ number_format($record['total_amount'], 2, ',', '.') }}</td>
                 <td class="text-right">&euro; {{ number_format($record['professional_amount'], 2, ',', '.') }}</td>
-                <td>
+                <td class="status-cell">
                     <span class="status-badge {{ $record['payment_status'] === 'pagata' ? 'liquidated' : 'pending' }}">
                         {{ $record['payment_status_label'] }}
                     </span>

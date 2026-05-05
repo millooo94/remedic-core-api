@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
 use App\Models\Service;
@@ -49,6 +50,7 @@ class ProfessionalStatementApiTest extends TestCase
             'performed_at' => '2026-05-10',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(2),
             'quantity' => 2,
             'unit_amount' => 100,
             'payment_method' => 'card',
@@ -61,6 +63,7 @@ class ProfessionalStatementApiTest extends TestCase
             'performed_at' => '2026-05-12',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'cash',
@@ -73,6 +76,7 @@ class ProfessionalStatementApiTest extends TestCase
             'performed_at' => '2026-05-14',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(3),
             'quantity' => 3,
             'unit_amount' => 120,
             'payment_method' => 'cash',
@@ -104,5 +108,14 @@ class ProfessionalStatementApiTest extends TestCase
 
         $this->get("/api/v1/professional-statements/{$professional->id}/xlsx?start_date=2026-05-01&end_date=2026-05-31")
             ->assertOk();
+    }
+
+    private function createPatientIds(int $count): array
+    {
+        return Patient::factory()
+            ->count($count)
+            ->create()
+            ->pluck('id')
+            ->all();
     }
 }

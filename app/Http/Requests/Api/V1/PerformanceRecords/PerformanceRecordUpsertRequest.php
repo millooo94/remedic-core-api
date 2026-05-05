@@ -61,6 +61,7 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
             'advanced_splits.*.description' => ['nullable', 'string', 'max:190'],
             'is_invoiced' => ['nullable', 'boolean'],
             'is_black' => ['nullable', 'boolean'],
+            'is_promo' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
@@ -199,6 +200,13 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
 
                 if ($this->boolean('is_black') && (string) $this->input('payment_method') === 'card') {
                     $validator->errors()->add('payment_method', 'Una prestazione black non puo essere registrata con pagamento carta.');
+                }
+
+                if ($this->boolean('is_black') && $this->boolean('is_promo')) {
+                    $message = 'Una prestazione non puo essere contemporaneamente black e promo.';
+
+                    $validator->errors()->add('is_black', $message);
+                    $validator->errors()->add('is_promo', $message);
                 }
             },
         ];

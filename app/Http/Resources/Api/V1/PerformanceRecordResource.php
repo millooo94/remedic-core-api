@@ -60,6 +60,7 @@ class PerformanceRecordResource extends JsonResource
             'payment_status' => $this->payment_status?->value ?? $this->payment_status ?? 'da_pagare',
             'is_invoiced' => (bool) $this->is_invoiced,
             'is_black' => (bool) $this->is_black,
+            'is_promo' => (bool) $this->is_promo,
             'notes' => $this->notes,
             'patient' => $primaryPatient ? new PatientResource($primaryPatient) : null,
             'patients' => $this->whenLoaded('patients', fn () => PatientResource::collection($this->patients)),

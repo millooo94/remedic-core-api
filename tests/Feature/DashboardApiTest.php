@@ -93,6 +93,7 @@ class DashboardApiTest extends TestCase
             'calculation_mode' => 'percentage',
             'percentage_value' => 50,
             'is_black' => false,
+            'is_promo' => true,
         ], $user);
 
         $expenseCategory = ExpenseCategory::factory()->create([
@@ -113,18 +114,19 @@ class DashboardApiTest extends TestCase
         $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
             ->assertOk()
             ->assertJsonPath('cards.total_performances', 5)
+            ->assertJsonPath('cards.performance_type_breakdown.standard', 3)
             ->assertJsonPath('cards.performance_type_breakdown.black', 1)
-            ->assertJsonPath('cards.performance_type_breakdown.non_black', 4)
+            ->assertJsonPath('cards.performance_type_breakdown.promo', 1)
             ->assertJsonPath('cards.total_center_amount', 345)
             ->assertJsonPath('cards.total_professional_amount', 505)
             ->assertJsonPath('cards.revenue_payment_breakdown.cash', 250)
             ->assertJsonPath('cards.revenue_payment_breakdown.card', 600)
             ->assertJsonPath('cards.revenue_payment_breakdown.cash_breakdown.black', 100)
             ->assertJsonPath('cards.revenue_payment_breakdown.cash_breakdown.fatturati', 150)
-            ->assertJsonPath('cards.average_performance_cost', 170)
-            ->assertJsonPath('cards.average_performance_cost_excluding_black', 187.5)
-            ->assertJsonPath('cards.average_center_gain_performance', 69)
-            ->assertJsonPath('cards.average_center_gain_performance_excluding_black', 78.75)
+            ->assertJsonPath('cards.average_performance_cost', 175)
+            ->assertJsonPath('cards.average_performance_cost_excluding_black', 200)
+            ->assertJsonPath('cards.average_center_gain_performance', 67.5)
+            ->assertJsonPath('cards.average_center_gain_performance_excluding_black', 80)
             ->assertJsonPath('cards.total_fixed_costs', 20)
             ->assertJsonPath('cards.total_variable_costs', 505)
             ->assertJsonPath('cards.total_center_costs', 525)
@@ -135,17 +137,23 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('cards.professional_amount_breakdown.to_liquidate', 360)
             ->assertJsonPath('cards.top_by_performance_count.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.top_by_performance_count.performances', 4)
+            ->assertJsonPath('cards.top_by_performance_count.promo_performances', 1)
             ->assertJsonPath('cards.top_by_revenue.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.top_by_revenue.revenue_total', 750)
             ->assertJsonPath('cards.top_by_specialization.label', 'Nutrizione')
             ->assertJsonPath('cards.top_by_specialization.performances', 5)
+            ->assertJsonPath('cards.top_by_specialization.promo_performances', 1)
             ->assertJsonPath('cards.top_by_service.label', 'Controllo nutrizionale')
             ->assertJsonPath('cards.top_by_service.performances', 5)
+            ->assertJsonPath('cards.top_by_service.promo_performances', 1)
             ->assertJsonPath('cards.performance_count_ranking.0.professional_name', 'Bianchi Luca')
+            ->assertJsonPath('cards.performance_count_ranking.0.promo_performances', 1)
             ->assertJsonPath('cards.performance_count_ranking.1.professional_name', 'Russo Ilenia')
             ->assertJsonPath('cards.revenue_ranking.0.professional_name', 'Bianchi Luca')
             ->assertJsonPath('cards.revenue_ranking.1.professional_name', 'Russo Ilenia')
             ->assertJsonPath('cards.specialization_ranking.0.label', 'Nutrizione')
+            ->assertJsonPath('cards.specialization_ranking.0.promo_performances', 1)
+            ->assertJsonPath('cards.service_ranking.0.promo_performances', 1)
             ->assertJsonPath('cards.service_ranking.0.label', 'Controllo nutrizionale');
 
         $response = $this->getJson('/api/v1/dashboard/monthly-trends?year=2026')

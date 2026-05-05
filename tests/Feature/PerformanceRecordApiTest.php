@@ -67,7 +67,8 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonPath('center_amount', '30.00')
             ->assertJsonPath('payment_method', 'cash')
             ->assertJsonPath('payment_status', 'da_pagare')
-            ->assertJsonPath('is_black', true);
+            ->assertJsonPath('is_black', true)
+            ->assertJsonPath('is_promo', false);
 
         $this->assertDatabaseHas('expense_records', [
             'expense_date' => '2026-04-10 00:00:00',
@@ -523,6 +524,54 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonValidationErrors(['payment_method']);
     }
 
+    #[Test]
+    public function it_persists_promo_flag_on_performance_records(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $response = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'is_promo' => true,
+            'payment_method' => 'cash',
+        ]))->assertCreated()
+            ->assertJsonPath('is_black', false)
+            ->assertJsonPath('is_promo', true);
+
+        $recordId = (int) $response->json('id');
+
+        $this->assertDatabaseHas('performance_records', [
+            'id' => $recordId,
+            'is_promo' => true,
+        ]);
+
+        $this->putJson('/api/v1/performance-records/'.$recordId, $this->performancePayload($professional, $service, [
+            'is_promo' => false,
+            'payment_method' => 'cash',
+        ]))->assertOk()
+            ->assertJsonPath('is_promo', false);
+
+        $this->assertDatabaseHas('performance_records', [
+            'id' => $recordId,
+            'is_promo' => false,
+        ]);
+    }
+
+    #[Test]
+    public function it_rejects_records_marked_as_black_and_promo_together(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'is_black' => true,
+            'is_promo' => true,
+            'payment_method' => 'cash',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['is_black', 'is_promo']);
+    }
+
     private function createProfessionalServiceContext(): array
     {
         $professional = Professional::factory()->create([
@@ -565,6 +614,7 @@ class PerformanceRecordApiTest extends TestCase
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => false,
+            'is_promo' => false,
             'notes' => null,
         ], $overrides);
     }

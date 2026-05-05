@@ -171,6 +171,7 @@ class PerformanceRecordService
         $manualArea = isset($payload['area_name']) ? trim((string) $payload['area_name']) : '';
         $isInvoiced = (bool) ($payload['is_invoiced'] ?? $existing?->is_invoiced ?? false);
         $isBlack = (bool) ($payload['is_black'] ?? $existing?->is_black ?? false);
+        $isPromo = (bool) ($payload['is_promo'] ?? $existing?->is_promo ?? false);
         $paymentMethod = PaymentMethod::tryFrom((string) ($payload['payment_method'] ?? ''))
             ?? ($existing?->payment_method instanceof PaymentMethod ? $existing->payment_method : null)
             ?? PaymentMethod::Card;
@@ -185,6 +186,13 @@ class PerformanceRecordService
         if ($isBlack && $paymentMethod === PaymentMethod::Card) {
             throw ValidationException::withMessages([
                 'payment_method' => 'Una prestazione black non puo essere registrata con pagamento carta.',
+            ]);
+        }
+
+        if ($isBlack && $isPromo) {
+            throw ValidationException::withMessages([
+                'is_black' => 'Una prestazione non puo essere contemporaneamente black e promo.',
+                'is_promo' => 'Una prestazione non puo essere contemporaneamente black e promo.',
             ]);
         }
 
@@ -213,6 +221,7 @@ class PerformanceRecordService
                     ?? PaymentStatus::DaPagare->value,
                 'is_invoiced' => $isInvoiced,
                 'is_black' => $isBlack,
+                'is_promo' => $isPromo,
                 'notes' => $payload['notes'] ?? null,
                 'created_by' => $existing?->created_by ?? $actor->id,
                 'updated_by' => $actor->id,

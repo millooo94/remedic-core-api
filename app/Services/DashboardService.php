@@ -39,19 +39,26 @@ class DashboardService
         $cashFatturatiRevenueTotal = round((float) $cashPerformanceRecords->where('is_black', false)->sum('total_amount'), 2);
         $cardRevenueTotal = round((float) $performanceRecords->where('payment_method', PaymentMethod::Card)->sum('total_amount'), 2);
         $totalPerformances = (int) $performanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
+        $promoPerformances = (int) $performanceRecords
+            ->where('is_promo', true)
+            ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $blackPerformances = (int) $performanceRecords
             ->where('is_black', true)
             ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
-        $nonBlackPerformances = (int) $performanceRecords
-            ->where('is_black', false)
+        $standardPerformances = (int) $performanceRecords
+            ->filter(fn (PerformanceRecord $record) => ! $record->is_black && ! $record->is_promo)
             ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
-        $averagePerformanceCost = $totalPerformances > 0
-            ? round($revenueTotal / $totalPerformances, 2)
+        $nonPromoPerformanceRecords = $performanceRecords->where('is_promo', false);
+        $nonPromoRevenueTotal = round((float) $nonPromoPerformanceRecords->sum('total_amount'), 2);
+        $nonPromoCenterTotal = round((float) $nonPromoPerformanceRecords->sum('center_amount'), 2);
+        $nonPromoPerformanceCount = (int) $nonPromoPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
+        $averagePerformanceCost = $nonPromoPerformanceCount > 0
+            ? round($nonPromoRevenueTotal / $nonPromoPerformanceCount, 2)
             : 0.0;
-        $averageCenterGainPerPerformance = $totalPerformances > 0
-            ? round($centerTotal / $totalPerformances, 2)
+        $averageCenterGainPerPerformance = $nonPromoPerformanceCount > 0
+            ? round($nonPromoCenterTotal / $nonPromoPerformanceCount, 2)
             : 0.0;
-        $nonBlackPerformanceRecords = $performanceRecords->where('is_black', false);
+        $nonBlackPerformanceRecords = $nonPromoPerformanceRecords->where('is_black', false);
         $nonBlackRevenueTotal = round((float) $nonBlackPerformanceRecords->sum('total_amount'), 2);
         $nonBlackCenterTotal = round((float) $nonBlackPerformanceRecords->sum('center_amount'), 2);
         $nonBlackPerformanceCount = (int) $nonBlackPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
@@ -95,8 +102,9 @@ class DashboardService
             'cards' => [
                 'total_performances' => $totalPerformances,
                 'performance_type_breakdown' => [
+                    'standard' => $standardPerformances,
                     'black' => $blackPerformances,
-                    'non_black' => $nonBlackPerformances,
+                    'promo' => $promoPerformances,
                 ],
                 'total_center_amount' => $centerTotal,
                 'total_professional_amount' => $professionalTotal,
@@ -136,7 +144,15 @@ class DashboardService
                     'total_variable_costs' => $this->buildComparison($variableCosts, $previousVariableCosts),
                     'total_center_costs' => $this->buildComparison($totalCenterCosts, $previousTotalCenterCosts),
                     'net_center_margin' => $this->buildComparison($netCenterMargin, $previousNetCenterMargin),
-                    'average_performance_cost' => $this->buildComparison($averagePerformanceCost, $this->averageForComparison($previousRevenueTotal, $previousTotalPerformances)),
+                    'average_performance_cost' => $this->buildComparison(
+                        $averagePerformanceCost,
+                        $this->averageForComparison(
+                            round((float) $previousPerformanceRecords->where('is_promo', false)->sum('total_amount'), 2),
+                            (int) $previousPerformanceRecords
+                                ->where('is_promo', false)
+                                ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
+                        ),
+                    ),
                     'black' => $this->buildComparison($blackCenterNet, $previousBlackCenterNet),
                 ],
             ],
@@ -251,6 +267,7 @@ class DashboardService
                 'professional_id' => $group->first()['professional_id'],
                 'professional_name' => $group->first()['professional_name'],
                 'performances' => (int) $group->sum('performances'),
+                'promo_performances' => (int) $group->sum('promo_performances'),
             ])
             ->sortBy([
                 ['performances', 'desc'],
@@ -313,6 +330,9 @@ class DashboardService
             ->map(fn (Collection $group, string $label) => [
                 'label' => $label,
                 'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
+                'promo_performances' => (int) $group
+                    ->where('is_promo', true)
+                    ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
                 'revenue_total' => round((float) $group->sum('total_amount'), 2),
             ])
             ->sortBy([
@@ -331,6 +351,9 @@ class DashboardService
             ->map(fn (Collection $group, string $label) => [
                 'label' => $label,
                 'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
+                'promo_performances' => (int) $group
+                    ->where('is_promo', true)
+                    ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
                 'revenue_total' => round((float) $group->sum('total_amount'), 2),
             ])
             ->sortBy([
@@ -369,6 +392,7 @@ class DashboardService
                         'professional_name' => trim((string) ($first?->professional_name_snapshot ?: $first?->professional?->full_name ?: 'Non specificato')) ?: 'Non specificato',
                         'amount' => $amount,
                         'performances' => (int) $record->quantity,
+                        'promo_performances' => $record->is_promo ? (int) $record->quantity : 0,
                         'revenue_total' => $amount,
                         'payment_status' => $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value,
                     ]);
@@ -382,6 +406,7 @@ class DashboardService
                 'professional_name' => trim((string) ($record->professional_name_snapshot ?: '')) ?: 'Non specificato',
                 'amount' => (float) $record->professional_amount,
                 'performances' => (int) $record->quantity,
+                'promo_performances' => $record->is_promo ? (int) $record->quantity : 0,
                 'revenue_total' => (float) $record->total_amount,
                 'payment_status' => $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value,
             ]);
