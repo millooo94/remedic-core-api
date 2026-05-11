@@ -13,12 +13,25 @@ class UpdateProfessionalRequest extends StoreProfessionalRequest
         $professional = $this->route('professional');
 
         if ($professional) {
-            $currentAreaNames = $professional->areas()->pluck('name')->filter()->values()->all();
+            $currentAreaNames = $professional->specializations()
+                ->orderByPivot('sort_order')
+                ->pluck('name')
+                ->filter()
+                ->values()
+                ->all();
+
             if ($currentAreaNames === [] && ! empty($professional->area_name)) {
                 $currentAreaNames = [(string) $professional->area_name];
             }
 
+            $currentSpecializationIds = $professional->specializations()
+                ->orderByPivot('sort_order')
+                ->pluck('specializations.id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
             $hasAreaNames = $this->has('area_names') || $this->has('area_names[]');
+            $hasSpecializationIds = $this->has('specialization_ids') || $this->has('specialization_ids[]');
 
             $this->merge([
                 'subject_type' => $this->input('subject_type', $professional->subject_type?->value ?? ProfessionalSubjectType::Individual->value),
@@ -27,6 +40,7 @@ class UpdateProfessionalRequest extends StoreProfessionalRequest
                 'company_name' => $this->exists('company_name') ? $this->input('company_name') : $professional->company_name,
                 'area_name' => $this->input('area_name', $professional->area_name),
                 'area_names' => $hasAreaNames ? $this->rawAreaNames() : $currentAreaNames,
+                'specialization_ids' => $hasSpecializationIds ? $this->rawSpecializationIds() : $currentSpecializationIds,
                 'email' => $this->exists('email') ? $this->input('email') : $professional->email,
                 'iban' => $this->exists('iban') ? $this->input('iban') : $professional->iban,
                 'is_active' => $this->input('is_active', $professional->is_active),

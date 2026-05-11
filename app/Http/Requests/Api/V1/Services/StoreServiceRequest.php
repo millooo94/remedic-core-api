@@ -4,7 +4,7 @@ namespace App\Http\Requests\Api\V1\Services;
 
 use App\Models\Professional;
 use App\Models\Service;
-use App\Models\ServiceCategory;
+use App\Models\Specialization;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -26,6 +26,8 @@ class StoreServiceRequest extends FormRequest
             'default_duration_minutes' => ['nullable', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string'],
+            'specialization_ids' => ['required', 'array', 'min:1'],
+            'specialization_ids.*' => ['required', 'integer', 'distinct', 'exists:specializations,id'],
             'aliases' => ['sometimes', 'array'],
             'aliases.*.alias_name' => ['required', 'string', 'max:190'],
             'aliases.*.source_label' => ['nullable', 'string', 'max:120'],
@@ -51,21 +53,24 @@ class StoreServiceRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            $categoryId = $this->input('category_id');
-            $categoryNameInput = trim((string) $this->input('category_name', ''));
+            $specializationIds = collect($this->input('specialization_ids', []))
+                ->filter(fn ($id) => is_numeric($id))
+                ->map(fn ($id) => (int) $id)
+                ->values();
             $links = $this->input('professional_services', []);
 
-            if (!is_numeric($categoryId) && $categoryNameInput === '') {
-                $validator->errors()->add('category_name', "L'area e obbligatoria.");
+            if ($specializationIds->isEmpty()) {
+                $validator->errors()->add('specialization_ids', 'Seleziona almeno una specializzazione.');
+
                 return;
             }
 
-            if (!is_array($links) || count($links) === 0) {
+            if (! is_array($links) || count($links) === 0) {
                 return;
             }
 
-            $category = is_numeric($categoryId) ? ServiceCategory::query()->find($categoryId) : null;
-            $resolvedCategoryName = trim((string) ($category?->name ?: $categoryNameInput));
+            $primarySpecialization = Specialization::query()->find($specializationIds->first());
+            $resolvedCategoryName = trim((string) $primarySpecialization?->name);
             $normalizedCategoryName = mb_strtolower($resolvedCategoryName);
 
             $professionalIds = collect($links)
@@ -81,12 +86,9 @@ class StoreServiceRequest extends FormRequest
 
             $allowedIds = Professional::query()
                 ->whereIn('id', $professionalIds)
-                ->where(function ($professionalQuery) use ($category, $normalizedCategoryName): void {
-                    if ($category !== null) {
-                        $professionalQuery->whereHas('areas', fn ($areaQuery) => $areaQuery->whereKey($category->id));
-                    }
-
+                ->where(function ($professionalQuery) use ($specializationIds, $normalizedCategoryName): void {
                     $professionalQuery
+                        ->whereHas('specializations', fn ($specializationQuery) => $specializationQuery->whereIn('specializations.id', $specializationIds))
                         ->orWhereRaw('LOWER(TRIM(area_name)) = ?', [$normalizedCategoryName])
                         ->orWhereHas('areas', fn ($areaQuery) => $areaQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedCategoryName]));
                 })
@@ -96,7 +98,7 @@ class StoreServiceRequest extends FormRequest
             if ($invalidIds->isNotEmpty()) {
                 $validator->errors()->add(
                     'professional_services',
-                    "I professionisti selezionati devono appartenere all'area scelta.",
+                    'I professionisti selezionati devono appartenere ad almeno una delle specializzazioni scelte.',
                 );
             }
 
@@ -111,21 +113,16 @@ class StoreServiceRequest extends FormRequest
                     $existingServiceId > 0,
                     fn ($query) => $query->whereKeyNot($existingServiceId),
                 )
-                ->whereRaw('LOWER(TRIM(display_name)) = ?', [mb_strtolower($displayName)]);
-
-            if ($category !== null) {
-                $duplicateServiceQuery->where('category_id', $category->id);
-            } else {
-                $duplicateServiceQuery->whereHas(
+                ->whereRaw('LOWER(TRIM(display_name)) = ?', [mb_strtolower($displayName)])
+                ->whereHas(
                     'category',
                     fn ($categoryQuery) => $categoryQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedCategoryName]),
                 );
-            }
 
             if ($duplicateServiceQuery->exists()) {
                 $validator->errors()->add(
                     'display_name',
-                    "Esiste gia una prestazione con questo nome nell'area selezionata. Modifica quella esistente per aggiungere altri professionisti.",
+                    "Esiste gia una prestazione con questo nome nella specializzazione selezionata. Modifica quella esistente per aggiungere altri professionisti.",
                 );
             }
         });

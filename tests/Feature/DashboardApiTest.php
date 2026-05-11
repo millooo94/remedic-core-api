@@ -36,7 +36,7 @@ class DashboardApiTest extends TestCase
             'full_name' => 'Bianchi Luca',
             'area_name' => 'Nutrizione',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $category = $this->findOrCreateCategory('Nutrizione', 'nutrizione');
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Controllo nutrizionale',
@@ -220,7 +220,7 @@ class DashboardApiTest extends TestCase
             'full_name' => 'Russo Ilenia',
             'area_name' => 'Nutrizione',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $category = $this->findOrCreateCategory('Nutrizione', 'nutrizione');
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Controllo nutrizionale',
@@ -305,7 +305,7 @@ class DashboardApiTest extends TestCase
             'full_name' => 'Russo Ilenia',
             'area_name' => 'Nutrizione',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $category = $this->findOrCreateCategory('Nutrizione', 'nutrizione');
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Controllo nutrizionale',
@@ -379,7 +379,7 @@ class DashboardApiTest extends TestCase
 
         $technician = Professional::factory()->create(['full_name' => 'Tecnico EMG', 'area_name' => 'Neurofisiologia']);
         $neurologist = Professional::factory()->create(['full_name' => 'Neurologo EMG', 'area_name' => 'Neurologia']);
-        $category = ServiceCategory::factory()->create(['name' => 'Neurologia', 'slug' => 'neurologia']);
+        $category = $this->findOrCreateCategory('Neurologia', 'neurologia');
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'EMG',
@@ -433,7 +433,7 @@ class DashboardApiTest extends TestCase
             'full_name' => 'Russo Ilenia',
             'area_name' => 'Nutrizione',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Nutrizione', 'slug' => 'nutrizione']);
+        $category = $this->findOrCreateCategory('Nutrizione', 'nutrizione');
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Controllo nutrizionale',
@@ -492,5 +492,17 @@ class DashboardApiTest extends TestCase
             ->create()
             ->pluck('id')
             ->all();
+    }
+
+    private function findOrCreateCategory(string $name, string $slug): ServiceCategory
+    {
+        return ServiceCategory::query()->firstOrCreate(
+            ['slug' => $slug],
+            [
+                'name' => $name,
+                'is_active' => true,
+                'sort_order' => 0,
+            ],
+        );
     }
 }

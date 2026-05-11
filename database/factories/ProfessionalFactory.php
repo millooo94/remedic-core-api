@@ -3,7 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Professional;
-use App\Support\Professionals\ProfessionalAreaOptions;
+use App\Models\Specialization;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,6 +17,8 @@ class ProfessionalFactory extends Factory
     {
         $firstName = fake()->firstName();
         $lastName = fake()->lastName();
+        $areaName = Specialization::query()->inRandomOrder()->value('name')
+            ?? 'Cardiologia';
 
         return [
             'subject_type' => 'individual',
@@ -24,7 +26,7 @@ class ProfessionalFactory extends Factory
             'last_name' => $lastName,
             'company_name' => null,
             'full_name' => $lastName.' '.$firstName,
-            'area_name' => fake()->randomElement(ProfessionalAreaOptions::values()),
+            'area_name' => $areaName,
             'email' => fake()->safeEmail(),
             'iban' => null,
             'is_active' => true,

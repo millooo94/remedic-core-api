@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Professional;
 use App\Models\ServiceCategory;
-use App\Support\Professionals\ProfessionalAreaOptions;
+use App\Models\Specialization;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -37,7 +37,7 @@ class ProfessionalSeeder extends Seeder
         ];
 
         foreach ($professionals as $professional) {
-            $normalizedArea = ProfessionalAreaOptions::normalize($professional['area_name']);
+            $normalizedArea = $this->normalizeAreaName($professional['area_name']);
 
             $professionalModel = Professional::query()->updateOrCreate(
                 ['full_name' => trim($professional['last_name'].' '.$professional['first_name'])],
@@ -58,7 +58,34 @@ class ProfessionalSeeder extends Seeder
                 ['name' => $normalizedArea, 'is_active' => true],
             );
 
+            $specialization = Specialization::query()->firstOrCreate(
+                ['slug' => Str::slug((string) $normalizedArea)],
+                [
+                    'name' => $normalizedArea,
+                    'robots' => 'index,follow',
+                    'is_local_seo_enabled' => true,
+                    'is_active' => true,
+                    'sort_order' => 0,
+                ],
+            );
+
             $professionalModel->areas()->syncWithoutDetaching([$areaCategory->id]);
+            $professionalModel->specializations()->syncWithoutDetaching([
+                $specialization->id => [
+                    'is_primary' => true,
+                    'sort_order' => 0,
+                ],
+            ]);
         }
+    }
+
+    private function normalizeAreaName(string $areaName): string
+    {
+        $trimmed = trim($areaName);
+        $slug = Str::slug($trimmed);
+
+        return Specialization::query()->where('slug', $slug)->value('name')
+            ?? ServiceCategory::query()->where('slug', $slug)->value('name')
+            ?? $trimmed;
     }
 }

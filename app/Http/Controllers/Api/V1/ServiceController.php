@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\Services\UpdateServiceRequest;
 use App\Http\Resources\Api\V1\ServiceResource;
 use App\Models\Service;
 use App\Models\ServiceCategory;
+use App\Models\Specialization;
 use App\Support\Filters\ServiceFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,7 +25,7 @@ class ServiceController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Service::query()->with(['category', 'aliases', 'professionalServices.professional.areas']);
+        $query = Service::query()->with(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']);
         $this->filters->apply($query, $request->all());
 
         $services = $query->orderBy('display_name')->get();
@@ -36,19 +37,19 @@ class ServiceController extends Controller
     {
         $service = DB::transaction(fn () => $this->persist(new Service(), $request->validated()));
 
-        return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.areas']));
+        return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
     }
 
     public function show(Service $service): ServiceResource
     {
-        return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.areas']));
+        return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
     }
 
     public function update(UpdateServiceRequest $request, Service $service): ServiceResource
     {
         $service = DB::transaction(fn () => $this->persist($service, $request->validated()));
 
-        return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.areas']));
+        return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
     }
 
     public function destroy(Service $service): Response
@@ -60,15 +61,18 @@ class ServiceController extends Controller
 
     private function persist(Service $service, array $payload): Service
     {
+        $specializationIds = $this->extractSpecializationIds($payload);
+        $primarySpecialization = $this->resolvePrimarySpecialization($specializationIds, $payload);
         $displayName = trim((string) ($payload['display_name'] ?? ''));
         $canonicalName = trim((string) ($payload['canonical_name'] ?? ''));
         if ($canonicalName === '') {
             $canonicalName = $displayName;
         }
+
         $baseSlug = Str::slug($displayName ?: $canonicalName);
-        $resolvedCategory = $this->resolveCategory($payload);
+        $resolvedCategory = $this->resolveLegacyCategory($primarySpecialization, $payload);
         $resolvedCategoryId = $resolvedCategory?->id;
-        $categoryPrefix = $resolvedCategory?->slug ?: 'servizio';
+        $categoryPrefix = $primarySpecialization?->slug ?: ($resolvedCategory?->slug ?: 'servizio');
 
         $service->fill([
             'category_id' => $resolvedCategoryId,
@@ -116,12 +120,66 @@ class ServiceController extends Controller
             ]);
         }
 
+        $specializationSync = collect($specializationIds)
+            ->values()
+            ->mapWithKeys(fn (int $id, int $index): array => [
+                $id => [
+                    'is_primary' => $index === 0,
+                    'sort_order' => $index,
+                ],
+            ])
+            ->all();
+
+        $service->specializations()->sync($specializationSync);
+
         return $service;
     }
 
-    private function resolveCategory(array $payload): ?ServiceCategory
+    /**
+     * @return array<int, int>
+     */
+    private function extractSpecializationIds(array $payload): array
     {
-        if (!empty($payload['category_id'])) {
+        return collect($payload['specialization_ids'] ?? [])
+            ->filter(fn (mixed $id): bool => is_numeric($id))
+            ->map(fn (mixed $id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, int>  $specializationIds
+     */
+    private function resolvePrimarySpecialization(array $specializationIds, array $payload): ?Specialization
+    {
+        if ($specializationIds !== []) {
+            return Specialization::query()->find($specializationIds[0]);
+        }
+
+        $categoryName = trim((string) ($payload['category_name'] ?? ''));
+        if ($categoryName === '') {
+            return null;
+        }
+
+        return Specialization::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($categoryName)])
+            ->first();
+    }
+
+    private function resolveLegacyCategory(?Specialization $specialization, array $payload): ?ServiceCategory
+    {
+        if ($specialization !== null) {
+            return ServiceCategory::query()->firstOrCreate(
+                ['slug' => $specialization->slug],
+                [
+                    'name' => $specialization->name,
+                    'is_active' => $specialization->is_active,
+                ],
+            );
+        }
+
+        if (! empty($payload['category_id'])) {
             $existing = ServiceCategory::query()->find($payload['category_id']);
             if ($existing) {
                 return $existing;
@@ -133,10 +191,8 @@ class ServiceController extends Controller
             return null;
         }
 
-        $slug = Str::slug($categoryName);
-
         return ServiceCategory::query()->firstOrCreate(
-            ['slug' => $slug],
+            ['slug' => Str::slug($categoryName)],
             [
                 'name' => $categoryName,
                 'is_active' => true,

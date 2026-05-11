@@ -11,6 +11,10 @@ class UserResource extends JsonResource
     public function toArray(Request $request): array
     {
         $avatarUrl = PublicMediaUrl::fromPublicDisk($this->avatar_path, $request);
+        $roles = method_exists($this->resource, 'getRoleNames') ? $this->getRoleNames()->values()->all() : [];
+        $permissions = method_exists($this->resource, 'getAllPermissions')
+            ? $this->getAllPermissions()->pluck('name')->values()->all()
+            : [];
 
         return [
             'id' => $this->id,
@@ -28,6 +32,9 @@ class UserResource extends JsonResource
             'is_email_verified' => $this->hasVerifiedEmail(),
             'is_admin_approved' => $this->hasAdminApproval(),
             'can_access_dashboard' => $this->canAccessPrivateDashboard(),
+            'can_access_backoffice' => $this->canAccessBackoffice(),
+            'backoffice_roles' => $roles,
+            'backoffice_permissions' => $permissions,
             'avatar_url' => $avatarUrl,
             'last_login_at' => optional($this->last_login_at)->toIso8601String(),
             'created_at' => optional($this->created_at)->toIso8601String(),

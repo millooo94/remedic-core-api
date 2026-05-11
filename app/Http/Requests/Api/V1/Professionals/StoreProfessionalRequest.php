@@ -4,7 +4,6 @@ namespace App\Http\Requests\Api\V1\Professionals;
 
 use App\Enums\ProfessionalSubjectType;
 use App\Support\Professionals\IbanFormatter;
-use App\Support\Professionals\ProfessionalAreaOptions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,14 +21,16 @@ class StoreProfessionalRequest extends FormRequest
             'first_name' => ['nullable', 'required_if:subject_type,individual', 'prohibited_if:subject_type,company', 'string', 'max:120'],
             'last_name' => ['nullable', 'required_if:subject_type,individual', 'prohibited_if:subject_type,company', 'string', 'max:120'],
             'company_name' => ['nullable', 'required_if:subject_type,company', 'prohibited_if:subject_type,individual', 'string', 'max:190'],
-            'area_name' => ['nullable', 'string', Rule::in(ProfessionalAreaOptions::values())],
-            'area_names' => ['required', 'array', 'min:1'],
-            'area_names.*' => ['required', 'string', Rule::in(ProfessionalAreaOptions::values())],
+            'area_name' => ['nullable', 'string', 'max:190'],
+            'area_names' => ['nullable', 'array'],
+            'area_names.*' => ['required', 'string', 'max:190'],
             'email' => ['nullable', 'email', 'max:190'],
             'iban' => ['nullable', 'string', 'min:15', 'max:34', 'regex:/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/'],
             'avatar' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string'],
+            'specialization_ids' => ['required', 'array', 'min:1'],
+            'specialization_ids.*' => ['required', 'integer', 'distinct', 'exists:specializations,id'],
         ];
     }
 
@@ -40,11 +41,12 @@ class StoreProfessionalRequest extends FormRequest
         $lastName = $this->normalizeOptionalString($this->input('last_name'));
         $companyName = $this->normalizeOptionalString($this->input('company_name'));
 
-        $singleArea = ProfessionalAreaOptions::normalize($this->input('area_name'));
+        $singleArea = $this->normalizeOptionalString($this->input('area_name'));
         $rawAreaNames = $this->rawAreaNames();
+        $specializationIds = $this->rawSpecializationIds();
 
-        $areaNames = collect(is_array($rawAreaNames) ? $rawAreaNames : [])
-            ->map(fn ($value) => ProfessionalAreaOptions::normalize((string) $value))
+        $areaNames = collect($rawAreaNames)
+            ->map(fn ($value) => $this->normalizeOptionalString($value))
             ->filter(fn ($value) => $value !== null && $value !== '')
             ->values();
 
@@ -59,6 +61,7 @@ class StoreProfessionalRequest extends FormRequest
             'company_name' => $companyName,
             'area_name' => $areaNames->first() ?? $singleArea,
             'area_names' => $areaNames->all(),
+            'specialization_ids' => $specializationIds,
             'iban' => IbanFormatter::normalize($this->input('iban')),
         ]);
     }
@@ -82,7 +85,26 @@ class StoreProfessionalRequest extends FormRequest
         return is_array($rawAreaNames) ? $rawAreaNames : [];
     }
 
-    private function normalizeOptionalString(mixed $value): ?string
+    /**
+     * @return array<int, int>
+     */
+    protected function rawSpecializationIds(): array
+    {
+        $rawIds = $this->input('specialization_ids', $this->input('specialization_ids[]', []));
+
+        if (! is_array($rawIds)) {
+            $rawIds = [$rawIds];
+        }
+
+        return collect($rawIds)
+            ->filter(fn ($value) => is_numeric($value))
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    protected function normalizeOptionalString(mixed $value): ?string
     {
         if (! is_string($value)) {
             return null;

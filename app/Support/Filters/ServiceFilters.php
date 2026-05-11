@@ -18,7 +18,8 @@ class ServiceFilters
                         ->where('canonical_name', 'like', "%{$search}%")
                         ->orWhere('display_name', 'like', "%{$search}%")
                         ->orWhereHas('aliases', fn (Builder $aliasQuery) => $aliasQuery->where('alias_name', 'like', "%{$search}%"))
-                        ->orWhereHas('category', fn (Builder $categoryQuery) => $categoryQuery->where('name', 'like', "%{$search}%"));
+                        ->orWhereHas('category', fn (Builder $categoryQuery) => $categoryQuery->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('specializations', fn (Builder $specializationQuery) => $specializationQuery->where('name', 'like', "%{$search}%"));
 
                     if ($terms !== []) {
                         $nested->orWhereHas('professionalServices.professional', function (Builder $professionalQuery) use ($terms): void {
@@ -45,6 +46,14 @@ class ServiceFilters
                 }
 
                 $builder->whereHas('category', fn (Builder $categoryQuery) => $categoryQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalized]));
+            })
+            ->when($filters['specialization_name'] ?? null, function (Builder $builder, mixed $specializationName): void {
+                $normalized = mb_strtolower(trim((string) $specializationName));
+                if ($normalized === '') {
+                    return;
+                }
+
+                $builder->whereHas('specializations', fn (Builder $specializationQuery) => $specializationQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalized]));
             })
             ->when($filters['professional_id'] ?? null, fn (Builder $builder, mixed $professionalId) => $builder->whereHas('professionalServices', fn (Builder $linkQuery) => $linkQuery->where('professional_id', $professionalId)))
             ->when(isset($filters['is_active']) && $filters['is_active'] !== '', fn (Builder $builder) => $builder->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)));

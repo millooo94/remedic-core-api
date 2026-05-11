@@ -1,6 +1,5 @@
 <?php
 
-use App\Support\Professionals\ProfessionalAreaOptions;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +10,12 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $normalizeArea = static function (?string $areaName): ?string {
+            $trimmed = trim((string) $areaName);
+
+            return $trimmed === '' ? null : $trimmed;
+        };
+
         Schema::create('professional_service_categories', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('professional_id')->constrained('professionals')->cascadeOnDelete();
@@ -28,9 +33,9 @@ return new class extends Migration
         DB::table('professionals')
             ->select(['id', 'area_name'])
             ->orderBy('id')
-            ->chunkById(200, function ($professionals) use (&$categoryIdsBySlug, $now): void {
+            ->chunkById(200, function ($professionals) use (&$categoryIdsBySlug, $now, $normalizeArea): void {
                 foreach ($professionals as $professional) {
-                    $normalizedArea = ProfessionalAreaOptions::normalize((string) ($professional->area_name ?? null));
+                    $normalizedArea = $normalizeArea($professional->area_name ?? null);
                     if ($normalizedArea === null || $normalizedArea === '') {
                         continue;
                     }
@@ -73,4 +78,3 @@ return new class extends Migration
         Schema::dropIfExists('professional_service_categories');
     }
 };
-

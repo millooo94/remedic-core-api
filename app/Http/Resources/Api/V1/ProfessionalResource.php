@@ -11,25 +11,52 @@ class ProfessionalResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $areas = $this->relationLoaded('areas')
-            ? $this->areas->sortBy(fn ($area) => [
-                $area->pivot?->sort_order ?? PHP_INT_MAX,
-                $area->pivot?->id ?? PHP_INT_MAX,
-                $area->id,
-            ])->values()
+        $specializations = $this->relationLoaded('specializations')
+            ? $this->specializations
+                ->sortBy(fn ($specialization) => [
+                    $specialization->pivot?->sort_order ?? PHP_INT_MAX,
+                    $specialization->id,
+                ])
+                ->values()
             : collect();
-        $areaNames = collect($areas)
+
+        $areas = $this->relationLoaded('areas')
+            ? $this->areas
+                ->sortBy(fn ($area) => [
+                    $area->pivot?->sort_order ?? PHP_INT_MAX,
+                    $area->pivot?->id ?? PHP_INT_MAX,
+                    $area->id,
+                ])
+                ->values()
+            : collect();
+
+        $areaNames = $specializations
             ->pluck('name')
             ->filter()
             ->map(fn ($name) => (string) $name)
             ->values();
-        $areaIds = collect($areas)
+
+        $areaIds = $specializations
             ->pluck('id')
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->values();
 
-        if ($areaNames->isEmpty() && !empty($this->area_name)) {
+        if ($areaNames->isEmpty()) {
+            $areaNames = $areas
+                ->pluck('name')
+                ->filter()
+                ->map(fn ($name) => (string) $name)
+                ->values();
+
+            $areaIds = $areas
+                ->pluck('id')
+                ->filter()
+                ->map(fn ($id) => (int) $id)
+                ->values();
+        }
+
+        if ($areaNames->isEmpty() && ! empty($this->area_name)) {
             $areaNames->push((string) $this->area_name);
         }
 
@@ -49,6 +76,15 @@ class ProfessionalResource extends JsonResource
             'avatar_url' => PublicMediaUrl::fromPublicDisk($this->avatar_path, $request),
             'is_active' => (bool) $this->is_active,
             'notes' => $this->notes,
+            'specialization_ids' => $areaIds->all(),
+            'specializations' => $this->whenLoaded('specializations', fn () => $specializations
+                ->map(fn ($specialization) => [
+                    'id' => $specialization->id,
+                    'name' => $specialization->name,
+                    'slug' => $specialization->slug,
+                    'is_primary' => (bool) ($specialization->pivot?->is_primary ?? false),
+                    'sort_order' => (int) ($specialization->pivot?->sort_order ?? 0),
+                ])->all()),
             'created_at' => optional($this->created_at)->toIso8601String(),
             'updated_at' => optional($this->updated_at)->toIso8601String(),
         ];

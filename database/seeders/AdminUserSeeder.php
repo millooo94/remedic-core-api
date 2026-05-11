@@ -2,10 +2,12 @@
 
 namespace Database\Seeders;
 
+use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class AdminUserSeeder extends Seeder
@@ -36,10 +38,12 @@ class AdminUserSeeder extends Seeder
                 'rejected_by_user_id' => null,
             ])->save();
 
+            $this->syncPrimaryAdminRole($existingUser);
+
             return;
         }
 
-        User::query()->create([
+        $user = User::query()->create([
             'name' => $name,
             'last_name' => $lastName,
             'email' => $email,
@@ -53,5 +57,16 @@ class AdminUserSeeder extends Seeder
             'rejected_at' => null,
             'rejected_by_user_id' => null,
         ]);
+
+        $this->syncPrimaryAdminRole($user);
+    }
+
+    protected function syncPrimaryAdminRole(User $user): void
+    {
+        if (! Schema::hasTable('roles') || ! Schema::hasTable('model_has_roles')) {
+            return;
+        }
+
+        $user->syncRoles([AdminRole::SUPER_ADMIN->value]);
     }
 }

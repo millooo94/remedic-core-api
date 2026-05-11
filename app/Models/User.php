@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\AdminPermission;
+use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -9,14 +11,21 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
+
+    protected string $guard_name = 'web';
+
+    protected static ?bool $backofficeRoleTablesAvailable = null;
 
     protected $fillable = [
+        'legacy_backend_id',
         'name',
         'last_name',
         'email',
@@ -45,6 +54,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'admin_approved_at' => 'datetime',
             'rejected_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'legacy_backend_id' => 'integer',
             'role' => UserRole::class,
             'is_active' => 'boolean',
             'password' => 'hashed',
@@ -53,7 +63,18 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isAdmin(): bool
     {
-        return $this->role === UserRole::Admin;
+        if ($this->role === UserRole::Admin) {
+            return true;
+        }
+
+        if (! $this->supportsBackofficeRoles()) {
+            return false;
+        }
+
+        return $this->hasAnyRole([
+            AdminRole::SUPER_ADMIN->value,
+            AdminRole::ADMIN->value,
+        ]);
     }
 
     public function isPrimaryAdmin(): bool
@@ -71,6 +92,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->is_active && $this->hasVerifiedEmail() && $this->hasAdminApproval();
     }
 
+    public function canAccessBackoffice(): bool
+    {
+        if (! $this->canAccessPrivateDashboard()) {
+            return false;
+        }
+
+        if (! $this->supportsBackofficeRoles()) {
+            return $this->isAdmin();
+        }
+
+        return $this->can(AdminPermission::VIEW_BACKOFFICE->value) || $this->isAdmin();
+    }
+
     public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(self::class, 'approved_by_user_id');
@@ -84,5 +118,21 @@ class User extends Authenticatable implements MustVerifyEmail
     public function getFullNameAttribute(): string
     {
         return trim((string) ($this->name.' '.$this->last_name));
+    }
+
+    protected function supportsBackofficeRoles(): bool
+    {
+        if (self::$backofficeRoleTablesAvailable !== null) {
+            return self::$backofficeRoleTablesAvailable;
+        }
+
+        $tableNames = config('permission.table_names', []);
+        $rolesTable = $tableNames['roles'] ?? 'roles';
+        $modelHasRolesTable = $tableNames['model_has_roles'] ?? 'model_has_roles';
+
+        self::$backofficeRoleTablesAvailable = Schema::hasTable($rolesTable)
+            && Schema::hasTable($modelHasRolesTable);
+
+        return self::$backofficeRoleTablesAvailable;
     }
 }

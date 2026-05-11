@@ -1,6 +1,20 @@
 <?php
 
+use App\Enums\AdminPermission;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\Admin\AdminWebServiceController;
+use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostController;
+use App\Http\Controllers\Api\V1\Admin\ConsentCategoryController as AdminConsentCategoryController;
+use App\Http\Controllers\Api\V1\Admin\ConsentPolicyVersionController as AdminConsentPolicyVersionController;
+use App\Http\Controllers\Api\V1\Admin\ConsentPreferenceChangeController as AdminConsentPreferenceChangeController;
+use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
+use App\Http\Controllers\Api\V1\Admin\ConsentServiceController as AdminConsentServiceController;
+use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
+use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
+use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
+use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
+use App\Http\Controllers\Api\V1\Admin\SpecializationController as AdminSpecializationController;
+use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\CashMovementController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -18,6 +32,7 @@ use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SettingsController;
+use App\Http\Controllers\Api\V1\SpecializationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -49,6 +64,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar']);
         Route::put('profile/password', [ProfileController::class, 'updatePassword']);
         Route::apiResource('professionals', ProfessionalController::class);
+        Route::get('specializations/options', [SpecializationController::class, 'options']);
+        Route::apiResource('specializations', SpecializationController::class);
         Route::apiResource('services', ServiceController::class);
         Route::get('patients/options', [PatientController::class, 'options']);
         Route::post('patients/import', [PatientController::class, 'import']);
@@ -85,5 +102,42 @@ Route::prefix('v1')->group(function (): void {
 
         Route::get('settings', [SettingsController::class, 'show']);
         Route::put('settings', [SettingsController::class, 'update']);
+
+        Route::prefix('admin')
+            ->middleware('permission:'.AdminPermission::VIEW_BACKOFFICE->value)
+            ->group(function (): void {
+                Route::apiResource('users', AdminUserController::class)
+                    ->middleware('permission:manage users');
+                Route::apiResource('pages', AdminPageController::class)
+                    ->middleware('permission:manage pages');
+                Route::apiResource('blog-posts', AdminBlogPostController::class)
+                    ->middleware('permission:manage blog posts');
+                Route::apiResource('redirects', AdminRedirectController::class)
+                    ->middleware('permission:manage redirects');
+                Route::apiResource('specializations', AdminSpecializationController::class)
+                    ->only(['index', 'show', 'update'])
+                    ->middleware('permission:manage specializations');
+                Route::apiResource('services', AdminWebServiceController::class)
+                    ->only(['index', 'show', 'update'])
+                    ->middleware('permission:manage services');
+                Route::apiResource('professional-public-profiles', AdminProfessionalPublicProfileController::class)
+                    ->middleware('permission:manage doctors');
+                Route::apiResource('consent-categories', AdminConsentCategoryController::class)
+                    ->middleware('permission:manage consent configuration');
+                Route::apiResource('consent-services', AdminConsentServiceController::class)
+                    ->middleware('permission:manage consent configuration');
+                Route::apiResource('consent-policy-versions', AdminConsentPolicyVersionController::class)
+                    ->middleware('permission:manage consent configuration');
+                Route::apiResource('consent-records', AdminConsentRecordController::class)
+                    ->only(['index', 'show'])
+                    ->middleware('permission:view consent records');
+                Route::apiResource('consent-preference-changes', AdminConsentPreferenceChangeController::class)
+                    ->only(['index', 'show'])
+                    ->middleware('permission:view consent records');
+                Route::get('site-settings', [AdminSiteSettingController::class, 'show'])
+                    ->middleware('permission:manage settings');
+                Route::put('site-settings', [AdminSiteSettingController::class, 'update'])
+                    ->middleware('permission:manage settings');
+            });
     });
 });

@@ -1,0 +1,676 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Enums\AdminRole;
+use App\Enums\UserRole;
+use App\Models\BlogPost;
+use App\Models\ConsentCategory;
+use App\Models\ConsentPolicyVersion;
+use App\Models\ConsentPreferenceChange;
+use App\Models\ConsentRecord;
+use App\Models\ConsentService;
+use App\Models\Page;
+use App\Models\Professional;
+use App\Models\ProfessionalPublicProfile;
+use App\Models\Redirect;
+use App\Models\Service;
+use App\Models\SiteSetting;
+use App\Models\Specialization;
+use App\Models\User;
+use Database\Seeders\BackofficeAccessSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Test;
+use Spatie\Permission\Models\Role;
+use Tests\TestCase;
+
+class AdminBackofficeApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('auth.primary_admin.email', 'humancaretelemedicine@gmail.com');
+
+        $this->seed(BackofficeAccessSeeder::class);
+    }
+
+    #[Test]
+    public function auth_me_exposes_backoffice_access_metadata(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'humancaretelemedicine@gmail.com',
+        ]);
+
+        $user->assignRole(Role::findByName(AdminRole::SUPER_ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('can_access_backoffice', true)
+            ->assertJsonPath('backoffice_roles.0', AdminRole::SUPER_ADMIN->value);
+    }
+
+    #[Test]
+    public function super_admin_can_list_backoffice_users(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'humancaretelemedicine@gmail.com',
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::SUPER_ADMIN->value, 'web'));
+
+        User::factory()->count(2)->create();
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/v1/admin/users')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
+    }
+
+    #[Test]
+    public function editor_cannot_list_backoffice_users(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'editor@example.com',
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::EDITOR->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/v1/admin/users')
+            ->assertForbidden();
+    }
+
+    #[Test]
+    public function admin_can_crud_pages_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'pages-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $created = $this->postJson('/api/v1/admin/pages', [
+            'title' => 'Chi siamo',
+            'slug' => 'chi-siamo',
+            'template' => 'default',
+            'excerpt' => 'Pagina istituzionale',
+            'intro_text' => '<p>Intro</p>',
+            'is_active' => true,
+            'sections' => [
+                [
+                    'key' => 'hero',
+                    'title' => 'Hero',
+                    'subtitle' => 'Sub',
+                    'content' => '<p>Corpo</p>',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                ],
+            ],
+            'faqs' => [
+                [
+                    'question' => 'Domanda 1',
+                    'answer' => 'Risposta 1',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                    'is_structured_data' => true,
+                ],
+            ],
+        ])->assertCreated();
+
+        $pageId = (int) $created->json('id');
+
+        $this->assertDatabaseHas('pages', [
+            'id' => $pageId,
+            'slug' => 'chi-siamo',
+        ]);
+
+        $this->putJson("/api/v1/admin/pages/{$pageId}", [
+            'title' => 'Chi siamo oggi',
+            'slug' => 'chi-siamo',
+            'template' => 'default',
+            'excerpt' => 'Pagina aggiornata',
+            'intro_text' => '<p>Intro aggiornata</p>',
+            'is_active' => false,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk()
+            ->assertJsonPath('title', 'Chi siamo oggi')
+            ->assertJsonPath('is_active', false);
+
+        $this->deleteJson("/api/v1/admin/pages/{$pageId}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('pages', [
+            'id' => $pageId,
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_read_and_update_site_settings_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'settings-admin@example.com',
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        $settings = SiteSetting::singleton();
+        $settings->update([
+            'site_name' => 'Remedic',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/v1/admin/site-settings')
+            ->assertOk()
+            ->assertJsonPath('site_name', 'Remedic');
+
+        $this->putJson('/api/v1/admin/site-settings', [
+            'site_name' => 'Remedic Web',
+            'brand_name' => 'Remedic',
+            'cmp_enabled' => true,
+            'cmp_banner_enabled' => true,
+        ])->assertOk()
+            ->assertJsonPath('site_name', 'Remedic Web');
+
+        $this->assertDatabaseHas('site_settings', [
+            'id' => $settings->id,
+            'site_name' => 'Remedic Web',
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_crud_blog_posts_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'blog-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $created = $this->postJson('/api/v1/admin/blog-posts', [
+            'title' => 'Nuovo articolo',
+            'slug' => 'nuovo-articolo',
+            'excerpt' => 'Estratto',
+            'cover_image' => '/uploads/blog/cover.jpg',
+            'is_active' => true,
+            'published_at' => now()->toIso8601String(),
+            'sections' => [
+                [
+                    'key' => 'hero',
+                    'title' => 'Hero',
+                    'content' => '<p>Corpo</p>',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                ],
+            ],
+            'faqs' => [
+                [
+                    'question' => 'Domanda 1',
+                    'answer' => 'Risposta 1',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                    'is_structured_data' => true,
+                ],
+            ],
+        ])->assertCreated();
+
+        $postId = (int) $created->json('id');
+
+        $this->assertDatabaseHas('blog_posts', [
+            'id' => $postId,
+            'slug' => 'nuovo-articolo',
+        ]);
+
+        $this->putJson("/api/v1/admin/blog-posts/{$postId}", [
+            'title' => 'Articolo aggiornato',
+            'slug' => 'nuovo-articolo',
+            'excerpt' => 'Estratto aggiornato',
+            'cover_image' => '/uploads/blog/cover-2.jpg',
+            'is_active' => false,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk()
+            ->assertJsonPath('title', 'Articolo aggiornato')
+            ->assertJsonPath('is_active', false);
+
+        $this->deleteJson("/api/v1/admin/blog-posts/{$postId}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('blog_posts', [
+            'id' => $postId,
+        ]);
+    }
+
+    #[Test]
+    public function seo_manager_can_crud_redirects_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'redirect-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::SEO_MANAGER->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $created = $this->postJson('/api/v1/admin/redirects', [
+            'from_path' => '/vecchia-pagina',
+            'to_path' => '/nuova-pagina',
+            'http_code' => 301,
+            'is_active' => true,
+        ])->assertCreated();
+
+        $redirectId = (int) $created->json('id');
+
+        $this->assertDatabaseHas('redirects', [
+            'id' => $redirectId,
+            'from_path' => '/vecchia-pagina',
+            'to_path' => '/nuova-pagina',
+        ]);
+
+        $this->putJson("/api/v1/admin/redirects/{$redirectId}", [
+            'from_path' => '/vecchia-pagina',
+            'to_path' => 'https://example.com/destinazione',
+            'http_code' => 308,
+            'is_active' => false,
+        ])->assertOk()
+            ->assertJsonPath('http_code', 308)
+            ->assertJsonPath('is_active', false);
+
+        $this->deleteJson("/api/v1/admin/redirects/{$redirectId}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('redirects', [
+            'id' => $redirectId,
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_manage_only_web_extension_of_specializations_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'specialization-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $specializationId = (int) \App\Models\Specialization::query()->create([
+            'name' => 'Cardiologia master test',
+            'slug' => 'cardiologia-master-test',
+            'robots' => 'index,follow',
+            'is_local_seo_enabled' => true,
+            'is_active' => true,
+            'sort_order' => 3,
+        ])->id;
+
+        $this->postJson('/api/v1/admin/specializations', [
+            'name' => 'Cardiologia',
+        ])->assertMethodNotAllowed();
+
+        $this->putJson("/api/v1/admin/specializations/{$specializationId}", [
+            'name' => 'Cardiologia clinica',
+            'slug' => 'cardiologia-master-test',
+            'short_description' => 'Descrizione aggiornata',
+            'intro_text' => '<p>Intro aggiornata</p>',
+            'local_intro_text' => '<p>Local intro aggiornata</p>',
+            'local_area_notes' => 'Area note aggiornate',
+            'is_local_seo_enabled' => false,
+            'is_active' => false,
+            'sort_order' => 5,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk()
+            ->assertJsonPath('name', 'Cardiologia clinica')
+            ->assertJsonPath('is_local_seo_enabled', false)
+            ->assertJsonPath('is_active', false);
+
+        $this->deleteJson("/api/v1/admin/specializations/{$specializationId}")
+            ->assertMethodNotAllowed();
+
+        $this->assertDatabaseHas('specializations', [
+            'id' => $specializationId,
+            'name' => 'Cardiologia clinica',
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_manage_only_web_extension_of_services_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'service-web-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $serviceId = (int) \App\Models\Service::query()->create([
+            'canonical_name' => 'Ecografia addome',
+            'display_name' => 'Ecografia Addome Completo',
+            'slug' => 'ecografia-addome-completo',
+            'is_active' => true,
+        ])->id;
+
+        $this->postJson('/api/v1/admin/services', [
+            'canonical_name' => 'Ecografia addome',
+            'display_name' => 'Ecografia Addome Completo',
+            'slug' => 'ecografia-addome-completo',
+        ])->assertMethodNotAllowed();
+
+        $this->putJson("/api/v1/admin/services/{$serviceId}", [
+            'canonical_name' => 'Ecografia addome aggiornata',
+            'display_name' => 'Ecografia Addome',
+            'slug' => 'ecografia-addome-completo',
+            'description' => 'Descrizione aggiornata',
+            'short_description' => 'Breve aggiornata',
+            'intro_text' => '<p>Intro aggiornata</p>',
+            'is_active' => false,
+            'is_featured' => false,
+            'is_local_seo_enabled' => false,
+            'sort_order' => 2,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk()
+            ->assertJsonPath('display_name', 'Ecografia Addome')
+            ->assertJsonPath('is_active', false)
+            ->assertJsonPath('is_featured', false);
+
+        $this->deleteJson("/api/v1/admin/services/{$serviceId}")
+            ->assertMethodNotAllowed();
+
+        $this->assertDatabaseHas('services', [
+            'id' => $serviceId,
+            'display_name' => 'Ecografia Addome',
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_crud_professional_public_profiles_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'doctors-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        $professional = Professional::query()->create([
+            'subject_type' => 'individual',
+            'first_name' => 'Mario',
+            'last_name' => 'Rossi',
+            'full_name' => 'Rossi Mario',
+            'area_name' => 'Cardiologia',
+            'email' => 'mario.rossi@example.com',
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $created = $this->postJson('/api/v1/admin/professional-public-profiles', [
+            'professional_id' => $professional->id,
+            'slug' => 'dott-mario-rossi',
+            'title_prefix' => 'Dott.',
+            'registration_number' => 'AB123',
+            'birth_date' => '1980-05-12',
+            'birth_place' => 'Roma',
+            'short_bio' => '<p>Bio</p>',
+            'is_active' => true,
+            'sort_order' => 1,
+            'degrees' => [
+                [
+                    'title' => 'Laurea in Medicina',
+                    'awarded_on' => '2005-07-15',
+                    'sort_order' => 0,
+                ],
+            ],
+            'academic_specializations' => [
+                [
+                    'title' => 'Specializzazione in Cardiologia',
+                    'awarded_on' => '2010-10-20',
+                    'sort_order' => 0,
+                ],
+            ],
+            'board_registrations' => [
+                [
+                    'board_name' => 'Ordine dei Medici di Roma',
+                    'registered_on' => '2006-01-10',
+                    'sort_order' => 0,
+                ],
+            ],
+            'sections' => [
+                [
+                    'key' => 'hero',
+                    'title' => 'Hero',
+                    'content' => '<p>Corpo</p>',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                ],
+            ],
+            'faqs' => [
+                [
+                    'question' => 'Prima visita?',
+                    'answer' => 'Si.',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                    'is_structured_data' => true,
+                ],
+            ],
+        ])->assertCreated();
+
+        $profileId = (int) $created->json('id');
+
+        $this->assertDatabaseHas('professional_public_profiles', [
+            'id' => $profileId,
+            'slug' => 'dott-mario-rossi',
+            'professional_id' => $professional->id,
+        ]);
+
+        $this->assertDatabaseHas('professional_degrees', [
+            'professional_id' => $professional->id,
+            'title' => 'Laurea in Medicina',
+        ]);
+
+        $this->putJson("/api/v1/admin/professional-public-profiles/{$profileId}", [
+            'professional_id' => $professional->id,
+            'slug' => 'dott-mario-rossi',
+            'title_prefix' => 'Dr.',
+            'registration_number' => 'AB999',
+            'birth_date' => '1980-05-12',
+            'birth_place' => 'Milano',
+            'short_bio' => '<p>Bio aggiornata</p>',
+            'is_active' => false,
+            'sort_order' => 3,
+            'degrees' => [],
+            'academic_specializations' => [],
+            'board_registrations' => [],
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk()
+            ->assertJsonPath('title_prefix', 'Dr.')
+            ->assertJsonPath('is_active', false)
+            ->assertJsonPath('sort_order', 3);
+
+        $this->deleteJson("/api/v1/admin/professional-public-profiles/{$profileId}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('professional_public_profiles', [
+            'id' => $profileId,
+        ]);
+    }
+
+    #[Test]
+    public function admin_can_manage_consent_configuration_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'consent-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        $policyPage = Page::query()->create([
+            'title' => 'Privacy policy',
+            'slug' => 'privacy-policy',
+            'template' => 'legal',
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $category = $this->postJson('/api/v1/admin/consent-categories', [
+            'key' => 'preferences',
+            'name' => 'Preferenze',
+            'description' => 'Servizi opzionali',
+            'default_state' => false,
+            'is_required' => false,
+            'is_active' => true,
+            'sort_order' => 2,
+        ])->assertCreated();
+
+        $categoryId = (int) $category->json('id');
+
+        $service = $this->postJson('/api/v1/admin/consent-services', [
+            'consent_category_id' => $categoryId,
+            'key' => 'youtube_embed',
+            'name' => 'YouTube Embed',
+            'provider' => 'Google',
+            'description' => 'Embed video',
+            'purpose' => 'Riproduzione contenuti esterni',
+            'privacy_url' => 'https://example.com/privacy',
+            'cookie_names' => ['yt-remote-device-id'],
+            'retention_period' => '6 months',
+            'legal_basis_hint' => 'Consenso',
+            'execution_mode' => 'embed',
+            'public_config' => ['vendor' => 'youtube'],
+            'is_active' => true,
+            'sort_order' => 1,
+        ])->assertCreated();
+
+        $policy = $this->postJson('/api/v1/admin/consent-policy-versions', [
+            'version' => '2026.05',
+            'banner_title' => 'Banner',
+            'banner_text' => 'Testo banner',
+            'preferences_title' => 'Preferenze',
+            'preferences_text' => 'Testo preferenze',
+            'policy_page_id' => $policyPage->id,
+            'cookie_policy_page_id' => $policyPage->id,
+            'privacy_policy_page_id' => $policyPage->id,
+            'is_active' => true,
+            'requires_reconsent' => true,
+        ])->assertCreated();
+
+        $serviceId = (int) $service->json('id');
+        $policyId = (int) $policy->json('id');
+
+        $this->putJson("/api/v1/admin/consent-categories/{$categoryId}", [
+            'key' => 'preferences',
+            'name' => 'Preferenze aggiornate',
+            'description' => 'Servizi opzionali aggiornati',
+            'default_state' => true,
+            'is_required' => false,
+            'is_active' => true,
+            'sort_order' => 3,
+        ])->assertOk()
+            ->assertJsonPath('name', 'Preferenze aggiornate');
+
+        $this->putJson("/api/v1/admin/consent-services/{$serviceId}", [
+            'consent_category_id' => $categoryId,
+            'key' => 'youtube_embed',
+            'name' => 'YouTube Embed Updated',
+            'provider' => 'Google LLC',
+            'description' => 'Embed video aggiornato',
+            'purpose' => 'Riproduzione contenuti esterni',
+            'privacy_url' => 'https://example.com/privacy',
+            'cookie_names' => ['yt-remote-device-id'],
+            'retention_period' => '12 months',
+            'legal_basis_hint' => 'Consenso',
+            'execution_mode' => 'embed',
+            'public_config' => ['vendor' => 'youtube', 'nocookie' => true],
+            'is_active' => false,
+            'sort_order' => 4,
+        ])->assertOk()
+            ->assertJsonPath('name', 'YouTube Embed Updated')
+            ->assertJsonPath('is_active', false);
+
+        $this->putJson("/api/v1/admin/consent-policy-versions/{$policyId}", [
+            'version' => '2026.05',
+            'banner_title' => 'Banner aggiornato',
+            'banner_text' => 'Testo banner aggiornato',
+            'preferences_title' => 'Preferenze aggiornate',
+            'preferences_text' => 'Testo preferenze aggiornato',
+            'policy_page_id' => $policyPage->id,
+            'cookie_policy_page_id' => $policyPage->id,
+            'privacy_policy_page_id' => $policyPage->id,
+            'is_active' => false,
+            'requires_reconsent' => false,
+        ])->assertOk()
+            ->assertJsonPath('banner_title', 'Banner aggiornato')
+            ->assertJsonPath('requires_reconsent', false);
+
+        $this->deleteJson("/api/v1/admin/consent-services/{$serviceId}")->assertNoContent();
+        $this->deleteJson("/api/v1/admin/consent-policy-versions/{$policyId}")->assertNoContent();
+        $this->deleteJson("/api/v1/admin/consent-categories/{$categoryId}")->assertNoContent();
+    }
+
+    #[Test]
+    public function admin_can_view_consent_records_and_events_via_admin_api(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'consent-audit-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        $policy = ConsentPolicyVersion::query()->create([
+            'version' => '2026.06',
+            'is_active' => true,
+            'requires_reconsent' => true,
+        ]);
+
+        $record = ConsentRecord::query()->create([
+            'consent_policy_version_id' => $policy->id,
+            'locale' => 'it',
+            'source' => 'banner',
+            'preferences' => true,
+            'analytics' => false,
+            'marketing' => false,
+            'consented_at' => now(),
+            'consent_version_snapshot' => ['version' => '2026.06'],
+        ]);
+
+        $change = ConsentPreferenceChange::query()->create([
+            'consent_record_id' => $record->id,
+            'event_type' => 'save_preferences',
+            'payload' => ['analytics' => false],
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/v1/admin/consent-records')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.consent_uuid', $record->consent_uuid);
+
+        $this->getJson("/api/v1/admin/consent-records/{$record->id}")
+            ->assertOk()
+            ->assertJsonPath('status', 'customized');
+
+        $this->getJson('/api/v1/admin/consent-preference-changes')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.event_type', 'save_preferences');
+
+        $this->getJson("/api/v1/admin/consent-preference-changes/{$change->id}")
+            ->assertOk()
+            ->assertJsonPath('payload.analytics', false);
+    }
+}

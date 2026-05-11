@@ -13,6 +13,7 @@ class Professional extends Model
     use HasFactory;
 
     protected $fillable = [
+        'legacy_backend_id',
         'subject_type',
         'first_name',
         'last_name',
@@ -29,6 +30,7 @@ class Professional extends Model
     protected function casts(): array
     {
         return [
+            'legacy_backend_id' => 'integer',
             'is_active' => 'boolean',
             'subject_type' => ProfessionalSubjectType::class,
         ];
@@ -48,6 +50,18 @@ class Professional extends Model
             ->withTimestamps();
     }
 
+    public function specializations(): BelongsToMany
+    {
+        return $this->belongsToMany(Specialization::class, 'professional_specialization')
+            ->withPivot('is_primary', 'sort_order')
+            ->withTimestamps();
+    }
+
+    public function webSpecializations(): BelongsToMany
+    {
+        return $this->specializations();
+    }
+
     public function performanceRecords(): HasMany
     {
         return $this->hasMany(PerformanceRecord::class);
@@ -56,5 +70,20 @@ class Professional extends Model
     public function performanceRecordSplits(): HasMany
     {
         return $this->hasMany(PerformanceRecordSplit::class);
+    }
+
+    public function degrees(): HasMany
+    {
+        return $this->hasMany(ProfessionalDegree::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function academicSpecializations(): HasMany
+    {
+        return $this->hasMany(ProfessionalAcademicSpecialization::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function boardRegistrations(): HasMany
+    {
+        return $this->hasMany(ProfessionalBoardRegistration::class)->orderBy('sort_order')->orderBy('id');
     }
 }
