@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectControl
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
 use App\Http\Controllers\Api\V1\Admin\SpecializationController as AdminSpecializationController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
+use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\CashMovementController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -36,6 +37,20 @@ use App\Http\Controllers\Api\V1\SpecializationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
+    Route::prefix('public')->group(function (): void {
+        Route::get('site-settings', [PublicSiteController::class, 'settings']);
+        Route::get('home', [PublicSiteController::class, 'home']);
+        Route::get('search', [PublicSiteController::class, 'search']);
+        Route::get('specializations', [PublicSiteController::class, 'specializations']);
+        Route::get('specializations/{slug}', [PublicSiteController::class, 'specialization']);
+        Route::get('services', [PublicSiteController::class, 'services']);
+        Route::get('services/{slug}', [PublicSiteController::class, 'service']);
+        Route::get('professionals', [PublicSiteController::class, 'professionals']);
+        Route::get('professionals/{slug}', [PublicSiteController::class, 'professional']);
+        Route::get('blog-posts', [PublicSiteController::class, 'blogPosts']);
+        Route::get('blog-posts/{slug}', [PublicSiteController::class, 'blogPost']);
+    });
+
     Route::prefix('auth')->group(function (): void {
         Route::post('register', [AuthController::class, 'register']);
         Route::post('login', [AuthController::class, 'login']);
