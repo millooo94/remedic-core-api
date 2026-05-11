@@ -16,6 +16,8 @@ use App\Support\Media\PublicMediaUrl;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class SiteController extends Controller
 {
@@ -56,16 +58,19 @@ class SiteController extends Controller
     public function home(Request $request): JsonResponse
     {
         $specializations = $this->specializationsBaseQuery()->limit(8)->get();
-        $services = $this->servicesBaseQuery()
-            ->where('is_featured', true)
-            ->limit(7)
-            ->get();
+        $servicesQuery = $this->servicesBaseQuery();
+
+        if ($this->servicesHaveFeaturedFlag()) {
+            $servicesQuery->where('is_featured', true);
+        }
+
+        $services = $servicesQuery->limit(7)->get();
 
         if ($services->isEmpty()) {
             $services = $this->servicesBaseQuery()->limit(7)->get();
         }
 
-        $professionals = $this->professionalProfilesBaseQuery()->limit(4)->get();
+        $professionals = $this->listProfessionalItems($request, 4);
         $blogPosts = $this->blogPostsBaseQuery()
             ->limit(4)
             ->get();
@@ -74,7 +79,7 @@ class SiteController extends Controller
             'data' => [
                 'specializations' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization))->values()->all(),
                 'services' => $services->map(fn (Service $service): array => $this->mapServiceListItem($service))->values()->all(),
-                'professionals' => $professionals->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($profile, $request))->values()->all(),
+                'professionals' => $professionals,
                 'blog_posts' => $blogPosts->map(fn (BlogPost $post): array => $this->mapBlogListItem($post))->values()->all(),
             ],
         ]);
@@ -203,12 +208,9 @@ class SiteController extends Controller
     public function professionals(Request $request): JsonResponse
     {
         $limit = $this->resolveLimit($request, 100);
-        $profiles = $this->professionalProfilesBaseQuery()
-            ->limit($limit)
-            ->get();
 
         return response()->json([
-            'data' => $profiles->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($profile, $request))->values()->all(),
+            'data' => $this->listProfessionalItems($request, $limit),
         ]);
     }
 
@@ -216,10 +218,22 @@ class SiteController extends Controller
     {
         $profile = $this->professionalProfilesBaseQuery()
             ->where('slug', $slug)
-            ->firstOrFail();
+            ->first();
+
+        if ($profile instanceof ProfessionalPublicProfile) {
+            return response()->json([
+                'data' => $this->mapProfessionalDetail($profile, $request),
+            ]);
+        }
+
+        $professional = $this->professionalsBaseQuery()
+            ->get()
+            ->first(fn (Professional $item): bool => $this->resolveProfessionalSlug($item) === $slug);
+
+        abort_unless($professional instanceof Professional, 404);
 
         return response()->json([
-            'data' => $this->mapProfessionalDetail($profile, $request),
+            'data' => $this->mapProfessionalDetailFromProfessional($professional, $request),
         ]);
     }
 
@@ -228,7 +242,7 @@ class SiteController extends Controller
         $limit = $this->resolveLimit($request, 50);
         $query = $this->blogPostsBaseQuery();
 
-        if ($request->boolean('featured')) {
+        if ($request->boolean('featured') && $this->blogPostsHaveFeaturedFlag()) {
             $query->where('is_featured', true);
         }
 
@@ -280,7 +294,7 @@ class SiteController extends Controller
 
     private function servicesBaseQuery(): Builder
     {
-        return Service::query()
+        $query = Service::query()
             ->with([
                 'category',
                 'sections' => fn ($query) => $query->active()->ordered(),
@@ -296,9 +310,14 @@ class SiteController extends Controller
                 'professionalServices.professional.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('sort_order')->orderBy('name'),
             ])
             ->where('is_active', true)
-            ->orderByDesc('is_featured')
             ->orderBy('sort_order')
             ->orderBy('display_name');
+
+        if ($this->servicesHaveFeaturedFlag()) {
+            $query->orderByDesc('is_featured');
+        }
+
+        return $query;
     }
 
     private function professionalProfilesBaseQuery(): Builder
@@ -325,9 +344,29 @@ class SiteController extends Controller
             ->orderBy('slug');
     }
 
+    private function professionalsBaseQuery(): Builder
+    {
+        return Professional::query()
+            ->with([
+                'publicProfile' => fn ($query) => $query->where('is_active', true),
+                'specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('professional_specialization.sort_order')->orderBy('name'),
+                'professionalServices' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('is_visible_public', true)
+                    ->orderBy('public_sort_order')
+                    ->orderBy('id'),
+                'professionalServices.service' => fn ($query) => $query->where('is_active', true)->orderBy('display_name'),
+                'degrees',
+                'academicSpecializations',
+                'boardRegistrations',
+            ])
+            ->where('is_active', true)
+            ->orderBy('full_name');
+    }
+
     private function blogPostsBaseQuery(): Builder
     {
-        return BlogPost::query()
+        $query = BlogPost::query()
             ->with([
                 'sections' => fn ($query) => $query->active()->ordered(),
                 'faqs' => fn ($query) => $query->active()->ordered(),
@@ -336,9 +375,14 @@ class SiteController extends Controller
             ->where(function (Builder $query): void {
                 $query->whereNull('published_at')->orWhere('published_at', '<=', now());
             })
-            ->orderByDesc('is_featured')
             ->orderByDesc('published_at')
             ->orderByDesc('id');
+
+        if ($this->blogPostsHaveFeaturedFlag()) {
+            $query->orderByDesc('is_featured');
+        }
+
+        return $query;
     }
 
     private function mapSiteSettings(SiteSetting $settings): array
@@ -386,7 +430,7 @@ class SiteController extends Controller
             'description' => $specialization->short_description ?: $specialization->intro_text ?: '',
             'short_description' => $specialization->short_description,
             'services_count' => $specialization->services_count ?? $specialization->services->count(),
-            'professionals_count' => $specialization->professionals_count ?? $specialization->professionals->filter(fn (Professional $professional) => $professional->publicProfile !== null)->count(),
+            'professionals_count' => $specialization->professionals_count ?? $specialization->professionals->count(),
             'is_active' => (bool) $specialization->is_active,
         ];
     }
@@ -394,9 +438,7 @@ class SiteController extends Controller
     private function mapSpecializationDetail(Specialization $specialization, Request $request): array
     {
         $services = $specialization->services->filter(fn (Service $service) => (bool) $service->is_active)->values();
-        $professionals = $specialization->professionals
-            ->filter(fn (Professional $professional) => $professional->publicProfile !== null)
-            ->values();
+        $professionals = $specialization->professionals->values();
 
         $introBlocks = $this->buildSpecializationIntroBlocks($specialization);
         $mainService = $services->first();
@@ -419,17 +461,12 @@ class SiteController extends Controller
                 'description' => $service->short_description ?: $service->description ?: '',
             ])->values()->all(),
             'doctors' => $professionals->map(function (Professional $professional) use ($request): array {
-                /** @var ProfessionalPublicProfile|null $profile */
-                $profile = $professional->publicProfile;
-
                 return [
-                    'slug' => $profile?->slug,
-                    'name' => trim(($profile?->title_prefix ? $profile->title_prefix.' ' : '').$professional->full_name),
-                    'specialization' => $professional->specializations->pluck('name')->first() ?: 'Specialista',
-                    'description' => $profile?->short_bio ?: '',
-                    'image_url' => $profile?->profile_image_path
-                        ? PublicMediaUrl::fromPublicDisk($profile->profile_image_path, $request)
-                        : PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request),
+                    'slug' => $this->resolveProfessionalSlug($professional),
+                    'name' => $this->resolveProfessionalDisplayName($professional),
+                    'specialization' => $this->resolveProfessionalSpecialization($professional),
+                    'description' => $this->resolveProfessionalShortBio($professional),
+                    'image_url' => $this->resolveProfessionalImageUrl($professional, $request),
                     'main_procedures' => $professional->professionalServices
                         ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
                         ->take(3)
@@ -491,7 +528,7 @@ class SiteController extends Controller
     private function mapServiceDetail(Service $service, Request $request): array
     {
         $professionals = $service->professionalServices
-            ->filter(fn ($link) => $link->professional !== null && $link->professional->publicProfile !== null)
+            ->filter(fn ($link) => $link->professional !== null)
             ->values();
 
         $relatedServices = Service::query()
@@ -529,15 +566,12 @@ class SiteController extends Controller
             'sections' => $sections,
             'doctors' => $professionals->map(function ($link) use ($request): array {
                 $professional = $link->professional;
-                $profile = $professional->publicProfile;
 
                 return [
-                    'slug' => $profile->slug,
-                    'name' => trim(($profile->title_prefix ? $profile->title_prefix.' ' : '').$professional->full_name),
-                    'specialization' => $professional->specializations->pluck('name')->first() ?: 'Specialista',
-                    'image_url' => $profile->profile_image_path
-                        ? PublicMediaUrl::fromPublicDisk($profile->profile_image_path, $request)
-                        : PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request),
+                    'slug' => $this->resolveProfessionalSlug($professional),
+                    'name' => $this->resolveProfessionalDisplayName($professional),
+                    'specialization' => $this->resolveProfessionalSpecialization($professional),
+                    'image_url' => $this->resolveProfessionalImageUrl($professional, $request),
                 ];
             })->values()->all(),
             'related_prestazioni' => $relatedServices->map(fn (Service $related): array => [
@@ -554,36 +588,27 @@ class SiteController extends Controller
 
     private function mapProfessionalListItem(ProfessionalPublicProfile $profile, Request $request): array
     {
-        $professional = $profile->professional;
-
-        return [
-            'id' => (string) $profile->id,
-            'slug' => $profile->slug,
-            'name' => $professional->full_name,
-            'title' => $profile->title_prefix ?: 'Dott.',
-            'specialization' => $professional->specializations->pluck('name')->first() ?: 'Specialista',
-            'short_bio' => $profile->short_bio ?: '',
-            'image_url' => $profile->profile_image_path
-                ? PublicMediaUrl::fromPublicDisk($profile->profile_image_path, $request)
-                : PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request),
-            'featured' => false,
-            'available_services' => $professional->professionalServices
-                ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
-                ->take(5)
-                ->map(fn ($link) => $link->service->publicLabel())
-                ->values()
-                ->all(),
-        ];
+        return $this->mapProfessionalSummary($profile->professional, $request, $profile);
     }
 
     private function mapProfessionalDetail(ProfessionalPublicProfile $profile, Request $request): array
     {
-        $professional = $profile->professional;
-        $fullBioSection = $this->findSectionByKeys($profile->sections, ['full_bio', 'bio', 'biography']);
-        $profileSection = $this->findSectionByKeys($profile->sections, ['professional_profile', 'profile']);
-        $experienceSection = $this->findSectionByKeys($profile->sections, ['clinical_experience', 'experience']);
-        $approachSection = $this->findSectionByKeys($profile->sections, ['patient_approach', 'approach']);
-        $areasSection = $this->findSectionByKeys($profile->sections, ['areas_of_interest', 'interests']);
+        return $this->mapProfessionalDetailFromProfessional($profile->professional, $request, $profile);
+    }
+
+    private function mapProfessionalDetailFromProfessional(
+        Professional $professional,
+        Request $request,
+        ?ProfessionalPublicProfile $profile = null
+    ): array {
+        $profile ??= $professional->publicProfile;
+        $sections = $profile?->sections ?? collect();
+        $faqs = $profile?->faqs ?? collect();
+        $fullBioSection = $this->findSectionByKeys($sections, ['full_bio', 'bio', 'biography']);
+        $profileSection = $this->findSectionByKeys($sections, ['professional_profile', 'profile']);
+        $experienceSection = $this->findSectionByKeys($sections, ['clinical_experience', 'experience']);
+        $approachSection = $this->findSectionByKeys($sections, ['patient_approach', 'approach']);
+        $areasSection = $this->findSectionByKeys($sections, ['areas_of_interest', 'interests']);
 
         $services = $professional->professionalServices
             ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
@@ -607,7 +632,7 @@ class SiteController extends Controller
         }
 
         $publications = [];
-        $publicationsSection = $this->findSectionByKeys($profile->sections, ['publications', 'articles']);
+        $publicationsSection = $this->findSectionByKeys($sections, ['publications', 'articles']);
         if (is_array($publicationsSection?->extra_json['items'] ?? null)) {
             $publications = array_values(array_filter(array_map(function ($item): ?array {
                 if (! is_array($item)) {
@@ -623,14 +648,14 @@ class SiteController extends Controller
         }
 
         return [
-            'id' => (string) $profile->id,
-            'slug' => $profile->slug,
+            'id' => (string) ($profile?->id ?: $professional->id),
+            'slug' => $this->resolveProfessionalSlug($professional, $profile),
             'name' => $professional->full_name,
-            'title' => $profile->title_prefix ?: 'Dott.',
-            'specialization' => $professional->specializations->pluck('name')->first() ?: 'Specialista',
-            'short_bio' => $profile->short_bio ?: '',
-            'full_bio' => $fullBioSection?->content ?: ($profile->short_bio ?: ''),
-            'professional_profile' => $profileSection?->content ?: ($profile->short_bio ?: ''),
+            'title' => $this->resolveProfessionalTitlePrefix($profile),
+            'specialization' => $this->resolveProfessionalSpecialization($professional),
+            'short_bio' => $this->resolveProfessionalShortBio($professional, $profile),
+            'full_bio' => $fullBioSection?->content ?: ($profile?->short_bio ?: ''),
+            'professional_profile' => $profileSection?->content ?: ($profile?->short_bio ?: ''),
             'education' => $professional->degrees->map(fn ($degree) => $degree->title)->values()->all(),
             'clinical_experience' => $experienceSection?->content ?: '',
             'patient_approach' => $approachSection?->content ?: '',
@@ -638,13 +663,11 @@ class SiteController extends Controller
             'services' => $services,
             'publications' => $publications,
             'available_services' => array_map(fn (array $service): string => $service['name'], $services),
-            'faq_items' => $profile->faqs->map(fn (FaqItem $faq): array => [
+            'faq_items' => $faqs->map(fn (FaqItem $faq): array => [
                 'question' => $faq->question,
                 'answer' => $faq->answer,
             ])->values()->all(),
-            'image_url' => $profile->profile_image_path
-                ? PublicMediaUrl::fromPublicDisk($profile->profile_image_path, $request)
-                : PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request),
+            'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
         ];
     }
 
@@ -659,7 +682,7 @@ class SiteController extends Controller
             'date' => optional($post->published_at)->translatedFormat('j F Y') ?: 'Bozza',
             'author' => $post->author_name ?: 'Redazione Remedic',
             'reviewer' => $post->reviewer_name,
-            'featured' => (bool) $post->is_featured,
+            'featured' => $this->blogPostsHaveFeaturedFlag() ? (bool) ($post->getAttribute('is_featured') ?? false) : false,
             'cover_image' => $post->cover_image,
         ];
     }
@@ -710,7 +733,7 @@ class SiteController extends Controller
             'date' => optional($post->published_at)->translatedFormat('j F Y') ?: 'Bozza',
             'author' => $post->author_name ?: 'Redazione Remedic',
             'reviewer' => $post->reviewer_name,
-            'featured' => (bool) $post->is_featured,
+            'featured' => $this->blogPostsHaveFeaturedFlag() ? (bool) ($post->getAttribute('is_featured') ?? false) : false,
             'related_prestazioni' => $relatedServices,
             'related_articles' => $relatedArticles,
             'faq' => $post->faqs->map(fn (FaqItem $faq): array => [
@@ -732,6 +755,135 @@ class SiteController extends Controller
         }
 
         return 'visite';
+    }
+
+    private function listProfessionalItems(Request $request, int $limit): array
+    {
+        if ($this->activeProfessionalProfilesExist()) {
+            return $this->professionalProfilesBaseQuery()
+                ->limit($limit)
+                ->get()
+                ->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($profile, $request))
+                ->values()
+                ->all();
+        }
+
+        return $this->professionalsBaseQuery()
+            ->limit($limit)
+            ->get()
+            ->map(fn (Professional $professional): array => $this->mapProfessionalSummary($professional, $request))
+            ->values()
+            ->all();
+    }
+
+    private function mapProfessionalSummary(
+        Professional $professional,
+        Request $request,
+        ?ProfessionalPublicProfile $profile = null
+    ): array {
+        $profile ??= $professional->publicProfile;
+
+        return [
+            'id' => (string) ($profile?->id ?: $professional->id),
+            'slug' => $this->resolveProfessionalSlug($professional, $profile),
+            'name' => $professional->full_name,
+            'title' => $this->resolveProfessionalTitlePrefix($profile),
+            'specialization' => $this->resolveProfessionalSpecialization($professional),
+            'short_bio' => $this->resolveProfessionalShortBio($professional, $profile),
+            'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
+            'featured' => false,
+            'available_services' => $professional->professionalServices
+                ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
+                ->take(5)
+                ->map(fn ($link) => $link->service->publicLabel())
+                ->values()
+                ->all(),
+        ];
+    }
+
+    private function resolveProfessionalSlug(
+        Professional $professional,
+        ?ProfessionalPublicProfile $profile = null
+    ): string {
+        $profile ??= $professional->publicProfile;
+        $slug = trim((string) ($profile?->slug ?? ''));
+
+        if ($slug !== '') {
+            return $slug;
+        }
+
+        $generated = Str::slug($professional->full_name);
+
+        return $generated !== '' ? $generated : 'professionista-'.$professional->id;
+    }
+
+    private function resolveProfessionalTitlePrefix(?ProfessionalPublicProfile $profile = null): string
+    {
+        return trim((string) ($profile?->title_prefix ?? '')) !== ''
+            ? trim((string) $profile?->title_prefix)
+            : 'Dott.';
+    }
+
+    private function resolveProfessionalDisplayName(
+        Professional $professional,
+        ?ProfessionalPublicProfile $profile = null
+    ): string {
+        return trim($this->resolveProfessionalTitlePrefix($profile).' '.$professional->full_name);
+    }
+
+    private function resolveProfessionalSpecialization(Professional $professional): string
+    {
+        return $professional->specializations->pluck('name')->first()
+            ?: $professional->area_name
+            ?: 'Specialista';
+    }
+
+    private function resolveProfessionalShortBio(
+        Professional $professional,
+        ?ProfessionalPublicProfile $profile = null
+    ): string {
+        $profile ??= $professional->publicProfile;
+        $shortBio = trim((string) ($profile?->short_bio ?? ''));
+
+        if ($shortBio !== '') {
+            return $shortBio;
+        }
+
+        $specialization = $this->resolveProfessionalSpecialization($professional);
+
+        return $specialization !== ''
+            ? trim($specialization.' presso Remedic.')
+            : 'Professionista Remedic.';
+    }
+
+    private function resolveProfessionalImageUrl(
+        Professional $professional,
+        Request $request,
+        ?ProfessionalPublicProfile $profile = null
+    ): ?string {
+        $profile ??= $professional->publicProfile;
+        $profileImagePath = trim((string) ($profile?->profile_image_path ?? ''));
+
+        if ($profileImagePath !== '') {
+            return PublicMediaUrl::fromPublicDisk($profileImagePath, $request);
+        }
+
+        return PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request);
+    }
+
+    private function activeProfessionalProfilesExist(): bool
+    {
+        return ProfessionalPublicProfile::query()->where('is_active', true)->exists();
+    }
+
+    private function servicesHaveFeaturedFlag(): bool
+    {
+        return Schema::hasColumn('services', 'is_featured');
+    }
+
+    private function blogPostsHaveFeaturedFlag(): bool
+    {
+        return Schema::hasColumn('blog_posts', 'is_featured');
     }
 
     private function resolveBlogSectionType(Section $section): string
