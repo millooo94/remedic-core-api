@@ -49,6 +49,7 @@ class Service extends Model
         'og_title',
         'og_description',
         'is_active',
+        'is_web_active',
         'sort_order',
         'notes',
     ];
@@ -65,6 +66,7 @@ class Service extends Model
             'is_featured' => 'boolean',
             'is_local_seo_enabled' => 'boolean',
             'is_active' => 'boolean',
+            'is_web_active' => 'boolean',
             'sort_order' => 'integer',
         ];
     }

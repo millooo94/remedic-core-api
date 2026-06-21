@@ -10,11 +10,11 @@ trait HasSectionsAndFaqs
 {
     public function sections(): MorphMany
     {
-        return $this->morphMany(Section::class, 'sectionable');
+        return $this->morphMany(Section::class, 'sectionable')->ordered();
     }
 
     public function faqs(): MorphMany
     {
-        return $this->morphMany(FaqItem::class, 'faqable');
+        return $this->morphMany(FaqItem::class, 'faqable')->ordered();
     }
 }

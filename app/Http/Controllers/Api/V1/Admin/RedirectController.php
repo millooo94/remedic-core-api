@@ -29,10 +29,15 @@ class RedirectController extends Controller
             $query->where('is_active', (bool) $request->boolean('is_active'));
         }
 
+        if ($request->has('is_automatic')) {
+            $query->where('is_automatic', (bool) $request->boolean('is_automatic'));
+        }
+
         $sort = $request->sort();
         $direction = $request->direction();
 
         match ($sort) {
+            'is_automatic' => $query->orderBy('is_automatic', $direction),
             'to_path' => $query->orderBy('to_path', $direction),
             'http_code' => $query->orderBy('http_code', $direction),
             'updated_at' => $query->orderBy('updated_at', $direction),
@@ -44,7 +49,12 @@ class RedirectController extends Controller
 
     public function store(StoreRedirectRequest $request): RedirectResource
     {
-        $redirect = Redirect::create($request->validated());
+        $redirect = Redirect::create([
+            ...$request->validated(),
+            'is_automatic' => false,
+            'source_type' => null,
+            'source_id' => null,
+        ]);
 
         return new RedirectResource($redirect);
     }

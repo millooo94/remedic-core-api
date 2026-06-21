@@ -6,9 +6,13 @@ use App\Http\Controllers\Api\V1\Admin\Concerns\PersistsSectionsAndFaqs;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\StorePageRequest;
+use App\Http\Requests\Api\V1\Admin\Pages\UploadPageImageRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\UpdatePageRequest;
 use App\Http\Resources\Api\V1\Admin\PageResource;
 use App\Models\Page;
+use App\Services\PageSlugRedirectService;
+use App\Support\Media\PublicMediaUrl;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +20,11 @@ use Illuminate\Support\Facades\DB;
 class PageController extends Controller
 {
     use PersistsSectionsAndFaqs;
+
+    public function __construct(
+        private readonly PageSlugRedirectService $pageSlugRedirectService,
+    ) {
+    }
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
@@ -73,17 +82,47 @@ class PageController extends Controller
         return response()->noContent();
     }
 
+    public function uploadMedia(UploadPageImageRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        $slot = (string) $validated['slot'];
+        $file = $request->file('image');
+
+        $storedPath = $file->store("pages/{$slot}", 'public');
+
+        return response()->json([
+            'path' => $storedPath,
+            'url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
+            'slot' => $slot,
+            'original_name' => $file->getClientOriginalName(),
+        ]);
+    }
+
     private function persist(Page $page, array $payload): Page
     {
-        $relationsPayload = [
-            'sections' => $payload['sections'] ?? [],
-            'faqs' => $payload['faqs'] ?? [],
-        ];
+        $previousSlug = $page->exists ? (string) $page->slug : null;
+        $relationsPayload = [];
+
+        if (array_key_exists('sections', $payload)) {
+            $relationsPayload['sections'] = $payload['sections'];
+        }
+
+        if (array_key_exists('faqs', $payload)) {
+            $relationsPayload['faqs'] = $payload['faqs'];
+        }
 
         unset($payload['sections'], $payload['faqs']);
 
+        if (! $page->exists && ! array_key_exists('internal_key', $payload)) {
+            $payload['internal_key'] = (string) ($payload['slug'] ?? '');
+        }
+
         $page->fill($payload);
         $page->save();
+
+        if ($previousSlug !== null) {
+            $this->pageSlugRedirectService->sync($page, $previousSlug, (string) $page->slug);
+        }
 
         $this->persistSectionsAndFaqs($page, $relationsPayload);
 

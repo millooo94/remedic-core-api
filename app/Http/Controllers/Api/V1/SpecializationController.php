@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SpecializationController extends Controller
 {
@@ -58,7 +60,10 @@ class SpecializationController extends Controller
     public function store(StoreSpecializationRequest $request): SpecializationResource
     {
         $specialization = DB::transaction(function () use ($request): Specialization {
-            return Specialization::query()->create($request->validated());
+            $specialization = Specialization::query()->create($this->validatedAttributes($request));
+            $this->syncIcon($request, $specialization);
+
+            return $specialization;
         });
 
         return new SpecializationResource($specialization->loadCount(['professionals', 'services']));
@@ -72,8 +77,9 @@ class SpecializationController extends Controller
     public function update(UpdateSpecializationRequest $request, Specialization $specialization): SpecializationResource
     {
         $specialization = DB::transaction(function () use ($request, $specialization): Specialization {
-            $specialization->fill($request->validated());
+            $specialization->fill($this->validatedAttributes($request));
             $specialization->save();
+            $this->syncIcon($request, $specialization);
 
             return $specialization;
         });
@@ -83,8 +89,54 @@ class SpecializationController extends Controller
 
     public function destroy(Specialization $specialization): Response
     {
+        $this->deleteIcon($specialization->icon_path);
         $specialization->delete();
 
         return response()->noContent();
+    }
+
+    private function validatedAttributes(StoreSpecializationRequest $request): array
+    {
+        $payload = $request->validated();
+        unset($payload['icon_svg'], $payload['remove_icon']);
+
+        return $payload;
+    }
+
+    private function syncIcon(StoreSpecializationRequest $request, Specialization $specialization): void
+    {
+        $iconPath = $specialization->icon_path;
+
+        if ($request->boolean('remove_icon')) {
+            $this->deleteIcon($iconPath);
+            $iconPath = null;
+        }
+
+        if ($request->hasFile('icon_svg')) {
+            $this->deleteIcon($iconPath);
+
+            $filename = Str::slug((string) $specialization->slug ?: (string) $specialization->name ?: 'specializzazione')
+                .'-'.Str::lower(Str::random(8)).'.svg';
+
+            $iconPath = $request->file('icon_svg')->storeAs(
+                'specializations/icons',
+                $filename,
+                'public',
+            );
+        }
+
+        if ($iconPath !== $specialization->icon_path) {
+            $specialization->icon_path = $iconPath;
+            $specialization->save();
+        }
+    }
+
+    private function deleteIcon(?string $path): void
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return;
+        }
+
+        Storage::disk('public')->delete($path);
     }
 }

@@ -40,7 +40,7 @@ class PatientApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('first_name', 'Mario')
             ->assertJsonPath('last_name', 'Rossi')
-            ->assertJsonPath('full_name', 'Rossi Mario')
+            ->assertJsonPath('full_name', 'Mario Rossi')
             ->assertJsonPath('sex', 'male')
             ->assertJsonPath('available_channels.sms', true)
             ->assertJsonPath('available_channels.whatsapp', true)
@@ -142,8 +142,28 @@ class PatientApiTest extends TestCase
 
         $this->getJson('/api/v1/patients?contactable_sms=1')
             ->assertOk()
-            ->assertJsonPath('data.0.full_name', 'Bianchi Lucia')
+            ->assertJsonPath('data.0.full_name', 'Lucia Bianchi')
             ->assertJsonPath('data.0.performances_count', 1)
             ->assertJsonPath('data.0.visited_specializations.0', 'Dermatologia');
+    }
+
+    #[Test]
+    public function it_finds_patients_with_name_surname_or_surname_name_queries(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        Patient::factory()->create([
+            'first_name' => 'Anna Maria',
+            'last_name' => 'Verdi',
+            'full_name' => 'Verdi Anna Maria',
+        ]);
+
+        $this->getJson('/api/v1/patients?q=Anna%20Maria%20Verdi')
+            ->assertOk()
+            ->assertJsonPath('data.0.full_name', 'Anna Maria Verdi');
+
+        $this->getJson('/api/v1/patients?q=Verdi%20Anna')
+            ->assertOk()
+            ->assertJsonPath('data.0.full_name', 'Anna Maria Verdi');
     }
 }

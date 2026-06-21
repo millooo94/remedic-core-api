@@ -24,6 +24,8 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected static ?bool $backofficeRoleTablesAvailable = null;
 
+    protected static ?string $backofficeRoleTablesSignature = null;
+
     protected $fillable = [
         'legacy_backend_id',
         'name',
@@ -105,6 +107,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->can(AdminPermission::VIEW_BACKOFFICE->value) || $this->isAdmin();
     }
 
+    public function supportsBackofficeRolesAndPermissions(): bool
+    {
+        return $this->supportsBackofficeRoles();
+    }
+
     public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(self::class, 'approved_by_user_id');
@@ -122,14 +129,16 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected function supportsBackofficeRoles(): bool
     {
-        if (self::$backofficeRoleTablesAvailable !== null) {
-            return self::$backofficeRoleTablesAvailable;
-        }
-
         $tableNames = config('permission.table_names', []);
         $rolesTable = $tableNames['roles'] ?? 'roles';
         $modelHasRolesTable = $tableNames['model_has_roles'] ?? 'model_has_roles';
+        $signature = $rolesTable.'|'.$modelHasRolesTable;
 
+        if (self::$backofficeRoleTablesSignature === $signature && self::$backofficeRoleTablesAvailable !== null) {
+            return self::$backofficeRoleTablesAvailable;
+        }
+
+        self::$backofficeRoleTablesSignature = $signature;
         self::$backofficeRoleTablesAvailable = Schema::hasTable($rolesTable)
             && Schema::hasTable($modelHasRolesTable);
 

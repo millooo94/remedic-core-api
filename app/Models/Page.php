@@ -18,11 +18,14 @@ class Page extends Model
 
     protected $fillable = [
         'legacy_backend_id',
+        'internal_key',
         'title',
         'slug',
         'template',
         'excerpt',
         'intro_text',
+        'hero_image_path',
+        'hero_image_alt',
         'seo_title',
         'seo_description',
         'seo_h1',
@@ -30,6 +33,14 @@ class Page extends Model
         'robots',
         'og_title',
         'og_description',
+        'og_image_path',
+        'twitter_title',
+        'twitter_description',
+        'twitter_image_path',
+        'meta_author',
+        'meta_creator',
+        'meta_keywords',
+        'faq_enabled',
         'is_active',
         'published_at',
     ];
@@ -40,6 +51,7 @@ class Page extends Model
             'legacy_backend_id' => 'integer',
             'template' => PageTemplate::class,
             'robots' => RobotsValue::class,
+            'faq_enabled' => 'boolean',
             'is_active' => 'boolean',
             'published_at' => 'datetime',
         ];

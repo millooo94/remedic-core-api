@@ -44,6 +44,7 @@ class AdminWebServiceResource extends JsonResource
             'og_title' => $this->og_title,
             'og_description' => $this->og_description,
             'is_active' => (bool) $this->is_active,
+            'is_web_active' => (bool) $this->is_web_active,
             'sort_order' => (int) $this->sort_order,
             'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(fn ($section) => [
                 'id' => $section->id,

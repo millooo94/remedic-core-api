@@ -98,8 +98,8 @@ class AdminBackofficeApiTest extends TestCase
         Sanctum::actingAs($user);
 
         $created = $this->postJson('/api/v1/admin/pages', [
-            'title' => 'Chi siamo',
-            'slug' => 'chi-siamo',
+            'title' => 'Chi siamo FAQ test',
+            'slug' => 'chi-siamo-faq-test',
             'template' => 'default',
             'excerpt' => 'Pagina istituzionale',
             'intro_text' => '<p>Intro</p>',
@@ -151,6 +151,98 @@ class AdminBackofficeApiTest extends TestCase
         $this->assertDatabaseMissing('pages', [
             'id' => $pageId,
         ]);
+    }
+
+    #[Test]
+    public function page_faq_flags_are_persisted_and_reloaded_consistently(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'faq-pages-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+        $slug = 'chi-siamo-faq-test-'.str()->lower(str()->random(8));
+
+        $created = $this->postJson('/api/v1/admin/pages', [
+            'title' => 'Chi siamo FAQ test',
+            'slug' => $slug,
+            'template' => 'default',
+            'excerpt' => 'Pagina istituzionale',
+            'intro_text' => 'Pagina istituzionale',
+            'faq_enabled' => true,
+            'is_active' => true,
+            'faqs' => [
+                [
+                    'question' => 'FAQ attiva',
+                    'answer' => 'Risposta attiva',
+                    'sort_order' => 0,
+                    'is_active' => true,
+                    'is_structured_data' => true,
+                ],
+                [
+                    'question' => 'FAQ inattiva',
+                    'answer' => 'Risposta inattiva',
+                    'sort_order' => 1,
+                    'is_active' => false,
+                    'is_structured_data' => false,
+                ],
+            ],
+        ])->assertCreated();
+
+        $pageId = (int) $created->json('id');
+
+        $this->assertDatabaseHas('faq_items', [
+            'faqable_type' => Page::class,
+            'faqable_id' => $pageId,
+            'question' => 'FAQ inattiva',
+            'is_active' => false,
+            'is_structured_data' => false,
+        ]);
+
+        $this->putJson("/api/v1/admin/pages/{$pageId}", [
+            'title' => 'Chi siamo FAQ test',
+            'slug' => $slug,
+            'template' => 'default',
+            'excerpt' => 'Pagina istituzionale aggiornata',
+            'intro_text' => 'Pagina istituzionale aggiornata',
+            'faq_enabled' => true,
+            'is_active' => true,
+            'faqs' => [
+                [
+                    'question' => 'FAQ attiva',
+                    'answer' => 'Risposta attiva',
+                    'sort_order' => 0,
+                    'is_active' => false,
+                    'is_structured_data' => true,
+                ],
+                [
+                    'question' => 'FAQ visibile senza schema',
+                    'answer' => 'Risposta visibile senza schema',
+                    'sort_order' => 1,
+                    'is_active' => true,
+                    'is_structured_data' => false,
+                ],
+            ],
+        ])->assertOk()
+            ->assertJsonPath('faq_enabled', true)
+            ->assertJsonPath('faqs.0.question', 'FAQ attiva')
+            ->assertJsonPath('faqs.0.is_active', false)
+            ->assertJsonPath('faqs.0.is_structured_data', true)
+            ->assertJsonPath('faqs.1.question', 'FAQ visibile senza schema')
+            ->assertJsonPath('faqs.1.is_active', true)
+            ->assertJsonPath('faqs.1.is_structured_data', false);
+
+        $this->getJson("/api/v1/admin/pages/{$pageId}")
+            ->assertOk()
+            ->assertJsonPath('faq_enabled', true)
+            ->assertJsonPath('faqs.0.question', 'FAQ attiva')
+            ->assertJsonPath('faqs.0.is_active', false)
+            ->assertJsonPath('faqs.0.is_structured_data', true)
+            ->assertJsonPath('faqs.1.question', 'FAQ visibile senza schema')
+            ->assertJsonPath('faqs.1.is_active', true)
+            ->assertJsonPath('faqs.1.is_structured_data', false);
     }
 
     #[Test]
@@ -292,6 +384,93 @@ class AdminBackofficeApiTest extends TestCase
         $this->assertDatabaseMissing('redirects', [
             'id' => $redirectId,
         ]);
+    }
+
+    #[Test]
+    public function changing_a_page_slug_creates_and_updates_automatic_redirects(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'page-redirect-admin@example.com',
+            'role' => UserRole::Admin,
+        ]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+
+        Sanctum::actingAs($user);
+
+        $created = $this->postJson('/api/v1/admin/pages', [
+            'title' => 'Pagina redirect',
+            'slug' => 'pagina-redirect',
+            'template' => 'default',
+            'is_active' => true,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertCreated();
+
+        $pageId = (int) $created->json('id');
+
+        $this->putJson("/api/v1/admin/pages/{$pageId}", [
+            'title' => 'Pagina redirect',
+            'slug' => 'pagina-redirect-nuova',
+            'template' => 'default',
+            'is_active' => true,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('redirects', [
+            'from_path' => '/pagina-redirect',
+            'to_path' => '/pagina-redirect-nuova',
+            'is_automatic' => true,
+            'source_type' => Redirect::SOURCE_TYPE_PAGE,
+            'source_id' => $pageId,
+            'is_active' => true,
+        ]);
+
+        $this->putJson("/api/v1/admin/pages/{$pageId}", [
+            'title' => 'Pagina redirect',
+            'slug' => 'pagina-redirect-finale',
+            'template' => 'default',
+            'is_active' => true,
+            'sections' => [],
+            'faqs' => [],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('redirects', [
+            'from_path' => '/pagina-redirect',
+            'to_path' => '/pagina-redirect-finale',
+            'is_automatic' => true,
+            'source_type' => Redirect::SOURCE_TYPE_PAGE,
+            'source_id' => $pageId,
+            'is_active' => true,
+        ]);
+
+        $this->assertDatabaseHas('redirects', [
+            'from_path' => '/pagina-redirect-nuova',
+            'to_path' => '/pagina-redirect-finale',
+            'is_automatic' => true,
+            'source_type' => Redirect::SOURCE_TYPE_PAGE,
+            'source_id' => $pageId,
+            'is_active' => true,
+        ]);
+    }
+
+    #[Test]
+    public function public_redirect_resolver_returns_the_active_rule(): void
+    {
+        Redirect::query()->create([
+            'from_path' => '/vecchio-percorso',
+            'to_path' => '/nuovo-percorso',
+            'http_code' => 301,
+            'is_active' => true,
+            'is_automatic' => false,
+        ]);
+
+        $this->getJson('/api/v1/public/redirects/resolve?path=%2Fvecchio-percorso')
+            ->assertOk()
+            ->assertJsonPath('data.from_path', '/vecchio-percorso')
+            ->assertJsonPath('data.to_path', '/nuovo-percorso')
+            ->assertJsonPath('data.http_code', 301)
+            ->assertJsonPath('data.is_automatic', false);
     }
 
     #[Test]

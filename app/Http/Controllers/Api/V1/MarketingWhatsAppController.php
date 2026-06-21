@@ -3,20 +3,20 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Services\Marketing\WhatsAppPuppeteerService;
+use App\Services\IntegrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class MarketingWhatsAppController extends Controller
 {
     public function __construct(
-        private readonly WhatsAppPuppeteerService $whatsAppPuppeteerService,
+        private readonly IntegrationService $integrationService,
     ) {
     }
 
     public function status(): JsonResponse
     {
-        return response()->json($this->whatsAppPuppeteerService->status());
+        return response()->json($this->integrationService->whatsAppStatus());
     }
 
     public function reconnect(Request $request): JsonResponse
@@ -26,7 +26,14 @@ class MarketingWhatsAppController extends Controller
         ]);
 
         return response()->json(
-            $this->whatsAppPuppeteerService->reconnect((bool) ($payload['reset_session'] ?? false))
+            $this->integrationService->reconnectWhatsApp((bool) ($payload['reset_session'] ?? false))
+        );
+    }
+
+    public function resetSession(): JsonResponse
+    {
+        return response()->json(
+            $this->integrationService->resetWhatsAppSession()
         );
     }
 }

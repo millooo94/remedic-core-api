@@ -113,6 +113,12 @@ class PerformanceRecord extends Model
             ->orderBy('id');
     }
 
+    public function googleReviewRequests(): HasMany
+    {
+        return $this->hasMany(GoogleReviewRequest::class)
+            ->orderByDesc('id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

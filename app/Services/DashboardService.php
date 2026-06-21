@@ -320,6 +320,20 @@ class DashboardService
             'to_liquidate' => $toLiquidate,
             'liquidated_percent' => $total > 0 ? round(($liquidated / $total) * 100, 2) : 0.0,
             'to_liquidate_percent' => $total > 0 ? round(($toLiquidate / $total) * 100, 2) : 0.0,
+            'fiscal_split' => [
+                'total' => [
+                    'white' => $this->sumProfessionalAllocations($allocations, null, false),
+                    'black' => $this->sumProfessionalAllocations($allocations, null, true),
+                ],
+                'liquidated' => [
+                    'white' => $this->sumProfessionalAllocations($allocations, PaymentStatus::Pagata->value, false),
+                    'black' => $this->sumProfessionalAllocations($allocations, PaymentStatus::Pagata->value, true),
+                ],
+                'to_liquidate' => [
+                    'white' => $this->sumProfessionalAllocations($allocations, PaymentStatus::DaPagare->value, false),
+                    'black' => $this->sumProfessionalAllocations($allocations, PaymentStatus::DaPagare->value, true),
+                ],
+            ],
         ];
     }
 
@@ -391,6 +405,7 @@ class DashboardService
                         'professional_id' => $first?->professional_id,
                         'professional_name' => trim((string) ($first?->professional_name_snapshot ?: $first?->professional?->full_name ?: 'Non specificato')) ?: 'Non specificato',
                         'amount' => $amount,
+                        'is_black' => (bool) $record->is_black,
                         'performances' => (int) $record->quantity,
                         'promo_performances' => $record->is_promo ? (int) $record->quantity : 0,
                         'revenue_total' => $amount,
@@ -405,6 +420,7 @@ class DashboardService
                 'professional_id' => $record->professional_id,
                 'professional_name' => trim((string) ($record->professional_name_snapshot ?: '')) ?: 'Non specificato',
                 'amount' => (float) $record->professional_amount,
+                'is_black' => (bool) $record->is_black,
                 'performances' => (int) $record->quantity,
                 'promo_performances' => $record->is_promo ? (int) $record->quantity : 0,
                 'revenue_total' => (float) $record->total_amount,
@@ -413,6 +429,23 @@ class DashboardService
         }
 
         return $rows;
+    }
+
+    private function sumProfessionalAllocations(Collection $allocations, ?string $paymentStatus, bool $isBlack): float
+    {
+        return round((float) $allocations
+            ->filter(function (array $allocation) use ($paymentStatus, $isBlack): bool {
+                if ((bool) ($allocation['is_black'] ?? false) !== $isBlack) {
+                    return false;
+                }
+
+                if ($paymentStatus === null) {
+                    return true;
+                }
+
+                return ($allocation['payment_status'] ?? PaymentStatus::DaPagare->value) === $paymentStatus;
+            })
+            ->sum('amount'), 2);
     }
 
     private function normalizedRankingLabel(?string $value): string

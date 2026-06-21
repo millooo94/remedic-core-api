@@ -28,6 +28,7 @@ class PerformanceRecordService
         private readonly PerformanceCalculationService $calculationService,
         private readonly PerformanceRecordFilters $filters,
         private readonly PerformanceExpenseSyncService $performanceExpenseSyncService,
+        private readonly GoogleReviewRequestService $googleReviewRequestService,
     ) {
     }
 
@@ -49,6 +50,9 @@ class PerformanceRecordService
             $this->syncSplits($record, $state['splits']);
             $record->refresh();
             $this->performanceExpenseSyncService->syncFromPerformanceRecord($record);
+            $this->googleReviewRequestService->syncForPerformanceRecord(
+                $record->load(['patient', 'professional.publicProfile', 'professional.specializations', 'service.category'])
+            );
             $this->audit($actor, 'performance_record', $record->id, 'created', null, $this->snapshotForAudit($record));
 
             return $record->load(['patient', 'patients', 'professional', 'service.category', 'splits.professional']);
@@ -66,6 +70,9 @@ class PerformanceRecordService
             $this->syncSplits($performanceRecord, $state['splits']);
             $performanceRecord->refresh();
             $this->performanceExpenseSyncService->syncFromPerformanceRecord($performanceRecord);
+            $this->googleReviewRequestService->syncForPerformanceRecord(
+                $performanceRecord->load(['patient', 'professional.publicProfile', 'professional.specializations', 'service.category'])
+            );
             $this->audit($actor, 'performance_record', $performanceRecord->id, 'updated', $before, $this->snapshotForAudit($performanceRecord));
 
             return $performanceRecord->load(['patient', 'patients', 'professional', 'service.category', 'splits.professional']);
@@ -77,6 +84,7 @@ class PerformanceRecordService
         DB::transaction(function () use ($performanceRecord, $actor): void {
             $before = $this->snapshotForAudit($performanceRecord);
             $this->performanceExpenseSyncService->deleteForPerformanceRecord($performanceRecord);
+            $this->googleReviewRequestService->cancelForPerformanceRecord($performanceRecord);
             $performanceRecord->delete();
             $this->audit($actor, 'performance_record', $performanceRecord->id, 'deleted', $before, null);
         });

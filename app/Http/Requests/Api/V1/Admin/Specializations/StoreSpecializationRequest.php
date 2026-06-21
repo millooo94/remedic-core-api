@@ -18,6 +18,7 @@ class StoreSpecializationRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:specializations,slug'],
+            'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'short_description' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'local_intro_text' => ['nullable', 'string'],

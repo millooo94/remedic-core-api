@@ -15,6 +15,7 @@ class UpdateSpecializationRequest extends StoreSpecializationRequest
         return [
             'name' => ['required', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:190', Rule::unique('specializations', 'slug')->ignore($specialization?->id)],
+            'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];

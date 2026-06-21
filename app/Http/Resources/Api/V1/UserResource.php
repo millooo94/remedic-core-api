@@ -11,8 +11,10 @@ class UserResource extends JsonResource
     public function toArray(Request $request): array
     {
         $avatarUrl = PublicMediaUrl::fromPublicDisk($this->avatar_path, $request);
-        $roles = method_exists($this->resource, 'getRoleNames') ? $this->getRoleNames()->values()->all() : [];
-        $permissions = method_exists($this->resource, 'getAllPermissions')
+        $supportsBackofficeRoles = method_exists($this->resource, 'supportsBackofficeRolesAndPermissions')
+            && $this->resource->supportsBackofficeRolesAndPermissions();
+        $roles = $supportsBackofficeRoles ? $this->getRoleNames()->values()->all() : [];
+        $permissions = $supportsBackofficeRoles
             ? $this->getAllPermissions()->pluck('name')->values()->all()
             : [];
 

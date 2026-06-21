@@ -9,6 +9,9 @@ class BackofficeUserResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $supportsBackofficeRoles = method_exists($this->resource, 'supportsBackofficeRolesAndPermissions')
+            && $this->resource->supportsBackofficeRolesAndPermissions();
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -23,8 +26,8 @@ class BackofficeUserResource extends JsonResource
             'rejected_at' => optional($this->rejected_at)?->toIso8601String(),
             'last_login_at' => optional($this->last_login_at)?->toIso8601String(),
             'can_access_backoffice' => $this->canAccessBackoffice(),
-            'roles' => $this->getRoleNames()->values()->all(),
-            'permissions' => $this->getAllPermissions()->pluck('name')->values()->all(),
+            'roles' => $supportsBackofficeRoles ? $this->getRoleNames()->values()->all() : [],
+            'permissions' => $supportsBackofficeRoles ? $this->getAllPermissions()->pluck('name')->values()->all() : [],
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
         ];

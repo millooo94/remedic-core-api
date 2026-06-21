@@ -5,10 +5,16 @@ namespace App\Services\Marketing;
 use App\Services\Marketing\Channels\MarketingChannelSendResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class WhatsAppPuppeteerService
 {
+    public function __construct(
+        private readonly WhatsAppConnectorLauncherService $launcherService,
+    ) {
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -30,7 +36,31 @@ class WhatsAppPuppeteerService
                 ? $this->normalizeStatusPayload($payload)
                 : $this->unavailableStatus();
         } catch (ConnectionException) {
-            return $this->unavailableStatus();
+            $launchAttempt = $this->launcherService->launch(true);
+            if (! ($launchAttempt['started'] ?? false)) {
+                return $this->unavailableStatus(
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            }
+
+            usleep($this->startupWaitMicroseconds());
+
+            try {
+                $retryResponse = $this->client()->get('/status');
+                $retryPayload = $retryResponse->json();
+
+                return is_array($retryPayload)
+                    ? $this->normalizeStatusPayload($retryPayload)
+                    : $this->unavailableStatus(
+                        message: 'Connettore WhatsApp avviato, ma non ha restituito uno stato leggibile.',
+                        technicalMessage: $launchAttempt['message'] ?? null,
+                    );
+            } catch (ConnectionException) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp avviato, ma non e ancora raggiungibile. Attendi qualche secondo e riprova.',
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            }
         } catch (\Throwable $exception) {
             return $this->unavailableStatus(
                 message: 'Connettore WhatsApp non disponibile. Verificare il processo Puppeteer sul server.',
@@ -58,10 +88,213 @@ class WhatsAppPuppeteerService
 
             return $this->normalizeStatusPayload($payload);
         } catch (ConnectionException) {
-            return $this->unavailableStatus();
+            $launchAttempt = $this->launcherService->launch(true);
+            if (! ($launchAttempt['started'] ?? false)) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp non raggiungibile. Verificare il processo Puppeteer sul server.',
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            }
+
+            Log::info('WhatsApp connector launched after reconnect connection failure.', $launchAttempt);
+
+            usleep($this->startupWaitMicroseconds());
+
+            try {
+                $retryResponse = $this->client()->post('/reconnect', [
+                    'reset_session' => $resetSession,
+                ]);
+
+                $retryPayload = $retryResponse->json();
+                if (! is_array($retryPayload)) {
+                    return $this->unavailableStatus(
+                        message: 'Connettore WhatsApp avviato, ma non ha restituito uno stato leggibile.',
+                        technicalMessage: $launchAttempt['message'] ?? null,
+                    );
+                }
+
+                return $this->normalizeStatusPayload($retryPayload);
+            } catch (ConnectionException) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp avviato, ma non e ancora raggiungibile. Attendi qualche secondo e riprova.',
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            } catch (\Throwable $exception) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp avviato, ma la riconnessione non e stata completata.',
+                    technicalMessage: $exception->getMessage(),
+                );
+            }
         } catch (\Throwable $exception) {
             return $this->unavailableStatus(
                 message: 'Impossibile avviare la riconnessione WhatsApp dal gestionale.',
+                technicalMessage: $exception->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function connect(bool $resetSession = true): array
+    {
+        try {
+            $response = $this->client()->post('/connect', [
+                'reset_session' => $resetSession,
+            ]);
+
+            $payload = $response->json();
+            if (! is_array($payload)) {
+                return $this->unavailableStatus(
+                    message: 'Collegamento WhatsApp avviato, ma il connettore non ha restituito uno stato leggibile.',
+                );
+            }
+
+            return $this->normalizeStatusPayload($payload);
+        } catch (ConnectionException) {
+            $launchAttempt = $this->launcherService->launch(true);
+            if (! ($launchAttempt['started'] ?? false)) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp non raggiungibile. Verificare il processo Puppeteer sul server.',
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            }
+
+            Log::info('WhatsApp connector launched after connect connection failure.', $launchAttempt);
+
+            usleep($this->startupWaitMicroseconds());
+
+            try {
+                $retryResponse = $this->client()->post('/connect', [
+                    'reset_session' => $resetSession,
+                ]);
+
+                $retryPayload = $retryResponse->json();
+                if (! is_array($retryPayload)) {
+                    return $this->unavailableStatus(
+                        message: 'Connettore WhatsApp avviato, ma non ha restituito uno stato leggibile.',
+                        technicalMessage: $launchAttempt['message'] ?? null,
+                    );
+                }
+
+                return $this->normalizeStatusPayload($retryPayload);
+            } catch (ConnectionException) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp avviato, ma non e ancora raggiungibile. Attendi qualche secondo e riprova.',
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            } catch (\Throwable $exception) {
+                return $this->unavailableStatus(
+                    message: 'Connettore WhatsApp avviato, ma il nuovo QR non e stato generato.',
+                    technicalMessage: $exception->getMessage(),
+                );
+            }
+        } catch (\Throwable $exception) {
+            return $this->unavailableStatus(
+                message: 'Impossibile avviare il collegamento WhatsApp dal gestionale.',
+                technicalMessage: $exception->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function pair(): array
+    {
+        $stopAttempt = $this->launcherService->stopProcessOnPort();
+        Log::info('Preparing visible WhatsApp pairing flow.', $stopAttempt);
+
+        $launchAttempt = $this->launcherService->launch(false);
+        if (! ($launchAttempt['started'] ?? false)) {
+            return $this->unavailableStatus(
+                message: 'Impossibile avviare il pairing WhatsApp con Chrome visibile.',
+                technicalMessage: $launchAttempt['message'] ?? null,
+            );
+        }
+
+        usleep($this->startupWaitMicroseconds());
+
+        try {
+            $response = $this->client()->post('/connect', [
+                'reset_session' => true,
+            ]);
+
+            $payload = $response->json();
+            if (! is_array($payload)) {
+                return $this->unavailableStatus(
+                    message: 'Pairing WhatsApp avviato, ma il connettore non ha restituito uno stato leggibile.',
+                    technicalMessage: $launchAttempt['message'] ?? null,
+                );
+            }
+
+            return $this->normalizeStatusPayload($payload);
+        } catch (ConnectionException) {
+            return $this->unavailableStatus(
+                message: 'Chrome visibile avviato, ma il connettore WhatsApp non e ancora raggiungibile.',
+                technicalMessage: $launchAttempt['message'] ?? null,
+            );
+        } catch (\Throwable $exception) {
+            return $this->unavailableStatus(
+                message: 'Pairing WhatsApp non avviato correttamente.',
+                technicalMessage: $exception->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function disconnect(): array
+    {
+        try {
+            $response = $this->client()->post('/disconnect');
+            $payload = $response->json();
+
+            return is_array($payload)
+                ? $this->normalizeStatusPayload($payload)
+                : $this->unavailableStatus(
+                    message: 'Disconnessione WhatsApp eseguita, ma il connettore non ha restituito uno stato leggibile.',
+                    state: 'disconnected',
+                );
+        } catch (ConnectionException) {
+            return $this->unavailableStatus(
+                message: 'Connettore WhatsApp non raggiungibile, ma la sessione locale e stata comunque considerata disattivata.',
+                state: 'disconnected',
+            );
+        } catch (\Throwable $exception) {
+            return $this->unavailableStatus(
+                message: 'Impossibile completare la disconnessione WhatsApp dal gestionale.',
+                state: 'error',
+                technicalMessage: $exception->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function resetSession(): array
+    {
+        try {
+            $response = $this->client()->post('/reset-session');
+            $payload = $response->json();
+
+            return is_array($payload)
+                ? $this->normalizeStatusPayload($payload)
+                : $this->unavailableStatus(
+                    message: 'Reset sessione WhatsApp eseguito, ma il connettore non ha restituito uno stato leggibile.',
+                    state: 'disconnected',
+                );
+        } catch (ConnectionException) {
+            return $this->unavailableStatus(
+                message: 'Connettore WhatsApp non raggiungibile, ma la sessione locale e stata comunque considerata resettata.',
+                state: 'disconnected',
+            );
+        } catch (\Throwable $exception) {
+            return $this->unavailableStatus(
+                message: 'Impossibile completare il reset della sessione WhatsApp dal gestionale.',
+                state: 'error',
                 technicalMessage: $exception->getMessage(),
             );
         }
@@ -160,6 +393,7 @@ class WhatsAppPuppeteerService
             'message' => $message,
             'qr_required' => false,
             'qr_code_data_url' => null,
+            'qr_updated_at' => null,
             'web_state' => null,
             'queue_depth' => 0,
             'phone_number' => null,
@@ -183,6 +417,7 @@ class WhatsAppPuppeteerService
             'message' => $payload['message'] ?? 'Stato WhatsApp non disponibile.',
             'qr_required' => (bool) ($payload['qr_required'] ?? false),
             'qr_code_data_url' => $payload['qr_code_data_url'] ?? null,
+            'qr_updated_at' => $payload['qr_updated_at'] ?? null,
             'web_state' => $payload['web_state'] ?? null,
             'queue_depth' => (int) ($payload['queue_depth'] ?? 0),
             'phone_number' => $payload['phone_number'] ?? null,
@@ -211,6 +446,13 @@ class WhatsAppPuppeteerService
             ->withHeaders($token !== '' ? [
                 'X-Connector-Token' => $token,
             ] : []);
+    }
+
+    private function startupWaitMicroseconds(): int
+    {
+        $waitMs = (int) config('services.whatsapp_puppeteer.startup_wait_ms', 2000);
+
+        return max(100, $waitMs) * 1000;
     }
 
     /**

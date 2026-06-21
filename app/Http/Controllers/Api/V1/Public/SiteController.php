@@ -8,6 +8,7 @@ use App\Models\FaqItem;
 use App\Models\Page;
 use App\Models\Professional;
 use App\Models\ProfessionalPublicProfile;
+use App\Models\Redirect;
 use App\Models\Section;
 use App\Models\Service;
 use App\Models\SiteSetting;
@@ -264,6 +265,48 @@ class SiteController extends Controller
         ]);
     }
 
+    public function page(Request $request, string $slug): JsonResponse
+    {
+        $page = $this->pagesBaseQuery()
+            ->where(function (Builder $query) use ($slug): void {
+                $query
+                    ->where('slug', $slug)
+                    ->orWhere('internal_key', $slug);
+            })
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => $this->mapPageDetail($page),
+        ]);
+    }
+
+    public function resolveRedirect(Request $request): JsonResponse
+    {
+        $path = Redirect::normalizePathValue((string) $request->query('path', '/'));
+
+        $redirect = Redirect::query()
+            ->active()
+            ->where('from_path', $path)
+            ->first();
+
+        if ($redirect === null) {
+            return response()->json([
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => [
+                'from_path' => $redirect->from_path,
+                'to_path' => $redirect->to_path,
+                'http_code' => (int) $redirect->http_code,
+                'is_automatic' => (bool) $redirect->is_automatic,
+                'source_type' => $redirect->source_type,
+                'source_id' => $redirect->source_id !== null ? (int) $redirect->source_id : null,
+            ],
+        ]);
+    }
+
     private function resolveLimit(Request $request, int $default): int
     {
         return max(1, min(100, $request->integer('limit', $default)));
@@ -277,9 +320,14 @@ class SiteController extends Controller
                 'faqs' => fn ($query) => $query->active()->ordered(),
                 'services' => fn ($query) => $query
                     ->where('services.is_active', true)
+                    ->where('services.is_web_active', true)
                     ->orderBy('service_specialization.sort_order')
                     ->orderBy('display_name'),
-                'services.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('sort_order')->orderBy('name'),
+                'services.specializations' => fn ($query) => $query
+                    ->where('specializations.is_active', true)
+                    ->where('specializations.is_web_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('name'),
                 'professionals' => fn ($query) => $query
                     ->where('professionals.is_active', true)
                     ->orderBy('professional_specialization.sort_order')
@@ -288,6 +336,7 @@ class SiteController extends Controller
                 'professionals.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('sort_order')->orderBy('name'),
             ])
             ->where('is_active', true)
+            ->where('is_web_active', true)
             ->orderBy('sort_order')
             ->orderBy('name');
     }
@@ -299,7 +348,11 @@ class SiteController extends Controller
                 'category',
                 'sections' => fn ($query) => $query->active()->ordered(),
                 'faqs' => fn ($query) => $query->active()->ordered(),
-                'specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('service_specialization.sort_order')->orderBy('name'),
+                'specializations' => fn ($query) => $query
+                    ->where('specializations.is_active', true)
+                    ->where('specializations.is_web_active', true)
+                    ->orderBy('service_specialization.sort_order')
+                    ->orderBy('name'),
                 'professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
@@ -307,9 +360,14 @@ class SiteController extends Controller
                     ->orderBy('id'),
                 'professionalServices.professional' => fn ($query) => $query->where('is_active', true),
                 'professionalServices.professional.publicProfile' => fn ($query) => $query->where('is_active', true),
-                'professionalServices.professional.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('sort_order')->orderBy('name'),
+                'professionalServices.professional.specializations' => fn ($query) => $query
+                    ->where('specializations.is_active', true)
+                    ->where('specializations.is_web_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('name'),
             ])
             ->where('is_active', true)
+            ->where('is_web_active', true)
             ->orderBy('sort_order')
             ->orderBy('display_name');
 
@@ -333,7 +391,10 @@ class SiteController extends Controller
                     ->where('is_visible_public', true)
                     ->orderBy('public_sort_order')
                     ->orderBy('id'),
-                'professional.professionalServices.service' => fn ($query) => $query->where('is_active', true)->orderBy('display_name'),
+                'professional.professionalServices.service' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('is_web_active', true)
+                    ->orderBy('display_name'),
                 'professional.degrees',
                 'professional.academicSpecializations',
                 'professional.boardRegistrations',
@@ -349,13 +410,20 @@ class SiteController extends Controller
         return Professional::query()
             ->with([
                 'publicProfile' => fn ($query) => $query->where('is_active', true),
-                'specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('professional_specialization.sort_order')->orderBy('name'),
+                'specializations' => fn ($query) => $query
+                    ->where('specializations.is_active', true)
+                    ->where('specializations.is_web_active', true)
+                    ->orderBy('professional_specialization.sort_order')
+                    ->orderBy('name'),
                 'professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
                     ->orderBy('public_sort_order')
                     ->orderBy('id'),
-                'professionalServices.service' => fn ($query) => $query->where('is_active', true)->orderBy('display_name'),
+                'professionalServices.service' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('is_web_active', true)
+                    ->orderBy('display_name'),
                 'degrees',
                 'academicSpecializations',
                 'boardRegistrations',
@@ -383,6 +451,18 @@ class SiteController extends Controller
         }
 
         return $query;
+    }
+
+    private function pagesBaseQuery(): Builder
+    {
+        return Page::query()
+            ->with([
+                'sections' => fn ($query) => $query->active()->ordered(),
+                'faqs' => fn ($query) => $query->active()->ordered(),
+            ])
+            ->active()
+            ->published()
+            ->orderBy('title');
     }
 
     private function mapSiteSettings(SiteSetting $settings): array
@@ -437,7 +517,9 @@ class SiteController extends Controller
 
     private function mapSpecializationDetail(Specialization $specialization, Request $request): array
     {
-        $services = $specialization->services->filter(fn (Service $service) => (bool) $service->is_active)->values();
+        $services = $specialization->services
+            ->filter(fn (Service $service) => (bool) $service->is_active && (bool) $service->is_web_active)
+            ->values();
         $professionals = $specialization->professionals->values();
 
         $introBlocks = $this->buildSpecializationIntroBlocks($specialization);
@@ -468,7 +550,7 @@ class SiteController extends Controller
                     'description' => $this->resolveProfessionalShortBio($professional),
                     'image_url' => $this->resolveProfessionalImageUrl($professional, $request),
                     'main_procedures' => $professional->professionalServices
-                        ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
+                        ->filter(fn ($link) => $link->service !== null && $link->service->is_active && $link->service->is_web_active)
                         ->take(3)
                         ->map(fn ($link) => $link->service->publicLabel())
                         ->values()
@@ -484,6 +566,9 @@ class SiteController extends Controller
                 'description' => $specialization->seo_description,
                 'h1' => $specialization->seo_h1,
                 'canonical_url' => $specialization->canonical_url,
+                'robots' => $specialization->robots?->value ?? $specialization->robots,
+                'og_title' => $specialization->og_title,
+                'og_description' => $specialization->og_description,
             ],
         ];
     }
@@ -533,6 +618,7 @@ class SiteController extends Controller
 
         $relatedServices = Service::query()
             ->where('is_active', true)
+            ->where('is_web_active', true)
             ->whereKeyNot($service->id)
             ->whereHas('specializations', fn (Builder $query) => $query->whereIn('specializations.id', $service->specializations->pluck('id')->all()))
             ->orderByDesc('is_featured')
@@ -583,6 +669,15 @@ class SiteController extends Controller
                 'answer' => $faq->answer,
             ])->values()->all(),
             'featured' => (bool) $service->is_featured,
+            'seo' => [
+                'title' => $service->seo_title,
+                'description' => $service->seo_description,
+                'h1' => $service->seo_h1,
+                'canonical_url' => $service->canonical_url,
+                'robots' => $service->robots?->value ?? $service->robots,
+                'og_title' => $service->og_title,
+                'og_description' => $service->og_description,
+            ],
         ];
     }
 
@@ -611,7 +706,7 @@ class SiteController extends Controller
         $areasSection = $this->findSectionByKeys($sections, ['areas_of_interest', 'interests']);
 
         $services = $professional->professionalServices
-            ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
+            ->filter(fn ($link) => $link->service !== null && $link->service->is_active && $link->service->is_web_active)
             ->map(fn ($link): array => [
                 'name' => $link->service->publicLabel(),
                 'description' => $link->service->short_description ?: $link->service->description ?: '',
@@ -668,6 +763,15 @@ class SiteController extends Controller
                 'answer' => $faq->answer,
             ])->values()->all(),
             'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
+            'seo' => [
+                'title' => $profile?->seo_title,
+                'description' => $profile?->seo_description,
+                'h1' => $profile?->seo_h1,
+                'canonical_url' => $profile?->canonical_url,
+                'robots' => $profile?->robots?->value ?? $profile?->robots,
+                'og_title' => $profile?->og_title,
+                'og_description' => $profile?->og_description,
+            ],
         ];
     }
 
@@ -701,6 +805,7 @@ class SiteController extends Controller
         if (is_array($post->related_service_slugs)) {
             $relatedServices = Service::query()
                 ->where('is_active', true)
+                ->where('is_web_active', true)
                 ->whereIn('slug', $post->related_service_slugs)
                 ->orderBy('display_name')
                 ->get()
@@ -741,7 +846,81 @@ class SiteController extends Controller
                 'answer' => $faq->answer,
             ])->values()->all(),
             'cover_image' => $post->cover_image,
+            'seo' => [
+                'title' => $post->seo_title,
+                'description' => $post->seo_description,
+                'h1' => $post->seo_h1,
+                'canonical_url' => $post->canonical_url,
+                'robots' => $post->robots?->value ?? $post->robots,
+                'og_title' => $post->og_title,
+                'og_description' => $post->og_description,
+            ],
         ];
+    }
+
+    private function mapPageDetail(Page $page): array
+    {
+        $defaultOgImagePath = SiteSetting::singleton()->default_og_image_path;
+
+        return [
+            'internal_key' => $page->internal_key,
+            'slug' => $page->slug,
+            'title' => $page->title,
+            'template' => $page->template?->value ?? $page->template,
+            'excerpt' => $page->excerpt,
+            'intro_text' => $page->intro_text,
+            'hero_image_url' => $this->resolveMediaPathOrUrl($page->hero_image_path, request()),
+            'hero_image_alt' => $page->hero_image_alt,
+            'faq_enabled' => (bool) $page->faq_enabled,
+            'sections' => $page->sections->map(fn (Section $section): array => [
+                'key' => $section->key,
+                'title' => $section->title,
+                'subtitle' => $section->subtitle,
+                'content' => $section->content,
+                'extra_json' => $section->extra_json,
+            ])->values()->all(),
+            'faq' => $page->faq_enabled
+                ? $page->faqs->map(fn (FaqItem $faq): array => [
+                    'question' => $faq->question,
+                    'answer' => $faq->answer,
+                ])->values()->all()
+                : [],
+            'seo' => [
+                'title' => $page->seo_title,
+                'description' => $page->seo_description,
+                'h1' => $page->seo_h1,
+                'canonical_url' => $page->canonical_url,
+                'robots' => $page->robots?->value ?? $page->robots,
+                'og_title' => $page->og_title,
+                'og_description' => $page->og_description,
+                'og_image_url' => $this->resolveMediaPathOrUrl(
+                    $page->og_image_path ?: $page->hero_image_path ?: $defaultOgImagePath,
+                    request()
+                ),
+                'twitter_title' => $page->twitter_title,
+                'twitter_description' => $page->twitter_description,
+                'twitter_image_url' => $this->resolveMediaPathOrUrl(
+                    $page->twitter_image_path ?: $page->og_image_path ?: $page->hero_image_path ?: $defaultOgImagePath,
+                    request()
+                ),
+                'author' => $page->meta_author,
+                'creator' => $page->meta_creator,
+                'keywords' => $page->meta_keywords,
+            ],
+        ];
+    }
+
+    private function resolveMediaPathOrUrl(?string $pathOrUrl, Request $request): ?string
+    {
+        if (! $pathOrUrl) {
+            return null;
+        }
+
+        if (filter_var($pathOrUrl, FILTER_VALIDATE_URL)) {
+            return $pathOrUrl;
+        }
+
+        return PublicMediaUrl::fromPublicDisk($pathOrUrl, $request);
     }
 
     private function resolveServiceCategoryId(Service $service): string
@@ -793,7 +972,7 @@ class SiteController extends Controller
             'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
             'featured' => false,
             'available_services' => $professional->professionalServices
-                ->filter(fn ($link) => $link->service !== null && $link->service->is_active)
+                ->filter(fn ($link) => $link->service !== null && $link->service->is_active && $link->service->is_web_active)
                 ->take(5)
                 ->map(fn ($link) => $link->service->publicLabel())
                 ->values()

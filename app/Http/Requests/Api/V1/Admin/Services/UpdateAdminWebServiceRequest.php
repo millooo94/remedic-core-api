@@ -18,8 +18,6 @@ class UpdateAdminWebServiceRequest extends FormRequest
         $serviceId = (int) $this->route('service')->id;
 
         return [
-            'canonical_name' => ['required', 'string', 'max:255'],
-            'display_name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', Rule::unique('services', 'slug')->ignore($serviceId)],
             'description' => ['nullable', 'string'],
             'short_description' => ['nullable', 'string'],
@@ -33,7 +31,7 @@ class UpdateAdminWebServiceRequest extends FormRequest
             'featured_image_path' => ['nullable', 'string', 'max:255'],
             'social_image_path' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
-            'is_active' => ['sometimes', 'boolean'],
+            'is_web_active' => ['sometimes', 'boolean'],
             'is_diagnostic' => ['sometimes', 'boolean'],
             'is_visit' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],

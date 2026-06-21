@@ -11,12 +11,17 @@ class Redirect extends Model
 {
     use HasFactory;
 
+    public const SOURCE_TYPE_PAGE = 'page';
+
     protected $fillable = [
         'legacy_backend_id',
         'from_path',
         'to_path',
         'http_code',
         'is_active',
+        'is_automatic',
+        'source_type',
+        'source_id',
     ];
 
     protected function casts(): array
@@ -25,6 +30,8 @@ class Redirect extends Model
             'legacy_backend_id' => 'integer',
             'http_code' => 'integer',
             'is_active' => 'boolean',
+            'is_automatic' => 'boolean',
+            'source_id' => 'integer',
         ];
     }
 
@@ -33,21 +40,26 @@ class Redirect extends Model
         return $query->where('is_active', true);
     }
 
+    public function scopeAutomatic(Builder $query): Builder
+    {
+        return $query->where('is_automatic', true);
+    }
+
     protected function fromPath(): Attribute
     {
         return Attribute::make(
-            set: fn (string $value): string => $this->normalizePath($value),
+            set: fn (string $value): string => self::normalizePathValue($value),
         );
     }
 
     protected function toPath(): Attribute
     {
         return Attribute::make(
-            set: fn (string $value): string => $this->normalizeTarget($value),
+            set: fn (string $value): string => self::normalizeTargetValue($value),
         );
     }
 
-    protected function normalizePath(string $value): string
+    public static function normalizePathValue(string $value): string
     {
         $path = trim($value);
 
@@ -58,7 +70,7 @@ class Redirect extends Model
         return '/'.ltrim($path, '/');
     }
 
-    protected function normalizeTarget(string $value): string
+    public static function normalizeTargetValue(string $value): string
     {
         $target = trim($value);
 
@@ -70,6 +82,6 @@ class Redirect extends Model
             return $target;
         }
 
-        return $this->normalizePath($target);
+        return self::normalizePathValue($target);
     }
 }

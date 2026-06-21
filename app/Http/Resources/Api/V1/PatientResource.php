@@ -19,12 +19,16 @@ class PatientResource extends JsonResource
             : $segmentQueryService->specializationsFromRaw($this->visited_specializations_raw ?? null);
         $birthDate = $this->birth_date ? Carbon::parse((string) $this->birth_date) : null;
         $age = $birthDate ? $birthDate->age : null;
+        $displayName = trim(implode(' ', array_filter([
+            trim((string) $this->first_name),
+            trim((string) $this->last_name),
+        ])));
 
         return [
             'id' => $this->id,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
-            'full_name' => $this->full_name,
+            'full_name' => $displayName !== '' ? $displayName : $this->full_name,
             'sex' => $this->sex,
             'birth_date' => $birthDate?->toDateString(),
             'age' => $age,

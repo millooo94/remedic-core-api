@@ -31,8 +31,8 @@ class AdminWebServiceController extends Controller
             });
         }
 
-        if ($request->has('is_active')) {
-            $query->where('is_active', (bool) $request->boolean('is_active'));
+        if ($request->has('is_web_active')) {
+            $query->where('is_web_active', (bool) $request->boolean('is_web_active'));
         }
 
         $sort = $request->sort();

@@ -66,6 +66,11 @@ class Patient extends Model
         return $this->hasMany(MarketingCampaignDelivery::class)->orderByDesc('id');
     }
 
+    public function googleReviewRequests(): HasMany
+    {
+        return $this->hasMany(GoogleReviewRequest::class)->orderByDesc('id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

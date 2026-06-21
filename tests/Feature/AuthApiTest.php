@@ -186,6 +186,31 @@ class AuthApiTest extends TestCase
     }
 
     #[Test]
+    public function login_still_succeeds_when_backoffice_role_tables_are_not_available(): void
+    {
+        config()->set('permission.table_names.roles', 'missing_roles');
+        config()->set('permission.table_names.model_has_roles', 'missing_model_has_roles');
+
+        User::factory()->create([
+            'email' => 'admin@example.com',
+            'password' => Hash::make('ChangeMe123!'),
+            'role' => UserRole::Admin,
+            'is_active' => true,
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'ChangeMe123!',
+            'device_name' => 'phpunit',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.email', 'admin@example.com')
+            ->assertJsonPath('user.can_access_backoffice', true)
+            ->assertJsonPath('user.backoffice_roles', [])
+            ->assertJsonPath('user.backoffice_permissions', []);
+    }
+
+    #[Test]
     public function login_returns_a_machine_readable_reason_for_invalid_credentials(): void
     {
         User::factory()->create([

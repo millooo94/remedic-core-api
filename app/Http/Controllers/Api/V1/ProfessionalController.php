@@ -22,7 +22,7 @@ class ProfessionalController extends Controller
     public function index(): AnonymousResourceCollection
     {
         $professionals = Professional::query()
-            ->with(['areas', 'specializations'])
+            ->with(['areas', 'specializations', 'publicProfile'])
             ->orderBy('full_name')
             ->get();
 
@@ -46,7 +46,7 @@ class ProfessionalController extends Controller
             $this->syncSpecializations($professional, $specializationIds);
             $professional->forceFill(['area_name' => $areaNames[0] ?? null])->save();
 
-            return $professional->load(['areas', 'specializations']);
+            return $professional->load(['areas', 'specializations', 'publicProfile']);
         });
 
         return new ProfessionalResource($professional);
@@ -54,7 +54,7 @@ class ProfessionalController extends Controller
 
     public function show(Professional $professional): ProfessionalResource
     {
-        return new ProfessionalResource($professional->load(['areas', 'specializations']));
+        return new ProfessionalResource($professional->load(['areas', 'specializations', 'publicProfile']));
     }
 
     public function update(UpdateProfessionalRequest $request, Professional $professional): ProfessionalResource
@@ -80,7 +80,7 @@ class ProfessionalController extends Controller
             $this->syncSpecializations($professional, $specializationIds);
             $professional->forceFill(['area_name' => $areaNames[0] ?? null])->save();
 
-            return $professional->refresh()->load(['areas', 'specializations']);
+            return $professional->refresh()->load(['areas', 'specializations', 'publicProfile']);
         });
 
         return new ProfessionalResource($professional);

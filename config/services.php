@@ -42,10 +42,28 @@ return [
         'default_country_code' => env('TWILIO_DEFAULT_COUNTRY_CODE', '+39'),
     ],
 
+    'miodottore' => [
+        'login_url' => env('MIODOTTORE_LOGIN_URL'),
+        'verify_url' => env('MIODOTTORE_VERIFY_URL'),
+        'username' => env('MIODOTTORE_USERNAME'),
+        'password' => env('MIODOTTORE_PASSWORD'),
+        'storage_state_path' => env('MIODOTTORE_STORAGE_STATE_PATH', 'miodottore/storage-state.json'),
+        'access_timeout_ms' => (int) env('MIODOTTORE_ACCESS_TIMEOUT_MS', 600000),
+        'access_slowmo_ms' => (int) env('MIODOTTORE_ACCESS_SLOWMO_MS', 150),
+        'chromium_path' => env('MIODOTTORE_CHROMIUM_PATH'),
+        'debug_headless' => filter_var(env('MIODOTTORE_DEBUG_HEADLESS', false), FILTER_VALIDATE_BOOL),
+        'debug_timeout_ms' => (int) env('MIODOTTORE_DEBUG_TIMEOUT_MS', 90000),
+        'debug_slowmo_ms' => (int) env('MIODOTTORE_DEBUG_SLOWMO_MS', 150),
+        'debug_chromium_path' => env('MIODOTTORE_DEBUG_CHROMIUM_PATH'),
+    ],
+
     'whatsapp_puppeteer' => [
         'base_url' => env('WHATSAPP_PUPPETEER_BASE_URL', 'http://127.0.0.1:3101'),
         'token' => env('WHATSAPP_PUPPETEER_TOKEN'),
         'timeout_seconds' => (int) env('WHATSAPP_PUPPETEER_TIMEOUT_SECONDS', 15),
+        'node_binary' => env('WHATSAPP_PUPPETEER_NODE_BINARY', 'node'),
+        'connector_workdir' => env('WHATSAPP_PUPPETEER_WORKDIR', base_path('whatsapp-connector')),
+        'startup_wait_ms' => (int) env('WHATSAPP_PUPPETEER_STARTUP_WAIT_MS', 2000),
     ],
 
     'geocoding' => [

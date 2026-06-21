@@ -16,19 +16,27 @@ use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingC
 use App\Http\Controllers\Api\V1\Admin\SpecializationController as AdminSpecializationController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
+use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\CashMovementController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseRecordController;
 use App\Http\Controllers\Api\V1\ExpenseTemplateController;
+use App\Http\Controllers\Api\V1\GoogleReviewRequestController;
+use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\MarketingCampaignController;
 use App\Http\Controllers\Api\V1\MarketingSegmentController;
 use App\Http\Controllers\Api\V1\MarketingWhatsAppController;
 use App\Http\Controllers\Api\V1\PatientController;
 use App\Http\Controllers\Api\V1\PerformanceRecordController;
+use App\Http\Controllers\Api\V1\PerformanceRecordExportController;
+use App\Http\Controllers\Api\V1\ProfessionalAvailabilityExceptionController;
+use App\Http\Controllers\Api\V1\ProfessionalAvailabilityRuleController;
 use App\Http\Controllers\Api\V1\ProfessionalController;
+use App\Http\Controllers\Api\V1\ProfessionalImportedAvailabilityController;
 use App\Http\Controllers\Api\V1\ProfessionalStatementController;
+use App\Http\Controllers\Api\V1\ProfessionalTimeBlockController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\ServiceController;
@@ -49,6 +57,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('professionals/{slug}', [PublicSiteController::class, 'professional']);
         Route::get('blog-posts', [PublicSiteController::class, 'blogPosts']);
         Route::get('blog-posts/{slug}', [PublicSiteController::class, 'blogPost']);
+        Route::get('redirects/resolve', [PublicSiteController::class, 'resolveRedirect']);
+        Route::get('pages/{slug}', [PublicSiteController::class, 'page']);
     });
 
     Route::prefix('auth')->group(function (): void {
@@ -78,21 +88,68 @@ Route::prefix('v1')->group(function (): void {
         Route::put('profile', [ProfileController::class, 'update']);
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar']);
         Route::put('profile/password', [ProfileController::class, 'updatePassword']);
+        Route::get('integrations', [IntegrationController::class, 'index']);
+        Route::get('integrations/miodottore', [IntegrationController::class, 'showMiodottore']);
+        Route::get('integrations/miodottore/status', [IntegrationController::class, 'statusMiodottore']);
+        Route::put('integrations/miodottore', [IntegrationController::class, 'updateMiodottore']);
+        Route::get('integrations/whatsapp', [IntegrationController::class, 'showWhatsApp']);
+        Route::get('integrations/whatsapp/status', [IntegrationController::class, 'statusWhatsApp']);
+        Route::put('integrations/whatsapp', [IntegrationController::class, 'updateWhatsApp']);
+        Route::post('integrations/whatsapp/test-connection', [IntegrationController::class, 'testWhatsAppConnection']);
+        Route::post('integrations/whatsapp/pair', [IntegrationController::class, 'pairWhatsApp']);
+        Route::post('integrations/whatsapp/connect', [IntegrationController::class, 'connectWhatsApp']);
+        Route::post('integrations/whatsapp/disconnect', [IntegrationController::class, 'disconnectWhatsApp']);
+        Route::post('integrations/whatsapp/reset-session', [IntegrationController::class, 'resetWhatsAppSession']);
+        Route::post('integrations/whatsapp/reconnect', [IntegrationController::class, 'reconnectWhatsApp']);
+        Route::post('integrations/whatsapp/terminate-connection', [IntegrationController::class, 'terminateWhatsAppConnection']);
+        Route::post('integrations/miodottore/assisted-login/start', [IntegrationController::class, 'startMiodottoreAssistedLogin']);
+        Route::post('integrations/miodottore/background-login', [IntegrationController::class, 'backgroundLoginMiodottore']);
+        Route::post('integrations/miodottore/verify', [IntegrationController::class, 'verifyMiodottoreSession']);
+        Route::post('integrations/miodottore/verify-access', [IntegrationController::class, 'verifyMiodottoreAccess']);
+        Route::post('integrations/miodottore/test-connection', [IntegrationController::class, 'testMiodottoreConnection']);
+        Route::post('integrations/miodottore/terminate-connection', [IntegrationController::class, 'terminateMiodottoreConnection']);
+        Route::post('integrations/miodottore/sync-availabilities', [IntegrationController::class, 'syncMiodottoreAvailabilities']);
+        Route::post('integrations/miodottore/sync-patients', [IntegrationController::class, 'syncMiodottorePatients']);
+        Route::post('integrations/miodottore/sync-appointments', [IntegrationController::class, 'syncMiodottoreAppointments']);
         Route::apiResource('professionals', ProfessionalController::class);
+        Route::get('professionals/{professional}/availabilities', [ProfessionalImportedAvailabilityController::class, 'show']);
+        Route::post('professionals/{professional}/availabilities/sync', [ProfessionalImportedAvailabilityController::class, 'sync']);
+        Route::put('professionals/{professional}/availabilities/provider-profile', [ProfessionalImportedAvailabilityController::class, 'updateProviderProfile']);
         Route::get('specializations/options', [SpecializationController::class, 'options']);
         Route::apiResource('specializations', SpecializationController::class);
         Route::apiResource('services', ServiceController::class);
         Route::get('patients/options', [PatientController::class, 'options']);
         Route::post('patients/import', [PatientController::class, 'import']);
         Route::apiResource('patients', PatientController::class);
+        Route::patch('appointments/{appointment}/move', [AppointmentController::class, 'move']);
+        Route::apiResource('appointments', AppointmentController::class);
+        Route::apiResource('professional-availabilities', ProfessionalAvailabilityRuleController::class)
+            ->parameters(['professional-availabilities' => 'professionalAvailabilityRule'])
+            ->except(['show']);
+        Route::apiResource('professional-availability-exceptions', ProfessionalAvailabilityExceptionController::class)
+            ->parameters(['professional-availability-exceptions' => 'availabilityException'])
+            ->except(['show']);
+        Route::apiResource('professional-time-blocks', ProfessionalTimeBlockController::class)
+            ->parameters(['professional-time-blocks' => 'professionalTimeBlock'])
+            ->except(['show']);
         Route::post('marketing-segments/preview', [MarketingSegmentController::class, 'preview']);
         Route::get('marketing-segments/{marketingSegment}/campaign-preview', [MarketingSegmentController::class, 'campaignPreview']);
         Route::apiResource('marketing-segments', MarketingSegmentController::class);
         Route::get('marketing-whatsapp/status', [MarketingWhatsAppController::class, 'status']);
         Route::post('marketing-whatsapp/reconnect', [MarketingWhatsAppController::class, 'reconnect']);
+        Route::post('marketing-whatsapp/reset-session', [MarketingWhatsAppController::class, 'resetSession']);
+        Route::get('google-review-requests', [GoogleReviewRequestController::class, 'index']);
+        Route::get('google-review-requests/settings', [GoogleReviewRequestController::class, 'settings']);
+        Route::put('google-review-requests/settings', [GoogleReviewRequestController::class, 'updateSettings']);
+        Route::post('google-review-requests/{googleReviewRequest}/exclude', [GoogleReviewRequestController::class, 'exclude']);
+        Route::post('google-review-requests/{googleReviewRequest}/retry', [GoogleReviewRequestController::class, 'retry']);
+        Route::post('google-review-requests/{googleReviewRequest}/send-now', [GoogleReviewRequestController::class, 'sendNow']);
         Route::post('marketing-campaigns/{marketingCampaign}/send-test', [MarketingCampaignController::class, 'sendTest']);
         Route::post('marketing-campaigns/{marketingCampaign}/launch', [MarketingCampaignController::class, 'launch']);
         Route::apiResource('marketing-campaigns', MarketingCampaignController::class);
+        Route::get('performance-records/export/preview', [PerformanceRecordExportController::class, 'preview']);
+        Route::get('performance-records/export/pdf', [PerformanceRecordExportController::class, 'pdf']);
+        Route::get('performance-records/export/xlsx', [PerformanceRecordExportController::class, 'excel']);
         Route::apiResource('performance-records', PerformanceRecordController::class);
         Route::apiResource('counting-periods', CountingPeriodController::class);
 
@@ -124,6 +181,8 @@ Route::prefix('v1')->group(function (): void {
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:manage users');
                 Route::apiResource('pages', AdminPageController::class)
+                    ->middleware('permission:manage pages');
+                Route::post('pages/media', [AdminPageController::class, 'uploadMedia'])
                     ->middleware('permission:manage pages');
                 Route::apiResource('blog-posts', AdminBlogPostController::class)
                     ->middleware('permission:manage blog posts');

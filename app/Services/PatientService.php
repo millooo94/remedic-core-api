@@ -24,18 +24,39 @@ class PatientService
     public function baseQuery(array $filters = []): Builder
     {
         $query = $this->segmentQueryService->decorateWithMarketingMetrics(Patient::query());
+        $firstLastExpression = $this->searchableNameExpression('first_last');
+        $lastFirstExpression = $this->searchableNameExpression('last_first');
 
         $query
-            ->when($filters['q'] ?? null, function (Builder $builder, string $search): void {
-                $builder->where(function (Builder $nested) use ($search): void {
+            ->when($filters['q'] ?? null, function (Builder $builder, string $search) use ($firstLastExpression, $lastFirstExpression): void {
+                $normalizedSearch = $this->normalizeSearchValue($search);
+                $terms = array_values(array_filter(preg_split('/\s+/', $normalizedSearch) ?: []));
+
+                $builder->where(function (Builder $nested) use ($search, $normalizedSearch, $terms, $firstLastExpression, $lastFirstExpression): void {
                     $nested
                         ->where('full_name', 'like', "%{$search}%")
                         ->orWhere('first_name', 'like', "%{$search}%")
                         ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhereRaw("LOWER({$firstLastExpression}) like ?", ["%{$normalizedSearch}%"])
+                        ->orWhereRaw("LOWER({$lastFirstExpression}) like ?", ["%{$normalizedSearch}%"])
                         ->orWhere('phone', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%")
                         ->orWhere('tax_code', 'like', "%{$search}%")
                         ->orWhere('residence_city', 'like', "%{$search}%");
+
+                    if (count($terms) > 1) {
+                        $nested->orWhere(function (Builder $termQuery) use ($terms, $firstLastExpression, $lastFirstExpression): void {
+                            foreach ($terms as $term) {
+                                $termQuery->where(function (Builder $termMatch) use ($term, $firstLastExpression, $lastFirstExpression): void {
+                                    $termMatch
+                                        ->whereRaw('LOWER(first_name) like ?', ["%{$term}%"])
+                                        ->orWhereRaw('LOWER(last_name) like ?', ["%{$term}%"])
+                                        ->orWhereRaw("LOWER({$firstLastExpression}) like ?", ["%{$term}%"])
+                                        ->orWhereRaw("LOWER({$lastFirstExpression}) like ?", ["%{$term}%"]);
+                                });
+                            }
+                        });
+                    }
                 });
             })
             ->when(array_key_exists('excluded_from_campaigns', $filters) && $filters['excluded_from_campaigns'] !== null, fn (Builder $builder) => $builder->where('excluded_from_campaigns', (bool) $filters['excluded_from_campaigns']))
@@ -50,9 +71,10 @@ class PatientService
         $field = ltrim($sort, '-');
 
         return match ($field) {
-            'full_name', 'birth_date', 'year_of_birth', 'created_at', 'updated_at' => $query->orderBy($field, $direction)->orderBy('id'),
-            'last_visit_at' => $query->orderBy('last_visit_at', $direction)->orderBy('full_name'),
-            default => $query->orderBy('full_name')->orderBy('id'),
+            'full_name' => $query->orderBy('first_name', $direction)->orderBy('last_name', $direction)->orderBy('id'),
+            'birth_date', 'year_of_birth', 'created_at', 'updated_at' => $query->orderBy($field, $direction)->orderBy('id'),
+            'last_visit_at' => $query->orderBy('last_visit_at', $direction)->orderBy('first_name')->orderBy('last_name'),
+            default => $query->orderBy('first_name')->orderBy('last_name')->orderBy('id'),
         };
     }
 
@@ -180,6 +202,26 @@ class PatientService
         $normalized = trim((string) $value);
 
         return $normalized !== '' ? $normalized : null;
+    }
+
+    private function normalizeSearchValue(string $value): string
+    {
+        return mb_strtolower(trim((string) preg_replace('/\s+/', ' ', $value)));
+    }
+
+    private function searchableNameExpression(string $mode): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'sqlite') {
+            return $mode === 'last_first'
+                ? "trim(coalesce(last_name, '') || ' ' || coalesce(first_name, ''))"
+                : "trim(coalesce(first_name, '') || ' ' || coalesce(last_name, ''))";
+        }
+
+        return $mode === 'last_first'
+            ? "trim(concat_ws(' ', coalesce(last_name, ''), coalesce(first_name, '')))"
+            : "trim(concat_ws(' ', coalesce(first_name, ''), coalesce(last_name, '')))";
     }
 
     private function normalizeSex(mixed $value): ?string

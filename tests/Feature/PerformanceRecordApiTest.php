@@ -572,6 +572,77 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonValidationErrors(['is_black', 'is_promo']);
     }
 
+    #[Test]
+    public function it_filters_performance_records_by_invoice_liquidation_and_fiscal_flags(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $invoicedWhiteLiquidated = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-10',
+            'payment_status' => 'pagata',
+            'is_invoiced' => true,
+            'is_black' => false,
+            'notes' => 'invoiced-white-liquidated',
+        ]))->assertCreated()->json();
+
+        $notInvoicedWhiteNotLiquidated = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-11',
+            'payment_status' => 'da_pagare',
+            'is_invoiced' => false,
+            'is_black' => false,
+            'notes' => 'not-invoiced-white-not-liquidated',
+        ]))->assertCreated()->json();
+
+        $blackNotLiquidated = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-12',
+            'payment_status' => 'da_pagare',
+            'is_invoiced' => false,
+            'is_black' => true,
+            'payment_method' => 'cash',
+            'notes' => 'black-not-liquidated',
+        ]))->assertCreated()->json();
+
+        $this->getJson('/api/v1/performance-records?invoice_filter=invoiced')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $invoicedWhiteLiquidated['id']);
+
+        $this->getJson('/api/v1/performance-records?invoice_filter=not_invoiced')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $notInvoicedWhiteNotLiquidated['id']);
+
+        $this->getJson('/api/v1/performance-records?liquidation_filter=liquidated')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $invoicedWhiteLiquidated['id']);
+
+        $this->getJson('/api/v1/performance-records?liquidation_filter=not_liquidated')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->getJson('/api/v1/performance-records?fiscal_filter=white')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->getJson('/api/v1/performance-records?fiscal_filter=black')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $blackNotLiquidated['id']);
+
+        $this->getJson('/api/v1/performance-records?liquidation_filter=not_liquidated&fiscal_filter=white')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $notInvoicedWhiteNotLiquidated['id']);
+
+        $this->getJson('/api/v1/performance-records?invoice_filter=not_invoiced&fiscal_filter=black')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $blackNotLiquidated['id']);
+    }
+
     private function createProfessionalServiceContext(): array
     {
         $professional = Professional::factory()->create([

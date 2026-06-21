@@ -15,6 +15,9 @@ class RedirectResource extends JsonResource
             'to_path' => $this->to_path,
             'http_code' => (int) $this->http_code,
             'is_active' => (bool) $this->is_active,
+            'is_automatic' => (bool) $this->is_automatic,
+            'source_type' => $this->source_type,
+            'source_id' => $this->source_id !== null ? (int) $this->source_id : null,
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
         ];

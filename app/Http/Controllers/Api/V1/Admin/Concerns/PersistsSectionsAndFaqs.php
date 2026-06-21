@@ -8,31 +8,51 @@ trait PersistsSectionsAndFaqs
 {
     protected function persistSectionsAndFaqs(Model $model, array $payload): void
     {
-        $sections = $payload['sections'] ?? [];
-        $faqs = $payload['faqs'] ?? [];
+        if (array_key_exists('sections', $payload)) {
+            $sections = $payload['sections'] ?? [];
+            $model->sections()->delete();
 
-        $model->sections()->delete();
-        foreach ($sections as $index => $section) {
-            $model->sections()->create([
-                'key' => $section['key'],
-                'title' => $section['title'] ?? null,
-                'subtitle' => $section['subtitle'] ?? null,
-                'content' => $section['content'] ?? null,
-                'extra_json' => $section['extra_json'] ?? null,
-                'sort_order' => $section['sort_order'] ?? $index,
-                'is_active' => $section['is_active'] ?? true,
-            ]);
+            foreach ($sections as $index => $section) {
+                $model->sections()->create([
+                    'key' => $section['key'],
+                    'title' => $section['title'] ?? null,
+                    'subtitle' => $section['subtitle'] ?? null,
+                    'content' => $section['content'] ?? null,
+                    'extra_json' => $section['extra_json'] ?? null,
+                    'sort_order' => $section['sort_order'] ?? $index,
+                    'is_active' => $section['is_active'] ?? true,
+                ]);
+            }
         }
 
-        $model->faqs()->delete();
-        foreach ($faqs as $index => $faq) {
-            $model->faqs()->create([
-                'question' => $faq['question'],
-                'answer' => $faq['answer'],
-                'sort_order' => $faq['sort_order'] ?? $index,
-                'is_active' => $faq['is_active'] ?? true,
-                'is_structured_data' => $faq['is_structured_data'] ?? true,
-            ]);
+        if (array_key_exists('faqs', $payload)) {
+            $faqs = $payload['faqs'] ?? [];
+            $model->faqs()->delete();
+
+            foreach ($faqs as $index => $faq) {
+                $model->faqs()->create([
+                    'question' => isset($faq['question']) ? trim((string) $faq['question']) : '',
+                    'answer' => isset($faq['answer']) ? trim((string) $faq['answer']) : '',
+                    'sort_order' => $faq['sort_order'] ?? $index,
+                    'is_active' => $this->normalizeBooleanValue($faq['is_active'] ?? null, true),
+                    'is_structured_data' => $this->normalizeBooleanValue($faq['is_structured_data'] ?? null, true),
+                ]);
+            }
         }
+    }
+
+    private function normalizeBooleanValue(mixed $value, bool $default): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $normalized = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        return $normalized ?? $default;
     }
 }

@@ -17,6 +17,8 @@ class Specialization extends Model
         'legacy_backend_id',
         'name',
         'slug',
+        'color_hex',
+        'icon_path',
         'short_description',
         'intro_text',
         'local_intro_text',
@@ -33,6 +35,7 @@ class Specialization extends Model
         'og_title',
         'og_description',
         'is_active',
+        'is_web_active',
         'sort_order',
     ];
 
@@ -43,6 +46,9 @@ class Specialization extends Model
             'robots' => RobotsValue::class,
             'is_local_seo_enabled' => 'boolean',
             'is_active' => 'boolean',
+            'is_web_active' => 'boolean',
+            'color_hex' => 'string',
+            'icon_path' => 'string',
             'sort_order' => 'integer',
         ];
     }

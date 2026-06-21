@@ -18,8 +18,8 @@ class UpdateSpecializationRequest extends FormRequest
         $specializationId = (int) $this->route('specialization')->id;
 
         return [
-            'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', Rule::unique('specializations', 'slug')->ignore($specializationId)],
+            'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'short_description' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'local_intro_text' => ['nullable', 'string'],
@@ -35,7 +35,7 @@ class UpdateSpecializationRequest extends FormRequest
             'og_title' => ['nullable', 'string', 'max:255'],
             'og_description' => ['nullable', 'string'],
             'is_local_seo_enabled' => ['sometimes', 'boolean'],
-            'is_active' => ['sometimes', 'boolean'],
+            'is_web_active' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'sections' => ['sometimes', 'array'],
             'sections.*.key' => ['required', 'string', 'max:255'],

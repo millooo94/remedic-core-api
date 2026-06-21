@@ -21,6 +21,7 @@ class BackofficeIndexRequest extends FormRequest
             'sort' => ['sometimes', 'nullable', 'string', 'max:120'],
             'direction' => ['sometimes', 'nullable', Rule::in(['asc', 'desc'])],
             'is_active' => ['sometimes', 'nullable', 'boolean'],
+            'is_automatic' => ['sometimes', 'nullable', 'boolean'],
         ];
     }
 

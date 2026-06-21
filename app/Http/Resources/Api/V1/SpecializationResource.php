@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,6 +14,9 @@ class SpecializationResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'slug' => $this->slug,
+            'color_hex' => $this->color_hex,
+            'icon_path' => $this->icon_path,
+            'icon_url' => PublicMediaUrl::fromPublicDisk($this->icon_path, $request),
             'is_active' => (bool) $this->is_active,
             'sort_order' => (int) ($this->sort_order ?? 0),
             'professionals_count' => $this->whenCounted('professionals'),

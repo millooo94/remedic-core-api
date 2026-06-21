@@ -15,9 +15,11 @@ dotenv.config();
 const CONNECTOR_HOST = process.env.WHATSAPP_PUPPETEER_HOST || '127.0.0.1';
 const CONNECTOR_PORT = Number(process.env.WHATSAPP_PUPPETEER_PORT || 3101);
 const CONNECTOR_TOKEN = String(process.env.WHATSAPP_PUPPETEER_TOKEN || '').trim();
-const SESSION_PATH = process.env.WHATSAPP_PUPPETEER_SESSION_PATH
-  ? path.resolve(process.env.WHATSAPP_PUPPETEER_SESSION_PATH)
-  : path.resolve(__dirname, '../../storage/app/whatsapp-web-session');
+const DEFAULT_SESSION_PATH = path.resolve(__dirname, '../../storage/app/whatsapp-web-session');
+const SESSION_PATH = resolveSessionPath(
+  process.env.WHATSAPP_PUPPETEER_SESSION_PATH,
+  DEFAULT_SESSION_PATH
+);
 const CLIENT_ID = String(process.env.WHATSAPP_PUPPETEER_CLIENT_ID || 'remedic-marketing');
 const CHROMIUM_PATH = String(process.env.WHATSAPP_PUPPETEER_CHROMIUM_PATH || '').trim();
 const HEADLESS = toBoolean(process.env.WHATSAPP_PUPPETEER_HEADLESS, true);
@@ -26,6 +28,8 @@ const LAUNCH_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_LAUNCH_TIMEOUT_M
 const MESSAGE_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_MESSAGE_TIMEOUT_MS || 45000);
 const SEND_DELAY_MS = Number(process.env.WHATSAPP_PUPPETEER_SEND_DELAY_MS || 900);
 const MAX_SEND_RETRIES = Number(process.env.WHATSAPP_PUPPETEER_MAX_SEND_RETRIES || 2);
+const CONNECT_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_WAIT_MS || 20000);
+const CONNECT_POLL_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_POLL_MS || 300);
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -34,14 +38,17 @@ let client = null;
 let queueDepth = 0;
 let sendQueue = Promise.resolve();
 let lastQrPayload = null;
-let reconnectTimer = null;
+let activeClientGeneration = 0;
+let connectorOperationQueue = Promise.resolve();
+let currentInitPromise = null;
 
 const status = {
-  state: 'initializing',
+  state: 'disconnected',
   ready: false,
-  message: 'Avvio del connettore WhatsApp in corso.',
+  message: 'WhatsApp non collegato. Clicca Collega WhatsApp per generare un nuovo QR code.',
   qrRequired: false,
   qrCodeDataUrl: null,
+  qrUpdatedAt: null,
   webState: null,
   queueDepth: 0,
   phoneNumber: null,
@@ -50,6 +57,9 @@ const status = {
   lastErrorMessage: null,
   lastEventAt: isoNow(),
   lastConnectedAt: null,
+  processId: process.pid,
+  sessionPath: SESSION_PATH,
+  clientGeneration: 0,
 };
 
 function toBoolean(value, fallback) {
@@ -69,10 +79,28 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function resolveSessionPath(configuredPath, fallbackPath) {
+  if (!configuredPath || String(configuredPath).trim() === '') {
+    return fallbackPath;
+  }
+
+  const resolvedPath = path.resolve(String(configuredPath).trim());
+  const parentDirectory = path.dirname(resolvedPath);
+
+  if (fs.existsSync(resolvedPath) || fs.existsSync(parentDirectory)) {
+    return resolvedPath;
+  }
+
+  return fallbackPath;
+}
+
 function updateStatus(next = {}) {
   Object.assign(status, next, {
     queueDepth,
     lastEventAt: isoNow(),
+    processId: process.pid,
+    sessionPath: SESSION_PATH,
+    clientGeneration: activeClientGeneration,
   });
 }
 
@@ -83,6 +111,7 @@ function connectorResponse(extra = {}) {
     message: status.message,
     qr_required: status.qrRequired,
     qr_code_data_url: status.qrCodeDataUrl,
+    qr_updated_at: status.qrUpdatedAt,
     web_state: status.webState,
     queue_depth: status.queueDepth,
     phone_number: status.phoneNumber,
@@ -91,8 +120,23 @@ function connectorResponse(extra = {}) {
     last_error_message: status.lastErrorMessage,
     last_event_at: status.lastEventAt,
     last_connected_at: status.lastConnectedAt,
+    process_id: status.processId,
+    session_path: status.sessionPath,
+    client_generation: status.clientGeneration,
     ...extra,
   };
+}
+
+function logConnector(event, details = {}) {
+  const payload = {
+    pid: process.pid,
+    generation: activeClientGeneration,
+    state: status.state,
+    sessionPath: SESSION_PATH,
+    ...details,
+  };
+
+  console.log(`[WhatsApp] ${event}`, payload);
 }
 
 function classifyError(error) {
@@ -195,15 +239,63 @@ async function removeSessionDirectory() {
   await fsp.rm(SESSION_PATH, { recursive: true, force: true });
 }
 
-function scheduleReconnect(delayMs = 5000) {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-  }
+async function hasPersistedSessionData() {
+  try {
+    if (!fs.existsSync(SESSION_PATH)) {
+      return false;
+    }
 
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    initializeClient().catch(() => undefined);
-  }, delayMs);
+    const entries = await fsp.readdir(SESSION_PATH, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+
+      if (entry.isFile()) {
+        return true;
+      }
+
+      if (entry.isDirectory()) {
+        const nestedEntries = await fsp.readdir(path.join(SESSION_PATH, entry.name));
+        if (nestedEntries.length > 0) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
+function setDisconnectedStatus(message = 'WhatsApp non collegato. Clicca Collega WhatsApp per generare un nuovo QR code.') {
+  lastQrPayload = null;
+  updateStatus({
+    state: 'disconnected',
+    ready: false,
+    qrRequired: false,
+    qrCodeDataUrl: null,
+    qrUpdatedAt: null,
+    message,
+    webState: null,
+    phoneNumber: null,
+    pushName: null,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+  });
+}
+
+function runSerializedConnectorOperation(operation) {
+  const queuedOperation = connectorOperationQueue.then(operation, operation);
+  connectorOperationQueue = queuedOperation.then(() => undefined, () => undefined);
+
+  return queuedOperation;
+}
+
+function isActiveClient(targetClient, generation) {
+  return client === targetClient && activeClientGeneration === generation;
 }
 
 async function destroyClient() {
@@ -213,8 +305,15 @@ async function destroyClient() {
 
   const currentClient = client;
   client = null;
+  currentInitPromise = null;
+
+  const previousGeneration = activeClientGeneration;
+  logConnector('killing stale client', {
+    generation: previousGeneration,
+  });
 
   try {
+    currentClient.removeAllListeners();
     await currentClient.destroy();
   } catch (_) {
     // Best effort cleanup.
@@ -224,25 +323,43 @@ async function destroyClient() {
 async function initializeClient(options = {}) {
   const resetSession = Boolean(options.resetSession);
 
+  if (!resetSession && client) {
+    return {
+      client,
+      generation: activeClientGeneration,
+    };
+  }
+
+  if (!resetSession && currentInitPromise) {
+    return {
+      client,
+      generation: activeClientGeneration,
+    };
+  }
+
   if (resetSession) {
     await destroyClient();
     await removeSessionDirectory();
   }
 
-  if (client) {
-    return;
-  }
-
   await ensureSessionDirectory();
 
+  activeClientGeneration += 1;
+  const generation = activeClientGeneration;
+
   updateStatus({
-    state: 'initializing',
+    state: 'starting',
     ready: false,
     qrRequired: false,
     qrCodeDataUrl: null,
+    qrUpdatedAt: null,
     message: 'Avvio del connettore WhatsApp in corso.',
     lastErrorCode: null,
     lastErrorMessage: null,
+  });
+  logConnector('client initializing', {
+    resetSession,
+    generation,
   });
 
   const puppeteerArgs = [
@@ -269,31 +386,65 @@ async function initializeClient(options = {}) {
     },
   });
 
+  const handleStaleEvent = (event, details = {}) => {
+    if (isActiveClient(nextClient, generation)) {
+      return false;
+    }
+
+    logConnector(`${event} ignored for stale client`, {
+      generation,
+      ...details,
+    });
+
+    return true;
+  };
+
   nextClient.on('qr', async (qr) => {
+    if (handleStaleEvent('qr')) {
+      return;
+    }
+
     lastQrPayload = qr;
     const qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 280 });
     updateStatus({
-      state: 'qr_required',
+      state: 'qr_ready',
       ready: false,
       qrRequired: true,
       qrCodeDataUrl,
+      qrUpdatedAt: isoNow(),
       message: 'QR richiesto: collega WhatsApp Web per abilitare il canale.',
       lastErrorCode: null,
       lastErrorMessage: null,
     });
+    logConnector('qr received', {
+      generation,
+      qrUpdatedAt: status.qrUpdatedAt,
+    });
   });
 
   nextClient.on('authenticated', () => {
+    if (handleStaleEvent('authenticated')) {
+      return;
+    }
+
     updateStatus({
       state: 'authenticated',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
+      qrUpdatedAt: null,
       message: 'Sessione autenticata, sincronizzazione WhatsApp in corso.',
+    });
+    logConnector('authenticated', {
+      generation,
     });
   });
 
   nextClient.on('ready', () => {
+    if (handleStaleEvent('ready')) {
+      return;
+    }
+
     const info = nextClient.info || null;
     lastQrPayload = null;
     updateStatus({
@@ -301,6 +452,7 @@ async function initializeClient(options = {}) {
       ready: true,
       qrRequired: false,
       qrCodeDataUrl: null,
+      qrUpdatedAt: null,
       message: 'WhatsApp Web collegato e pronto all\'invio.',
       phoneNumber: info?.wid?.user || null,
       pushName: info?.pushname || null,
@@ -308,82 +460,174 @@ async function initializeClient(options = {}) {
       lastErrorCode: null,
       lastErrorMessage: null,
     });
+    logConnector('ready', {
+      generation,
+      phoneNumber: info?.wid?.user || null,
+      pushName: info?.pushname || null,
+    });
   });
 
   nextClient.on('change_state', (webState) => {
+    if (handleStaleEvent('change_state', { webState })) {
+      return;
+    }
+
     updateStatus({
+      webState,
+    });
+    logConnector('change_state', {
+      generation,
       webState,
     });
   });
 
   nextClient.on('auth_failure', (message) => {
+    if (handleStaleEvent('auth_failure', { message: String(message || '') })) {
+      return;
+    }
+
     updateStatus({
-      state: 'session_expired',
+      state: 'auth_failure',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
+      qrUpdatedAt: null,
       message: 'Sessione WhatsApp scaduta o non piu valida. Ricollega l\'account.',
       lastErrorCode: 'auth_failure',
       lastErrorMessage: String(message || 'Autenticazione WhatsApp fallita.'),
     });
-    scheduleReconnect(4000);
+    client = null;
+    currentInitPromise = null;
+    logConnector('auth_failure', {
+      generation,
+      message: String(message || ''),
+    });
+    nextClient.destroy().catch(() => undefined);
   });
 
   nextClient.on('disconnected', (reason) => {
+    if (handleStaleEvent('disconnected', { reason: String(reason || '') })) {
+      return;
+    }
+
     updateStatus({
-      state: 'session_expired',
+      state: 'disconnected',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
-      message: 'Connessione WhatsApp interrotta. Verificare la sessione o ricollegare l\'account.',
+      qrUpdatedAt: null,
+      message: 'Connessione WhatsApp interrotta. Clicca Collega WhatsApp per generare un nuovo QR code.',
       lastErrorCode: 'disconnected',
       lastErrorMessage: String(reason || 'Connessione WhatsApp interrotta.'),
     });
     client = null;
-    scheduleReconnect(4000);
+    currentInitPromise = null;
+    logConnector('disconnected', {
+      generation,
+      reason: String(reason || ''),
+    });
+    nextClient.destroy().catch(() => undefined);
   });
 
   nextClient.on('loading_screen', (_percent, message) => {
+    if (handleStaleEvent('loading_screen', { message: String(message || '') })) {
+      return;
+    }
+
     updateStatus({
-      state: 'initializing',
+      state: 'waiting_for_scan',
       ready: false,
       message: message ? `Preparazione WhatsApp Web: ${message}` : 'Preparazione WhatsApp Web in corso.',
+    });
+    logConnector('loading_screen', {
+      generation,
+      message: String(message || ''),
     });
   });
 
   client = nextClient;
 
-  try {
-    const initPromise = nextClient.initialize();
-    if (initPromise && typeof initPromise.catch === 'function') {
-      initPromise.catch((error) => {
-        const classification = classifyError(error);
+  const initPromise = (async () => {
+    try {
+      await nextClient.initialize();
+    } catch (error) {
+      const classification = classifyError(error);
+
+      if (isActiveClient(nextClient, generation)) {
         updateStatus({
           state: classification.connectorState,
           ready: false,
           qrRequired: false,
           qrCodeDataUrl: null,
+          qrUpdatedAt: null,
           message: classification.friendlyMessage,
           lastErrorCode: classification.providerStatus,
           lastErrorMessage: String(error?.message || error),
         });
         client = null;
+        currentInitPromise = null;
+      }
+
+      logConnector('error', {
+        generation,
+        message: String(error?.message || error),
       });
     }
-  } catch (error) {
-    const classification = classifyError(error);
-    updateStatus({
-      state: classification.connectorState,
-      ready: false,
-      qrRequired: false,
-      qrCodeDataUrl: null,
-      message: classification.friendlyMessage,
-      lastErrorCode: classification.providerStatus,
-      lastErrorMessage: String(error?.message || error),
-    });
-    client = null;
-    throw error;
+  })();
+
+  currentInitPromise = initPromise;
+  initPromise.finally(() => {
+    if (currentInitPromise === initPromise) {
+      currentInitPromise = null;
+    }
+  }).catch(() => undefined);
+
+  return {
+    client: nextClient,
+    generation,
+  };
+}
+
+async function waitForFreshConnectState({ generation, qrNotBeforeMs }) {
+  const startedAt = Date.now();
+
+  while ((Date.now() - startedAt) < CONNECT_WAIT_MS) {
+    if (generation !== activeClientGeneration) {
+      return {
+        kind: 'stale_generation',
+        message: 'Una nuova istanza WhatsApp ha sostituito il collegamento corrente.',
+      };
+    }
+
+    if (status.ready && status.state === 'connected') {
+      return {
+        kind: 'connected',
+      };
+    }
+
+    if (status.qrRequired && status.qrCodeDataUrl) {
+      const qrUpdatedAtMs = status.qrUpdatedAt ? Date.parse(status.qrUpdatedAt) : 0;
+      if (!Number.isNaN(qrUpdatedAtMs) && qrUpdatedAtMs >= qrNotBeforeMs) {
+        return {
+          kind: 'qr_ready',
+        };
+      }
+    }
+
+    if (['auth_failure', 'browser_unavailable', 'ui_incompatible', 'technical_error', 'session_expired'].includes(status.state)) {
+      return {
+        kind: 'error',
+        message: status.lastErrorMessage || status.message,
+      };
+    }
+
+    await wait(CONNECT_POLL_MS);
   }
+
+  return {
+    kind: 'timeout',
+    message: 'Nessun QR ricevuto entro il tempo previsto.',
+  };
 }
 
 function isImageMimeType(value) {
@@ -621,26 +865,105 @@ function authorizeRequest(req, res, next) {
 }
 
 app.get('/status', authorizeRequest, async (_req, res) => {
-  if (!client) {
-    initializeClient().catch(() => undefined);
-  }
-
   res.json(connectorResponse({
     session_path: SESSION_PATH,
     last_qr_available: !!lastQrPayload,
   }));
 });
 
+app.post('/connect', authorizeRequest, async (req, res) => {
+  const resetSession = req.body?.reset_session ?? true;
+
+  try {
+    logConnector('connect requested', {
+      resetSession: Boolean(resetSession),
+    });
+    const requestStartedAtMs = Date.now();
+    const { generation } = await runSerializedConnectorOperation(() => initializeClient({ resetSession: Boolean(resetSession) }));
+    const waitResult = await waitForFreshConnectState({
+      generation,
+      qrNotBeforeMs: requestStartedAtMs,
+    });
+
+    res.status(202).json(connectorResponse({
+      requested_reset_session: Boolean(resetSession),
+      wait_result: waitResult.kind,
+      message: waitResult.kind === 'qr_ready'
+        ? 'Scansiona il QR code con WhatsApp.'
+        : waitResult.kind === 'connected'
+          ? 'WhatsApp collegato correttamente.'
+          : waitResult.message || 'Generazione di un nuovo QR code WhatsApp avviata.',
+    }));
+  } catch (error) {
+    const classification = classifyError(error);
+    res.status(500).json(connectorResponse({
+      state: classification.connectorState,
+      message: classification.friendlyMessage,
+      last_error_code: classification.providerStatus,
+      last_error_message: String(error?.message || error),
+    }));
+  }
+});
+
 app.post('/reconnect', authorizeRequest, async (req, res) => {
   const resetSession = Boolean(req.body?.reset_session);
 
   try {
-    await initializeClient({ resetSession });
+    logConnector('reconnect requested', {
+      resetSession,
+    });
+    await runSerializedConnectorOperation(() => initializeClient({ resetSession }));
     res.status(202).json(connectorResponse({
       requested_reset_session: resetSession,
       message: resetSession
         ? 'Reset sessione richiesto. Attendere il nuovo QR code.'
         : 'Riconnessione WhatsApp avviata.',
+    }));
+  } catch (error) {
+    const classification = classifyError(error);
+    res.status(500).json(connectorResponse({
+      state: classification.connectorState,
+      message: classification.friendlyMessage,
+      last_error_code: classification.providerStatus,
+      last_error_message: String(error?.message || error),
+    }));
+  }
+});
+
+app.post('/disconnect', authorizeRequest, async (_req, res) => {
+  try {
+    logConnector('disconnect requested');
+    await runSerializedConnectorOperation(async () => {
+      await destroyClient();
+      await removeSessionDirectory();
+      setDisconnectedStatus('WhatsApp scollegato. Clicca Collega WhatsApp per generare un nuovo QR code.');
+    });
+
+    res.status(202).json(connectorResponse({
+      message: 'Sessione WhatsApp scollegata e dati locali puliti.',
+    }));
+  } catch (error) {
+    const classification = classifyError(error);
+    res.status(500).json(connectorResponse({
+      state: classification.connectorState,
+      message: classification.friendlyMessage,
+      last_error_code: classification.providerStatus,
+      last_error_message: String(error?.message || error),
+    }));
+  }
+});
+
+app.post('/reset-session', authorizeRequest, async (_req, res) => {
+  try {
+    logConnector('reset session requested');
+    await runSerializedConnectorOperation(async () => {
+      await destroyClient();
+      await removeSessionDirectory();
+      setDisconnectedStatus('Sessione WhatsApp resettata. Clicca Collega WhatsApp per generare un nuovo QR code.');
+    });
+
+    res.status(202).json(connectorResponse({
+      message: 'Sessione WhatsApp resettata correttamente.',
     }));
   } catch (error) {
     const classification = classifyError(error);
@@ -668,10 +991,6 @@ app.post('/send', authorizeRequest, async (req, res) => {
     });
   }
 
-  if (!client) {
-    initializeClient().catch(() => undefined);
-  }
-
   const result = await enqueueSend({ target, message, subject, mediaPath, mediaBase64, mediaName, mediaMimeType });
   return res.status(result.delivery_status === 'sent' ? 200 : 200).json(result);
 });
@@ -679,7 +998,11 @@ app.post('/send', authorizeRequest, async (req, res) => {
 app.listen(CONNECTOR_PORT, CONNECTOR_HOST, async () => {
   try {
     await ensureSessionDirectory();
-    initializeClient().catch(() => undefined);
+    if (await hasPersistedSessionData()) {
+      runSerializedConnectorOperation(() => initializeClient()).catch(() => undefined);
+    } else {
+      setDisconnectedStatus();
+    }
     console.log(`[whatsapp-connector] listening on http://${CONNECTOR_HOST}:${CONNECTOR_PORT}`);
   } catch (error) {
     const classification = classifyError(error);
@@ -687,6 +1010,7 @@ app.listen(CONNECTOR_PORT, CONNECTOR_HOST, async () => {
       state: classification.connectorState,
       ready: false,
       message: classification.friendlyMessage,
+      qrUpdatedAt: null,
       lastErrorCode: classification.providerStatus,
       lastErrorMessage: String(error?.message || error),
     });

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,6 +17,9 @@ class PageResource extends JsonResource
             'template' => $this->template?->value ?? $this->template,
             'excerpt' => $this->excerpt,
             'intro_text' => $this->intro_text,
+            'hero_image_path' => $this->hero_image_path,
+            'hero_image_url' => PublicMediaUrl::fromPublicDisk($this->hero_image_path, $request),
+            'hero_image_alt' => $this->hero_image_alt,
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,
             'seo_h1' => $this->seo_h1,
@@ -23,6 +27,16 @@ class PageResource extends JsonResource
             'robots' => $this->robots?->value ?? $this->robots,
             'og_title' => $this->og_title,
             'og_description' => $this->og_description,
+            'og_image_path' => $this->og_image_path,
+            'og_image_url' => PublicMediaUrl::fromPublicDisk($this->og_image_path, $request),
+            'twitter_title' => $this->twitter_title,
+            'twitter_description' => $this->twitter_description,
+            'twitter_image_path' => $this->twitter_image_path,
+            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($this->twitter_image_path, $request),
+            'meta_author' => $this->meta_author,
+            'meta_creator' => $this->meta_creator,
+            'meta_keywords' => $this->meta_keywords,
+            'faq_enabled' => (bool) $this->faq_enabled,
             'is_active' => (bool) $this->is_active,
             'published_at' => optional($this->published_at)?->toIso8601String(),
             'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(fn ($section) => [
