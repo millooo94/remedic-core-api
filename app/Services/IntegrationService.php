@@ -476,14 +476,6 @@ class IntegrationService
     }
 
     /**
-     * @return array{message: string, action: string, status: string, integration: array<string, mixed>}
-     */
-    public function activateMiodottore(): array
-    {
-        return $this->startMiodottoreAssistedLogin();
-    }
-
-    /**
      * @return array{success: bool, message: string, action: string, status: string, integration: array<string, mixed>, output_dir?: string, state_path?: string}
      */
     public function backgroundLoginMiodottore(): array
@@ -632,17 +624,6 @@ class IntegrationService
             'message' => 'Procedura di accesso MioDottore avviata. Completa il login nella finestra o pagina dedicata.',
             'status' => 'login_started',
         ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function miodottoreConnectSessionStatus(string $token): array
-    {
-        $session = $this->findMiodottoreConnectSession($token);
-        $this->refreshExpiredSession($session);
-
-        return $this->connectSessionSnapshot($session);
     }
 
     /**
@@ -859,33 +840,6 @@ class IntegrationService
             'status' => self::STATUS_SESSION_EXPIRED,
             'preserved_valid_session' => false,
             'message' => $fallbackMessage,
-        ];
-    }
-
-    /**
-     * @return array{message: string, action: string, status: string, integration: array<string, mixed>}
-     */
-    public function cancelMiodottoreConnectSession(): array
-    {
-        ExternalProviderLoginSession::query()
-            ->where('provider', self::PROVIDER_MIODOTTORE)
-            ->whereIn('status', [self::LOGIN_SESSION_PENDING, self::LOGIN_SESSION_ACTIVE])
-            ->update([
-                'status' => self::LOGIN_SESSION_EXPIRED,
-                'expires_at' => now(),
-                'completed_at' => now(),
-                'last_error' => 'Collegamento annullato dall utente.',
-            ]);
-
-        $this->reconcileMiodottoreAccountAfterFailedLogin('Collegamento annullato. Puoi riprovare quando vuoi.');
-        $account = $this->ensureAccountRecord(self::PROVIDER_MIODOTTORE)->fresh();
-
-        return [
-            'success' => true,
-            'message' => 'Collegamento MioDottore annullato.',
-            'action' => 'cancel_connect_session',
-            'status' => $account->login_status,
-            'integration' => $this->snapshot(self::PROVIDER_MIODOTTORE),
         ];
     }
 

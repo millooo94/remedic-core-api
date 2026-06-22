@@ -116,11 +116,6 @@ class IntegrationController extends Controller
         );
     }
 
-    public function activateMiodottore(): JsonResponse
-    {
-        return $this->backgroundLoginMiodottore();
-    }
-
     public function backgroundLoginMiodottore(): JsonResponse
     {
         try {
@@ -153,68 +148,6 @@ class IntegrationController extends Controller
         }
 
         return response()->json($result, Response::HTTP_ACCEPTED);
-    }
-
-    public function createMiodottoreConnectSession(): JsonResponse
-    {
-        try {
-            $result = $this->integrationService->createMiodottoreConnectSession();
-        } catch (InvalidArgumentException $exception) {
-            return response()->json([
-                'success' => false,
-                'message' => $exception->getMessage(),
-                'status' => IntegrationService::STATUS_ERROR,
-                'integration' => $this->integrationService->snapshot(IntegrationService::PROVIDER_MIODOTTORE),
-            ], Response::HTTP_ACCEPTED);
-        }
-
-        return response()->json([
-            'success' => true,
-            'action' => 'connect_session',
-            'status' => $result['status'],
-            'message' => $result['message'],
-            'token' => $result['token'],
-            'connect_token' => $result['token'],
-            'connect_url' => $result['connect_path'],
-            'connect_path' => $result['connect_path'],
-            'connect_mode' => $result['connect_mode'],
-            'reused' => $result['reused'],
-            'integration' => $this->integrationService->snapshot(IntegrationService::PROVIDER_MIODOTTORE),
-        ], Response::HTTP_ACCEPTED);
-    }
-
-    public function showMiodottoreConnectSession(string $token): JsonResponse
-    {
-        try {
-            $session = $this->integrationService->miodottoreConnectSessionStatus($token);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json([
-                'success' => false,
-                'message' => $exception->getMessage(),
-            ], Response::HTTP_NOT_FOUND);
-        }
-
-        return response()->json([
-            'success' => true,
-            'session' => $session,
-        ]);
-    }
-
-    public function cancelMiodottoreConnectSession(): JsonResponse
-    {
-        $result = $this->integrationService->cancelMiodottoreConnectSession();
-
-        return response()->json($result, Response::HTTP_ACCEPTED);
-    }
-
-    public function startMiodottoreControlledLogin(): JsonResponse
-    {
-        return $this->activateMiodottore();
-    }
-
-    public function saveMiodottoreSession(): JsonResponse
-    {
-        return $this->verifyMiodottoreAccess();
     }
 
     public function verifyMiodottoreAccess(): JsonResponse
