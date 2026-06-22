@@ -104,6 +104,27 @@ return [
             ]) : [],
         ],
 
+        'old_core' => [
+            'driver' => env('OLD_DB_CONNECTION', 'mysql'),
+            'url' => env('OLD_DB_URL'),
+            'host' => env('OLD_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('OLD_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('OLD_DB_DATABASE'),
+            'username' => env('OLD_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('OLD_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('OLD_DB_SOCKET', env('DB_SOCKET', '')),
+            'charset' => env('OLD_DB_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+            'collation' => env('OLD_DB_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'foreign_key_constraints' => env('OLD_DB_FOREIGN_KEYS', true),
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('OLD_DB_MYSQL_ATTR_SSL_CA', env('MYSQL_ATTR_SSL_CA')),
+            ]) : [],
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
