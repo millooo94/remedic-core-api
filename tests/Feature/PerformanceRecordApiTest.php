@@ -29,7 +29,10 @@ class PerformanceRecordApiTest extends TestCase
             'full_name' => 'Bottaro Giuseppe',
             'area_name' => 'Cardiologia',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Cardiologia', 'slug' => 'cardiologia']);
+        $category = ServiceCategory::query()->firstOrCreate(
+            ['slug' => 'cardiologia'],
+            ['name' => 'Cardiologia', 'is_active' => true, 'sort_order' => 1],
+        );
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Visita cardiologica',
@@ -649,7 +652,10 @@ class PerformanceRecordApiTest extends TestCase
             'full_name' => 'Bottaro Giuseppe',
             'area_name' => 'Cardiologia',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Cardiologia', 'slug' => 'cardiologia']);
+        $category = ServiceCategory::query()->firstOrCreate(
+            ['slug' => 'cardiologia'],
+            ['name' => 'Cardiologia', 'is_active' => true, 'sort_order' => 1],
+        );
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Visita cardiologica',

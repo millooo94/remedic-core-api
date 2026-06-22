@@ -125,7 +125,7 @@ class PerformanceRecordExportApiTest extends TestCase
 
         $this->assertCount(1, $exportData['records']);
         $this->assertSame('Bottaro Giuseppe', $exportData['records'][0]['professional_name']);
-        $this->assertSame('White', $exportData['records'][0]['fiscal_type_label']);
+        $this->assertSame('Ordinarie', $exportData['records'][0]['fiscal_type_label']);
         $this->assertSame(1, $exportData['totals']['professional_count']);
 
         $blackOnly = app(PerformanceRecordExportService::class)->build([
@@ -135,7 +135,7 @@ class PerformanceRecordExportApiTest extends TestCase
         ]);
 
         $this->assertCount(1, $blackOnly['records']);
-        $this->assertSame('Black', $blackOnly['records'][0]['fiscal_type_label']);
+        $this->assertSame('Speciali', $blackOnly['records'][0]['fiscal_type_label']);
 
         $blackWithLockedInvoice = app(PerformanceRecordExportService::class)->build([
             'date_from' => '2026-05-01',
@@ -145,7 +145,7 @@ class PerformanceRecordExportApiTest extends TestCase
         ]);
 
         $this->assertCount(1, $blackWithLockedInvoice['records']);
-        $this->assertSame('Black', $blackWithLockedInvoice['records'][0]['fiscal_type_label']);
+        $this->assertSame('Speciali', $blackWithLockedInvoice['records'][0]['fiscal_type_label']);
 
         $liquidatedInvoiced = app(PerformanceRecordExportService::class)->build([
             'date_from' => '2026-05-01',
@@ -164,8 +164,8 @@ class PerformanceRecordExportApiTest extends TestCase
             ->assertJsonPath('totals.professional_amount', 252)
             ->assertJsonPath('totals.white.professional_amount', 168)
             ->assertJsonPath('totals.black.professional_amount', 84)
-            ->assertJsonPath('fiscal_breakdown.0.label', 'White')
-            ->assertJsonPath('fiscal_breakdown.1.label', 'Black')
+            ->assertJsonPath('fiscal_breakdown.0.label', 'Ordinarie')
+            ->assertJsonPath('fiscal_breakdown.1.label', 'Speciali')
             ->assertJsonPath('fiscal_breakdown.2.label', 'Totale')
             ->assertJsonPath('professional_subtotals.0.professional_amount', 168)
             ->assertJsonPath('professional_subtotals.0.fiscal_breakdown.0.professional_amount', 168)

@@ -97,9 +97,11 @@ class AdminBackofficeApiTest extends TestCase
 
         Sanctum::actingAs($user);
 
+        $slug = 'chi-siamo-admin-test-'.str()->lower(str()->random(8));
+
         $created = $this->postJson('/api/v1/admin/pages', [
             'title' => 'Chi siamo FAQ test',
-            'slug' => 'chi-siamo-faq-test',
+            'slug' => $slug,
             'template' => 'default',
             'excerpt' => 'Pagina istituzionale',
             'intro_text' => '<p>Intro</p>',
@@ -129,12 +131,12 @@ class AdminBackofficeApiTest extends TestCase
 
         $this->assertDatabaseHas('pages', [
             'id' => $pageId,
-            'slug' => 'chi-siamo',
+            'slug' => $slug,
         ]);
 
         $this->putJson("/api/v1/admin/pages/{$pageId}", [
             'title' => 'Chi siamo oggi',
-            'slug' => 'chi-siamo',
+            'slug' => $slug,
             'template' => 'default',
             'excerpt' => 'Pagina aggiornata',
             'intro_text' => '<p>Intro aggiornata</p>',
@@ -505,21 +507,24 @@ class AdminBackofficeApiTest extends TestCase
             'local_intro_text' => '<p>Local intro aggiornata</p>',
             'local_area_notes' => 'Area note aggiornate',
             'is_local_seo_enabled' => false,
-            'is_active' => false,
+            'is_web_active' => false,
             'sort_order' => 5,
             'sections' => [],
             'faqs' => [],
         ])->assertOk()
-            ->assertJsonPath('name', 'Cardiologia clinica')
+            ->assertJsonPath('name', 'Cardiologia master test')
             ->assertJsonPath('is_local_seo_enabled', false)
-            ->assertJsonPath('is_active', false);
+            ->assertJsonPath('is_active', true)
+            ->assertJsonPath('is_web_active', false);
 
         $this->deleteJson("/api/v1/admin/specializations/{$specializationId}")
             ->assertMethodNotAllowed();
 
         $this->assertDatabaseHas('specializations', [
             'id' => $specializationId,
-            'name' => 'Cardiologia clinica',
+            'name' => 'Cardiologia master test',
+            'is_active' => true,
+            'is_web_active' => false,
         ]);
     }
 
@@ -554,23 +559,26 @@ class AdminBackofficeApiTest extends TestCase
             'description' => 'Descrizione aggiornata',
             'short_description' => 'Breve aggiornata',
             'intro_text' => '<p>Intro aggiornata</p>',
-            'is_active' => false,
+            'is_web_active' => false,
             'is_featured' => false,
             'is_local_seo_enabled' => false,
             'sort_order' => 2,
             'sections' => [],
             'faqs' => [],
         ])->assertOk()
-            ->assertJsonPath('display_name', 'Ecografia Addome')
-            ->assertJsonPath('is_active', false)
-            ->assertJsonPath('is_featured', false);
+            ->assertJsonPath('display_name', 'Ecografia Addome Completo')
+            ->assertJsonPath('is_active', true)
+            ->assertJsonPath('is_featured', false)
+            ->assertJsonPath('is_web_active', false);
 
         $this->deleteJson("/api/v1/admin/services/{$serviceId}")
             ->assertMethodNotAllowed();
 
         $this->assertDatabaseHas('services', [
             'id' => $serviceId,
-            'display_name' => 'Ecografia Addome',
+            'display_name' => 'Ecografia Addome Completo',
+            'is_active' => true,
+            'is_web_active' => false,
         ]);
     }
 

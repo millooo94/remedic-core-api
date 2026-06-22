@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\ExpenseCategory;
 use App\Models\ExpenseRecord;
+use App\Models\Patient;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
 use App\Models\Service;
@@ -146,6 +147,7 @@ class ExpenseCostsApiTest extends TestCase
             'performed_at' => '2026-04-26',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => [Patient::factory()->create()->id],
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'card',
@@ -191,6 +193,7 @@ class ExpenseCostsApiTest extends TestCase
             'performed_at' => '2026-04-27',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
+            'patient_ids' => [Patient::factory()->create()->id],
             'quantity' => 1,
             'unit_amount' => 100,
             'payment_method' => 'card',
@@ -281,7 +284,10 @@ class ExpenseCostsApiTest extends TestCase
             'full_name' => 'Bottaro Giuseppe',
             'area_name' => 'Cardiologia',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Cardiologia', 'slug' => 'cardiologia']);
+        $category = ServiceCategory::query()->firstOrCreate(
+            ['slug' => 'cardiologia'],
+            ['name' => 'Cardiologia', 'is_active' => true, 'sort_order' => 1],
+        );
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Visita cardiologica',

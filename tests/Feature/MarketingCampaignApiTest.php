@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\MarketingCampaign;
 use App\Models\MarketingSegment;
+use App\Models\ExternalProviderAccount;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -143,9 +144,9 @@ class MarketingCampaignApiTest extends TestCase
         $this->getJson('/api/v1/patients/options')
             ->assertOk()
             ->assertJsonCount(3)
-            ->assertJsonFragment(['full_name' => 'Bianchi Luca'])
-            ->assertJsonFragment(['full_name' => 'Rossi Mario'])
-            ->assertJsonFragment(['full_name' => 'Verdi Anna']);
+            ->assertJsonFragment(['full_name' => 'Luca Bianchi'])
+            ->assertJsonFragment(['full_name' => 'Mario Rossi'])
+            ->assertJsonFragment(['full_name' => 'Anna Verdi']);
 
         $this->postJson('/api/v1/marketing-segments/preview', [
             'segment_type' => 'filter_based',
@@ -180,6 +181,12 @@ class MarketingCampaignApiTest extends TestCase
     {
         $this->actingAsAdmin();
         config()->set('services.whatsapp_puppeteer.base_url', 'http://whatsapp-connector.test');
+        ExternalProviderAccount::query()->create([
+            'provider' => 'whatsapp',
+            'label' => 'WhatsApp',
+            'enabled' => true,
+            'login_status' => 'session_valid',
+        ]);
 
         Http::fake([
             'http://whatsapp-connector.test/status' => Http::response([
@@ -201,9 +208,11 @@ class MarketingCampaignApiTest extends TestCase
 
         $this->getJson('/api/v1/marketing-whatsapp/status')
             ->assertOk()
-            ->assertJsonPath('state', 'connected')
-            ->assertJsonPath('ready', true)
-            ->assertJsonPath('phone_number', '393331234567');
+            ->assertJsonPath('connected', true)
+            ->assertJsonPath('login_status', 'session_valid')
+            ->assertJsonPath('integration.connector_state', 'connected')
+            ->assertJsonPath('integration.connector_ready', true)
+            ->assertJsonPath('integration.phone_number', '393331234567');
     }
 
     #[Test]

@@ -32,7 +32,10 @@ class ProfessionalStatementApiTest extends TestCase
             'area_name' => 'Cardiologia',
             'iban' => 'IT60X0542811101000000123456',
         ]);
-        $category = ServiceCategory::factory()->create(['name' => 'Cardiologia', 'slug' => 'cardiologia']);
+        $category = ServiceCategory::query()->firstOrCreate(
+            ['slug' => 'cardiologia'],
+            ['name' => 'Cardiologia', 'is_active' => true, 'sort_order' => 1],
+        );
         $service = Service::factory()->create([
             'category_id' => $category->id,
             'display_name' => 'Visita cardiologica',

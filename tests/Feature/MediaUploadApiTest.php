@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\Professional;
+use App\Models\Specialization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -15,6 +16,14 @@ use Tests\TestCase;
 class MediaUploadApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function createSpecialization(string $name, string $slug): Specialization
+    {
+        return Specialization::query()->firstOrCreate(
+            ['slug' => $slug],
+            ['name' => $name, 'is_active' => true, 'sort_order' => 1],
+        );
+    }
 
     #[Test]
     public function user_avatar_is_stored_and_reloaded_with_the_request_host_url(): void
@@ -65,6 +74,7 @@ class MediaUploadApiTest extends TestCase
         ]);
 
         Sanctum::actingAs($admin);
+        $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
 
         $response = $this->withBackendHost()->post('/api/v1/professionals', [
             'subject_type' => 'individual',
@@ -72,6 +82,7 @@ class MediaUploadApiTest extends TestCase
             'last_name' => 'Rossi',
             'area_name' => 'Cardiologia',
             'area_names' => ['Cardiologia'],
+            'specialization_ids' => [$specialization->id],
             'is_active' => '1',
             'avatar' => UploadedFile::fake()->image('doctor.png', 240, 240),
         ], [
@@ -107,6 +118,7 @@ class MediaUploadApiTest extends TestCase
         ]);
 
         Sanctum::actingAs($admin);
+        $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
 
         $professional = Professional::factory()->create([
             'subject_type' => 'individual',
@@ -120,6 +132,7 @@ class MediaUploadApiTest extends TestCase
             'notes' => 'Note iniziali',
             'avatar_path' => null,
         ]);
+        $professional->specializations()->sync([$specialization->id => ['sort_order' => 0, 'is_primary' => true]]);
 
         $response = $this->withBackendHost()->post("/api/v1/professionals/{$professional->id}", [
             '_method' => 'PUT',
@@ -156,6 +169,7 @@ class MediaUploadApiTest extends TestCase
         ]);
 
         Sanctum::actingAs($admin);
+        $specialization = $this->createSpecialization('Dermatologia', 'dermatologia');
 
         $professional = Professional::factory()->create([
             'subject_type' => 'individual',
@@ -164,6 +178,7 @@ class MediaUploadApiTest extends TestCase
             'full_name' => 'Verdi Sara',
             'area_name' => 'Dermatologia',
         ]);
+        $professional->specializations()->sync([$specialization->id => ['sort_order' => 0, 'is_primary' => true]]);
 
         $oldAvatarPath = UploadedFile::fake()->image('old.png', 240, 240)
             ->store("professional-avatars/{$professional->id}", 'public');
@@ -176,6 +191,7 @@ class MediaUploadApiTest extends TestCase
             'last_name' => 'Verdi',
             'area_name' => 'Dermatologia',
             'area_names' => ['Dermatologia'],
+            'specialization_ids' => [$specialization->id],
             'email' => '',
             'iban' => '',
             'is_active' => '1',
@@ -206,6 +222,7 @@ class MediaUploadApiTest extends TestCase
         ]);
 
         Sanctum::actingAs($admin);
+        $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
 
         $createResponse = $this->post('/api/v1/professionals', [
             'subject_type' => 'individual',
@@ -213,6 +230,7 @@ class MediaUploadApiTest extends TestCase
             'last_name' => 'Bianchi',
             'area_name' => 'Cardiologia',
             'area_names[0]' => 'Cardiologia',
+            'specialization_ids' => [$specialization->id],
             'is_active' => '1',
             'email' => '',
             'iban' => '',
@@ -235,6 +253,7 @@ class MediaUploadApiTest extends TestCase
             'last_name' => 'Bianchi',
             'area_name' => 'Cardiologia',
             'area_names[0]' => 'Cardiologia',
+            'specialization_ids' => [$specialization->id],
             'is_active' => '1',
             'email' => '',
             'iban' => '',
@@ -265,6 +284,7 @@ class MediaUploadApiTest extends TestCase
         ]);
 
         Sanctum::actingAs($admin);
+        $specialization = $this->createSpecialization('Dermatologia', 'dermatologia');
 
         $createResponse = $this->post('/api/v1/professionals', [
             'subject_type' => 'individual',
@@ -272,6 +292,7 @@ class MediaUploadApiTest extends TestCase
             'last_name' => 'Neri',
             'area_name' => 'Dermatologia',
             'area_names' => json_encode(['Dermatologia']),
+            'specialization_ids' => [$specialization->id],
             'is_active' => '1',
             'email' => '',
             'iban' => '',
@@ -295,6 +316,7 @@ class MediaUploadApiTest extends TestCase
             'last_name' => 'Neri',
             'area_name' => 'Dermatologia',
             'area_names' => json_encode(['Dermatologia']),
+            'specialization_ids' => [$specialization->id],
             'is_active' => '1',
             'email' => '',
             'iban' => '',
