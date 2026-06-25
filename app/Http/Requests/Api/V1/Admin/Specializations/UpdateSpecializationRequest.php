@@ -19,7 +19,6 @@ class UpdateSpecializationRequest extends FormRequest
 
         return [
             'slug' => ['required', 'string', 'max:255', Rule::unique('specializations', 'slug')->ignore($specializationId)],
-            'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'short_description' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'local_intro_text' => ['nullable', 'string'],

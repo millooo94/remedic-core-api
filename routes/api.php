@@ -141,9 +141,12 @@ Route::prefix('v1')->group(function (): void {
         Route::get('google-review-requests', [GoogleReviewRequestController::class, 'index']);
         Route::get('google-review-requests/settings', [GoogleReviewRequestController::class, 'settings']);
         Route::put('google-review-requests/settings', [GoogleReviewRequestController::class, 'updateSettings']);
+        Route::put('google-review-requests/{googleReviewRequest}/schedule', [GoogleReviewRequestController::class, 'reschedule']);
+        Route::post('google-review-requests/{googleReviewRequest}/cancel', [GoogleReviewRequestController::class, 'cancel']);
         Route::post('google-review-requests/{googleReviewRequest}/exclude', [GoogleReviewRequestController::class, 'exclude']);
         Route::post('google-review-requests/{googleReviewRequest}/retry', [GoogleReviewRequestController::class, 'retry']);
         Route::post('google-review-requests/{googleReviewRequest}/send-now', [GoogleReviewRequestController::class, 'sendNow']);
+        Route::delete('google-review-requests/{googleReviewRequest}', [GoogleReviewRequestController::class, 'destroy']);
         Route::post('marketing-campaigns/{marketingCampaign}/send-test', [MarketingCampaignController::class, 'sendTest']);
         Route::post('marketing-campaigns/{marketingCampaign}/launch', [MarketingCampaignController::class, 'launch']);
         Route::apiResource('marketing-campaigns', MarketingCampaignController::class);

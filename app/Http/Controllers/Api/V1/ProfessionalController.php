@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ProfessionalGender;
 use App\Enums\ProfessionalSubjectType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Professionals\StoreProfessionalRequest;
@@ -109,6 +110,9 @@ class ProfessionalController extends Controller
 
         return [
             'subject_type' => $subjectType->value,
+            'gender' => $subjectType === ProfessionalSubjectType::Individual
+                ? ($payload['gender'] ?? ProfessionalGender::Unspecified->value)
+                : ProfessionalGender::Unspecified->value,
             'first_name' => $subjectType === ProfessionalSubjectType::Individual ? $firstName : null,
             'last_name' => $subjectType === ProfessionalSubjectType::Individual ? $lastName : null,
             'company_name' => $subjectType === ProfessionalSubjectType::Company ? $companyName : null,

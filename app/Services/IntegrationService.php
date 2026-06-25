@@ -434,6 +434,25 @@ class IntegrationService
     {
         $account = $this->ensureAccountRecord(self::PROVIDER_WHATSAPP);
         $status = $this->whatsAppPuppeteerService->resetSession();
+        $connectorState = (string) ($status['state'] ?? '');
+        $failed = in_array($connectorState, ['session_cleanup_failed', 'browser_locked', 'browser_unavailable', 'ui_incompatible', 'technical_error'], true);
+
+        if ($failed) {
+            $account->forceFill([
+                'enabled' => true,
+                'login_status' => self::STATUS_ERROR,
+                'last_error' => (string) ($status['message'] ?? 'Reset sessione WhatsApp non riuscito.'),
+                'last_session_verified_at' => now(),
+            ])->save();
+
+            return [
+                'success' => false,
+                'message' => (string) ($status['message'] ?? 'Reset sessione WhatsApp non riuscito.'),
+                'action' => 'reset_session',
+                'status' => self::STATUS_ERROR,
+                'integration' => $this->whatsAppSnapshot(),
+            ];
+        }
 
         $account->forceFill([
             'enabled' => false,
@@ -458,6 +477,25 @@ class IntegrationService
     {
         $account = $this->ensureAccountRecord(self::PROVIDER_WHATSAPP);
         $status = $this->whatsAppPuppeteerService->disconnect();
+        $connectorState = (string) ($status['state'] ?? '');
+        $failed = in_array($connectorState, ['session_cleanup_failed', 'browser_locked', 'browser_unavailable', 'ui_incompatible', 'technical_error'], true);
+
+        if ($failed) {
+            $account->forceFill([
+                'enabled' => true,
+                'login_status' => self::STATUS_ERROR,
+                'last_error' => (string) ($status['message'] ?? 'Disconnessione WhatsApp non riuscita.'),
+                'last_session_verified_at' => now(),
+            ])->save();
+
+            return [
+                'success' => false,
+                'message' => (string) ($status['message'] ?? 'Disconnessione WhatsApp non riuscita.'),
+                'action' => 'terminate_connection',
+                'status' => self::STATUS_ERROR,
+                'integration' => $this->whatsAppSnapshot(),
+            ];
+        }
 
         $account->forceFill([
             'enabled' => false,

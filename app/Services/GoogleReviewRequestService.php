@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\VisitShift;
 use App\Models\ExternalProviderAccount;
 use App\Models\GoogleReviewRequest;
 use App\Models\PerformanceRecord;
 use App\Models\SiteSetting;
+use App\Models\Specialization;
 use App\Models\User;
 use App\Services\Marketing\MarketingContactNormalizer;
 use App\Services\Marketing\WhatsAppPuppeteerService;
@@ -14,6 +16,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -26,16 +29,16 @@ class GoogleReviewRequestService
     public const STATUS_ERROR = 'error';
 
     private const WHATSAPP_PROVIDER = 'whatsapp';
-    private const DEFAULT_DELAY_DAYS = 3;
-    private const DEFAULT_DELAY_HOURS = 0;
-    private const DEFAULT_DELAY_MINUTES = 0;
-    private const DEFAULT_DELAY_SECONDS = 0;
+    private const BUSINESS_TIMEZONE = 'Europe/Rome';
+    private const AUTO_SEND_START_HOUR = 10;
+    private const AUTO_SEND_START_MINUTE = 0;
+    private const AUTO_SEND_END_HOUR = 19;
+    private const AUTO_SEND_END_MINUTE = 0;
 
     public function __construct(
         private readonly MarketingContactNormalizer $contactNormalizer,
         private readonly WhatsAppPuppeteerService $whatsAppPuppeteerService,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): LengthAwarePaginator
     {
@@ -79,10 +82,6 @@ class GoogleReviewRequestService
 
         return [
             'google_review_url' => $settings->google_review_url,
-            'google_review_delay_days' => (int) ($settings->google_review_delay_days ?? self::DEFAULT_DELAY_DAYS),
-            'google_review_delay_hours' => (int) ($settings->google_review_delay_hours ?? self::DEFAULT_DELAY_HOURS),
-            'google_review_delay_minutes' => (int) ($settings->google_review_delay_minutes ?? self::DEFAULT_DELAY_MINUTES),
-            'google_review_delay_seconds' => (int) ($settings->google_review_delay_seconds ?? self::DEFAULT_DELAY_SECONDS),
             'whatsapp_template_name' => Arr::get($config, 'review_template_name'),
             'whatsapp_template_language' => Arr::get($config, 'review_template_language'),
         ];
@@ -92,10 +91,6 @@ class GoogleReviewRequestService
     {
         $settings = SiteSetting::singleton();
         $settings->google_review_url = Arr::get($payload, 'google_review_url');
-        $settings->google_review_delay_days = max(0, (int) Arr::get($payload, 'google_review_delay_days', self::DEFAULT_DELAY_DAYS));
-        $settings->google_review_delay_hours = max(0, min(23, (int) Arr::get($payload, 'google_review_delay_hours', self::DEFAULT_DELAY_HOURS)));
-        $settings->google_review_delay_minutes = max(0, min(59, (int) Arr::get($payload, 'google_review_delay_minutes', self::DEFAULT_DELAY_MINUTES)));
-        $settings->google_review_delay_seconds = max(0, min(59, (int) Arr::get($payload, 'google_review_delay_seconds', self::DEFAULT_DELAY_SECONDS)));
         $settings->save();
 
         return $this->settings();
@@ -122,12 +117,24 @@ class GoogleReviewRequestService
                 return $existing;
             }
 
+            $preserveExcluded = $existing->status === self::STATUS_EXCLUDED;
+            $preserveCancelled = $existing->status === self::STATUS_CANCELLED;
+            $preserveManualSchedule = (bool) $existing->manual_override;
+            $resolvedStatus = $preserveExcluded
+                ? self::STATUS_EXCLUDED
+                : ($preserveCancelled ? self::STATUS_CANCELLED : $status);
+            $scheduledAt = $preserveManualSchedule || $preserveCancelled
+                ? $existing->scheduled_at
+                : $this->scheduleAtForRecord($record);
+
             $existing->fill(array_merge($snapshot, [
-                'status' => $existing->status === self::STATUS_EXCLUDED ? self::STATUS_EXCLUDED : $status,
-                'scheduled_at' => $this->scheduleAtForRecord($record),
-                'excluded_at' => $existing->status === self::STATUS_EXCLUDED ? $existing->excluded_at : null,
-                'excluded_by' => $existing->status === self::STATUS_EXCLUDED ? $existing->excluded_by : null,
-                'error_message' => $status === self::STATUS_ERROR ? $this->defaultEligibilityError($record, $snapshot) : null,
+                'status' => $resolvedStatus,
+                'scheduled_at' => $scheduledAt,
+                'excluded_at' => $preserveExcluded ? $existing->excluded_at : null,
+                'excluded_by' => $preserveExcluded ? $existing->excluded_by : null,
+                'cancelled_at' => $preserveCancelled ? $existing->cancelled_at : null,
+                'cancelled_by' => $preserveCancelled ? $existing->cancelled_by : null,
+                'error_message' => $resolvedStatus === self::STATUS_ERROR ? $this->defaultEligibilityError($record, $snapshot) : ($preserveCancelled ? $existing->error_message : null),
                 'template_payload' => $this->buildTemplatePayload($snapshot),
             ]));
             $existing->save();
@@ -154,6 +161,7 @@ class GoogleReviewRequestService
             ->whereIn('status', [self::STATUS_PENDING, self::STATUS_ERROR])
             ->update([
                 'status' => self::STATUS_CANCELLED,
+                'cancelled_at' => now(),
                 'error_message' => $reason,
                 'updated_at' => now(),
             ]);
@@ -169,6 +177,81 @@ class GoogleReviewRequestService
         ])->save();
 
         return $request->refresh();
+    }
+
+    public function reschedule(GoogleReviewRequest $request, Carbon|string $scheduledAt, ?User $actor = null): GoogleReviewRequest
+    {
+        if ($request->status === self::STATUS_SENT) {
+            throw ValidationException::withMessages([
+                'request' => 'La richiesta e gia stata inviata.',
+            ]);
+        }
+
+        $scheduledUtc = $this->normalizeScheduledAtInput($scheduledAt);
+        $scheduledRome = $scheduledUtc->copy()->setTimezone(self::BUSINESS_TIMEZONE);
+
+        Log::info('Google review rescheduled manually.', [
+            'google_review_request_id' => $request->id,
+            'performance_record_id' => $request->performance_record_id,
+            'scheduled_at_utc' => $scheduledUtc->toIso8601String(),
+            'scheduled_at_rome' => $scheduledRome->toIso8601String(),
+            'actor_id' => $actor?->id,
+        ]);
+
+        $request->forceFill([
+            'status' => self::STATUS_PENDING,
+            'scheduled_at' => $scheduledUtc,
+            'manual_override' => true,
+            'manual_override_at' => now(),
+            'manual_override_by' => $actor?->id,
+            'cancelled_at' => null,
+            'cancelled_by' => null,
+            'excluded_at' => null,
+            'excluded_by' => null,
+            'sent_at' => null,
+            'error_message' => null,
+            'provider_status' => null,
+            'provider_message_id' => null,
+            'provider_response' => null,
+        ])->save();
+
+        return $request->refresh();
+    }
+
+    public function cancel(GoogleReviewRequest $request, ?User $actor = null, ?string $reason = null): GoogleReviewRequest
+    {
+        $reasonText = trim((string) $reason);
+        $resolvedReason = $reasonText !== '' ? $reasonText : 'Invio recensione annullato manualmente.';
+
+        Log::info('Google review request cancelled manually.', [
+            'google_review_request_id' => $request->id,
+            'performance_record_id' => $request->performance_record_id,
+            'actor_id' => $actor?->id,
+            'reason' => $resolvedReason,
+        ]);
+
+        $request->forceFill([
+            'status' => self::STATUS_CANCELLED,
+            'cancelled_at' => now(),
+            'cancelled_by' => $actor?->id,
+            'manual_override' => true,
+            'manual_override_at' => now(),
+            'manual_override_by' => $actor?->id,
+            'error_message' => $resolvedReason,
+        ])->save();
+
+        return $request->refresh();
+    }
+
+    public function deleteCancelled(GoogleReviewRequest $request): void
+    {
+        if ($request->status !== self::STATUS_CANCELLED && $request->cancelled_at === null) {
+            throw ValidationException::withMessages([
+                'request' => 'Puoi eliminare solo richieste recensione annullate.',
+            ]);
+        }
+
+        $request->delete();
     }
 
     public function retry(GoogleReviewRequest $request): GoogleReviewRequest
@@ -192,9 +275,14 @@ class GoogleReviewRequestService
         $request->fill(array_merge($snapshot, [
             'status' => $status,
             'scheduled_at' => $this->nextManualRetrySlot(),
+            'manual_override' => false,
+            'manual_override_at' => null,
+            'manual_override_by' => null,
             'sent_at' => null,
             'excluded_at' => null,
             'excluded_by' => null,
+            'cancelled_at' => null,
+            'cancelled_by' => null,
             'error_message' => $status === self::STATUS_ERROR ? $this->defaultEligibilityError($record, $snapshot) : null,
             'provider_status' => null,
             'provider_message_id' => null,
@@ -220,7 +308,7 @@ class GoogleReviewRequestService
 
     public function sendPending(): int
     {
-        $nowRome = now('Europe/Rome');
+        $nowRome = now(self::BUSINESS_TIMEZONE);
         if (! $this->isAllowedSendWindow($nowRome)) {
             return 0;
         }
@@ -251,6 +339,15 @@ class GoogleReviewRequestService
 
     private function deliver(GoogleReviewRequest $request): GoogleReviewRequest
     {
+        if (in_array($request->status, [self::STATUS_CANCELLED, self::STATUS_EXCLUDED], true)) {
+            Log::info('Blocked Google review delivery for non-sendable request.', [
+                'google_review_request_id' => $request->id,
+                'status' => $request->status,
+            ]);
+
+            return $request->refresh();
+        }
+
         $record = $request->performanceRecord;
         if (! $record) {
             $request->forceFill([
@@ -326,28 +423,34 @@ class GoogleReviewRequestService
 
     private function buildSnapshot(PerformanceRecord $record): array
     {
+        $record->loadMissing([
+            'patient',
+            'professional.publicProfile',
+            'professional.specializations',
+            'service.specializations',
+        ]);
+
         $patient = $record->patient;
         $professional = $record->professional;
-        $specialization = $professional?->specializations
-            ?->firstWhere('name', $record->category_name_snapshot)
-            ?? $professional?->specializations?->firstWhere('pivot.is_primary', true)
-            ?? $professional?->specializations?->first();
+        $specialization = $this->resolveReviewSpecialization($record);
 
         $reviewUrl = SiteSetting::singleton()->google_review_url;
-        $patientName = trim((string) ($patient?->full_name ?: $patient?->first_name.' '.$patient?->last_name));
+        $patientName = trim((string) ($patient?->full_name ?: $patient?->first_name . ' ' . $patient?->last_name));
         $patientLastName = trim((string) ($patient?->last_name ?? ''));
         $patientSex = $this->normalizeSex($patient?->sex);
-        $professionalTitle = trim((string) ($professional?->publicProfile?->title_prefix ?? ''));
-        $professionalSex = $this->inferProfessionalSex($professionalTitle);
+        $professionalSex = $this->normalizeProfessionalGender($professional?->gender?->value ?? $professional?->gender);
+        $professionalTitle = $this->resolveDoctorHonorific($professionalSex);
         $professionalName = $this->formatProfessionalName($professional?->first_name, $professional?->last_name, $professional?->full_name, $record->professional_name_snapshot);
-        $specializationName = trim((string) ($specialization?->name ?? $record->category_name_snapshot));
+        $specializationName = trim((string) ($specialization?->name ?? ''));
         $normalizedPhone = $this->contactNormalizer->normalizePhone($patient?->phone);
+        $professionalRole = $this->resolveProfessionalRoleTitle($specialization, $professionalSex);
 
         $messageBody = $this->buildMessage(
             patientGreeting: $this->buildPatientGreeting($patientSex, $patientLastName),
             professionalSex: $professionalSex,
+            professionalTitle: $professionalTitle,
             professionalName: $professionalName !== '' ? $professionalName : null,
-            specializationName: $specializationName !== '' ? $specializationName : null,
+            professionalRole: $professionalRole,
             reviewUrl: $reviewUrl,
         );
 
@@ -366,26 +469,37 @@ class GoogleReviewRequestService
     private function buildMessage(
         string $patientGreeting,
         ?string $professionalSex,
+        ?string $professionalTitle,
         ?string $professionalName,
-        ?string $specializationName,
+        ?string $professionalRole,
         ?string $reviewUrl,
     ): string {
-        $roleLabel = $this->resolveProfessionalRole($specializationName, $professionalSex);
-        $roleReference = $roleLabel
-            ? sprintf('%s %s', $professionalSex === 'female' ? 'la nostra' : 'il nostro', $roleLabel)
-            : ($professionalSex === 'female' ? 'la nostra professionista' : 'il nostro professionista');
-        $doctorReference = $professionalName
-            ? sprintf('%s %s', $professionalSex === 'female' ? 'la dott.ssa' : 'il dott.', $professionalName)
-            : ($professionalSex === 'female' ? 'la dott.ssa del centro' : 'il dott. del centro');
-        $professionalLabel = sprintf('%s, %s', $roleReference, $doctorReference);
+        if (! $professionalRole || ! $professionalTitle || ! $professionalName || ! in_array($professionalSex, ['male', 'female'], true)) {
+            return trim(implode("\n", [
+                $patientGreeting,
+                'grazie per aver scelto Remedic.',
+                '',
+                'Speriamo che la sua esperienza presso Remedic sia stata positiva.',
+                '',
+                'Se le fa piacere, puo lasciare una recensione su Google per aiutarci a migliorare e far conoscere il nostro centro medico:',
+                '',
+                $reviewUrl ?: '[link recensione Google non configurato]',
+                '',
+                'Grazie da tutto il team Remedic.',
+            ]));
+        }
+
+        $roleReference = sprintf('%s %s', $professionalSex === 'female' ? 'la nostra' : 'il nostro', $professionalRole);
+        $doctorReference = sprintf('%s %s', $professionalSex === 'female' ? 'la' : 'il', trim($professionalTitle . ' ' . $professionalName));
+        $professionalLabel = sprintf('%s, %s,', $roleReference, $doctorReference);
 
         return trim(implode("\n", [
             $patientGreeting,
             'grazie per aver scelto Remedic.',
             '',
-            "Speriamo che la sua esperienza con {$professionalLabel} sia stata positiva.",
+            "Ci auguriamo che la sua esperienza con {$professionalLabel} sia stata positiva.",
             '',
-            'Se le fa piacere, puo lasciare una recensione su Google per aiutarci a migliorare e far conoscere il nostro centro medico:',
+            'Se le fa piacere, può lasciare una recensione su Google: per noi è molto importante e aiuta altre persone a conoscere il nostro centro medico.',
             '',
             $reviewUrl ?: '[link recensione Google non configurato]',
             '',
@@ -417,23 +531,13 @@ class GoogleReviewRequestService
         };
     }
 
-    private function inferProfessionalSex(?string $professionalTitle): ?string
+    private function normalizeProfessionalGender(mixed $value): ?string
     {
-        $normalizedTitle = Str::lower(trim((string) $professionalTitle));
-
-        if ($normalizedTitle === '') {
-            return null;
-        }
-
-        if (Str::contains($normalizedTitle, ['dott.ssa', 'dottoressa', 'ssa'])) {
-            return 'female';
-        }
-
-        if (Str::contains($normalizedTitle, ['dott', 'dr', 'doctor'])) {
-            return 'male';
-        }
-
-        return null;
+        return match (Str::lower(trim((string) $value))) {
+            'male' => 'male',
+            'female' => 'female',
+            default => null,
+        };
     }
 
     private function formatProfessionalName(
@@ -446,7 +550,7 @@ class GoogleReviewRequestService
         $resolvedLastName = trim((string) $lastName);
 
         if ($resolvedFirstName !== '' || $resolvedLastName !== '') {
-            return trim($resolvedFirstName.' '.$resolvedLastName);
+            return trim($resolvedFirstName . ' ' . $resolvedLastName);
         }
 
         $resolvedFullName = trim((string) $fullName);
@@ -457,50 +561,45 @@ class GoogleReviewRequestService
         return trim((string) $snapshotName);
     }
 
-    private function resolveProfessionalRole(?string $specializationName, ?string $professionalSex): ?string
+    private function resolveReviewSpecialization(PerformanceRecord $record): ?Specialization
     {
-        $normalizedSpecialization = $this->normalizeSpecializationKey($specializationName);
-        $isFemale = $professionalSex === 'female';
-
-        $roles = [
-            'cardiologia' => ['male' => 'cardiologo', 'female' => 'cardiologa'],
-            'neurologia' => ['male' => 'neurologo', 'female' => 'neurologa'],
-            'ginecologia' => ['male' => 'ginecologo', 'female' => 'ginecologa'],
-            'dermatologia' => ['male' => 'dermatologo', 'female' => 'dermatologa'],
-            'urologia' => ['male' => 'urologo', 'female' => 'urologa'],
-            'endocrinologia' => ['male' => 'endocrinologo', 'female' => 'endocrinologa'],
-            'reumatologia' => ['male' => 'reumatologo', 'female' => 'reumatologa'],
-            'medicina interna' => ['male' => 'internista', 'female' => 'internista'],
-            'chirurgia vascolare' => ['male' => 'chirurgo vascolare', 'female' => 'chirurga vascolare'],
-            'dietologia' => ['male' => 'dietologo', 'female' => 'dietologa'],
-            'medicina estetica' => ['male' => 'medico estetico', 'female' => 'medica estetica'],
-            'chirurgia plastica' => ['male' => 'chirurgo plastico', 'female' => 'chirurga plastica'],
-            'psicologia clinica' => ['male' => 'psicologo clinico', 'female' => 'psicologa clinica'],
-        ];
-
-        if (isset($roles[$normalizedSpecialization])) {
-            return $roles[$normalizedSpecialization][$isFemale ? 'female' : 'male'];
+        $service = $record->service;
+        if (! $service || ! $service->relationLoaded('specializations')) {
+            return null;
         }
 
-        foreach ($roles as $key => $labels) {
-            if (Str::startsWith($normalizedSpecialization, $key)) {
-                return $labels[$isFemale ? 'female' : 'male'];
-            }
-        }
-
-        return null;
+        return $service->specializations
+            ->sortBy(fn(Specialization $specialization): string => sprintf(
+                '%d-%05d-%010d',
+                $specialization->pivot?->is_primary ? 0 : 1,
+                (int) ($specialization->pivot?->sort_order ?? 99999),
+                $specialization->id,
+            ))
+            ->first();
     }
 
-    private function normalizeSpecializationKey(?string $specializationName): string
+    private function resolveDoctorHonorific(?string $professionalSex): ?string
     {
-        $normalized = Str::of((string) $specializationName)
-            ->ascii()
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', ' ')
-            ->trim()
-            ->value();
+        return match ($professionalSex) {
+            'male' => 'Dott.',
+            'female' => 'Dott.ssa',
+            default => null,
+        };
+    }
 
-        return $normalized;
+    private function resolveProfessionalRoleTitle(?Specialization $specialization, ?string $professionalSex): ?string
+    {
+        if (! $specialization || ! in_array($professionalSex, ['male', 'female'], true)) {
+            return null;
+        }
+
+        $label = $professionalSex === 'female'
+            ? $specialization->professional_title_female
+            : $specialization->professional_title_male;
+
+        $normalized = trim((string) $label);
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     private function initialStatus(PerformanceRecord $record, array $snapshot): string
@@ -568,32 +667,57 @@ class GoogleReviewRequestService
 
     private function scheduleAtForRecord(PerformanceRecord $record): Carbon
     {
-        $settings = SiteSetting::singleton();
-        $baseTime = $record->created_at
+        $createdAtLocal = ($record->created_at
             ? CarbonImmutable::instance($record->created_at)
-            : CarbonImmutable::parse($record->performed_at ?: now(), config('app.timezone', 'UTC'));
+            : CarbonImmutable::now(config('app.timezone', 'UTC')))
+            ->setTimezone(self::BUSINESS_TIMEZONE);
+        $performedDayLocal = CarbonImmutable::parse(
+            (string) ($record->performed_at ?: $createdAtLocal->toDateString()),
+            self::BUSINESS_TIMEZONE,
+        )->startOfDay();
+        $visitShift = $record->visit_shift instanceof VisitShift
+            ? $record->visit_shift
+            : VisitShift::tryFrom((string) $record->visit_shift) ?? VisitShift::Morning;
 
-        $reference = $baseTime
-            ->addDays((int) ($settings->google_review_delay_days ?? self::DEFAULT_DELAY_DAYS))
-            ->addHours((int) ($settings->google_review_delay_hours ?? self::DEFAULT_DELAY_HOURS))
-            ->addMinutes((int) ($settings->google_review_delay_minutes ?? self::DEFAULT_DELAY_MINUTES))
-            ->addSeconds((int) ($settings->google_review_delay_seconds ?? self::DEFAULT_DELAY_SECONDS));
+        $candidateLocal = $visitShift === VisitShift::Afternoon
+            ? $performedDayLocal->addDay()->setTime(self::AUTO_SEND_START_HOUR, self::AUTO_SEND_START_MINUTE)
+            : $performedDayLocal->setTime(16, 30);
 
-        return $reference->setTimezone(config('app.timezone', 'UTC'))->toMutable();
+        $reason = $visitShift === VisitShift::Afternoon
+            ? 'afternoon_next_day_morning_slot'
+            : 'morning_same_day_slot';
+
+        if ($candidateLocal->lessThanOrEqualTo($createdAtLocal)) {
+            $candidateLocal = $this->nextMorningSlotAfter($createdAtLocal);
+            $reason = 'theoretical_slot_already_passed';
+        }
+
+        if (! $this->isWithinAllowedWindow($candidateLocal)) {
+            $candidateLocal = $this->nextMorningSlotAfter($candidateLocal);
+            $reason = 'outside_allowed_send_window';
+        }
+
+        Log::info('Google review auto schedule calculated.', [
+            'performance_record_id' => $record->id,
+            'visit_shift' => $visitShift->value,
+            'performed_at' => $performedDayLocal->toDateString(),
+            'created_at_rome' => $createdAtLocal->toIso8601String(),
+            'scheduled_at_rome' => $candidateLocal->toIso8601String(),
+            'scheduled_at_utc' => $candidateLocal->setTimezone(config('app.timezone', 'UTC'))->toIso8601String(),
+            'reason' => $reason,
+        ]);
+
+        return $candidateLocal->setTimezone(config('app.timezone', 'UTC'))->toMutable();
     }
 
     private function nextManualRetrySlot(): Carbon
     {
-        $candidate = CarbonImmutable::now('Europe/Rome');
+        $candidate = CarbonImmutable::now(self::BUSINESS_TIMEZONE);
 
-        if ($candidate->hour < 9 || ($candidate->hour === 9 && $candidate->minute < 30)) {
-            $candidate = $candidate->setTime(10, 30, 0);
+        if ($candidate->lessThan($candidate->setTime(self::AUTO_SEND_START_HOUR, self::AUTO_SEND_START_MINUTE, 0))) {
+            $candidate = $candidate->setTime(self::AUTO_SEND_START_HOUR, self::AUTO_SEND_START_MINUTE, 0);
         } elseif (! $this->isAllowedSendWindow($candidate)) {
-            $candidate = $candidate->addDay()->setTime(10, 30, 0);
-        }
-
-        if ($candidate->isSunday()) {
-            $candidate = $candidate->addDay()->setTime(10, 30, 0);
+            $candidate = $this->nextMorningSlotAfter($candidate);
         }
 
         return $candidate->setTimezone(config('app.timezone', 'UTC'))->toMutable();
@@ -603,7 +727,30 @@ class GoogleReviewRequestService
     {
         $minutes = ($nowRome->hour * 60) + $nowRome->minute;
 
-        return $minutes >= (9 * 60) + 30 && $minutes <= (18 * 60) + 30;
+        return $minutes >= (self::AUTO_SEND_START_HOUR * 60) + self::AUTO_SEND_START_MINUTE
+            && $minutes <= (self::AUTO_SEND_END_HOUR * 60) + self::AUTO_SEND_END_MINUTE;
+    }
+
+    private function isWithinAllowedWindow(CarbonImmutable $candidate): bool
+    {
+        return $this->isAllowedSendWindow($candidate);
+    }
+
+    private function nextMorningSlotAfter(CarbonImmutable $reference): CarbonImmutable
+    {
+        return $reference
+            ->addDay()
+            ->setTime(self::AUTO_SEND_START_HOUR, self::AUTO_SEND_START_MINUTE, 0);
+    }
+
+    private function normalizeScheduledAtInput(Carbon|string $scheduledAt): Carbon
+    {
+        if ($scheduledAt instanceof Carbon) {
+            return $scheduledAt->copy()->setTimezone(config('app.timezone', 'UTC'));
+        }
+
+        return Carbon::parse($scheduledAt, self::BUSINESS_TIMEZONE)
+            ->setTimezone(config('app.timezone', 'UTC'));
     }
 
     private function whatsAppAccount(): ?ExternalProviderAccount

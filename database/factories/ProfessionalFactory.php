@@ -22,6 +22,7 @@ class ProfessionalFactory extends Factory
 
         return [
             'subject_type' => 'individual',
+            'gender' => 'unspecified',
             'first_name' => $firstName,
             'last_name' => $lastName,
             'company_name' => null,

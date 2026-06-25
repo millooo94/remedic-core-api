@@ -16,5 +16,5 @@ Schedule::command('reminders:send-weekly-center-summary')
 Schedule::command('costs:generate-automatic')->dailyAt('00:10');
 Schedule::command('marketing:send-scheduled-campaigns')->everyMinute();
 Schedule::command('google-reviews:send-pending')
-    ->everyFifteenMinutes()
+    ->everyMinute()
     ->timezone('Europe/Rome');

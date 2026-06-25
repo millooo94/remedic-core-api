@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1\Professionals;
 
+use App\Enums\ProfessionalGender;
 use App\Enums\ProfessionalSubjectType;
 use App\Models\Professional;
 
@@ -35,6 +36,7 @@ class UpdateProfessionalRequest extends StoreProfessionalRequest
 
             $this->merge([
                 'subject_type' => $this->input('subject_type', $professional->subject_type?->value ?? ProfessionalSubjectType::Individual->value),
+                'gender' => $this->input('gender', $professional->gender?->value ?? ProfessionalGender::Unspecified->value),
                 'first_name' => $this->input('first_name', $professional->first_name),
                 'last_name' => $this->input('last_name', $professional->last_name),
                 'company_name' => $this->exists('company_name') ? $this->input('company_name') : $professional->company_name,

@@ -8,6 +8,7 @@ use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Enums\PerformanceSplitMode;
 use App\Enums\PerformanceSplitSubjectType;
+use App\Enums\VisitShift;
 use App\Models\AuditLog;
 use App\Models\Patient;
 use App\Models\PerformanceRecord;
@@ -41,6 +42,22 @@ class PerformanceRecordService
         return $this->filters->applySort($query, $filters['sort'] ?? null);
     }
 
+    public function filteredTotals(array $filters = []): array
+    {
+        $query = PerformanceRecord::query();
+        $this->filters->apply($query, $filters);
+
+        $totals = $query
+            ->selectRaw('COALESCE(SUM(center_amount), 0) as center_share')
+            ->selectRaw('COALESCE(SUM(professional_amount), 0) as professional_share')
+            ->first();
+
+        return [
+            'center_share' => (float) ($totals?->center_share ?? 0),
+            'professional_share' => (float) ($totals?->professional_share ?? 0),
+        ];
+    }
+
     public function create(array $payload, User $actor): PerformanceRecord
     {
         return DB::transaction(function () use ($payload, $actor): PerformanceRecord {
@@ -70,9 +87,6 @@ class PerformanceRecordService
             $this->syncSplits($performanceRecord, $state['splits']);
             $performanceRecord->refresh();
             $this->performanceExpenseSyncService->syncFromPerformanceRecord($performanceRecord);
-            $this->googleReviewRequestService->syncForPerformanceRecord(
-                $performanceRecord->load(['patient', 'professional.publicProfile', 'professional.specializations', 'service.category'])
-            );
             $this->audit($actor, 'performance_record', $performanceRecord->id, 'updated', $before, $this->snapshotForAudit($performanceRecord));
 
             return $performanceRecord->load(['patient', 'patients', 'professional', 'service.category', 'splits.professional']);
@@ -207,6 +221,7 @@ class PerformanceRecordService
         return [
             'attributes' => [
                 'performed_at' => $performedAt->toDateString(),
+                'visit_shift' => $payload['visit_shift'] ?? $existing?->visit_shift?->value ?? VisitShift::Morning->value,
                 'patient_id' => $patientIds[0] ?? null,
                 'professional_id' => $professional->id,
                 'professional_name_snapshot' => $professional->full_name,

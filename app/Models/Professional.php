@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ProfessionalGender;
 use App\Enums\ProfessionalSubjectType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,7 @@ class Professional extends Model
     protected $fillable = [
         'legacy_backend_id',
         'subject_type',
+        'gender',
         'first_name',
         'last_name',
         'company_name',
@@ -33,6 +35,7 @@ class Professional extends Model
         return [
             'legacy_backend_id' => 'integer',
             'is_active' => 'boolean',
+            'gender' => ProfessionalGender::class,
             'subject_type' => ProfessionalSubjectType::class,
         ];
     }
@@ -55,6 +58,8 @@ class Professional extends Model
     {
         return $this->belongsToMany(Specialization::class, 'professional_specialization')
             ->withPivot('is_primary', 'sort_order')
+            ->orderByPivot('sort_order')
+            ->orderBy('specializations.id')
             ->withTimestamps();
     }
 

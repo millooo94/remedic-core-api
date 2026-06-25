@@ -40,15 +40,47 @@ class GoogleReviewRequestController extends Controller
     {
         $payload = $request->validate([
             'google_review_url' => ['nullable', 'url', 'max:2048'],
-            'google_review_delay_days' => ['nullable', 'integer', 'min:0', 'max:365'],
-            'google_review_delay_hours' => ['nullable', 'integer', 'min:0', 'max:23'],
-            'google_review_delay_minutes' => ['nullable', 'integer', 'min:0', 'max:59'],
-            'google_review_delay_seconds' => ['nullable', 'integer', 'min:0', 'max:59'],
         ]);
 
         return response()->json([
             'message' => 'Link recensione Google salvato.',
             'settings' => $this->service->updateSettings($payload),
+        ]);
+    }
+
+    public function reschedule(Request $request, GoogleReviewRequest $googleReviewRequest): JsonResponse
+    {
+        $payload = $request->validate([
+            'scheduled_at' => ['required', 'date'],
+        ]);
+
+        $record = $this->service->reschedule(
+            $googleReviewRequest,
+            $payload['scheduled_at'],
+            $request->user(),
+        );
+
+        return response()->json([
+            'message' => 'Invio recensione riprogrammato.',
+            'data' => new GoogleReviewRequestResource($record->load(['performanceRecord', 'patient', 'professional'])),
+        ]);
+    }
+
+    public function cancel(Request $request, GoogleReviewRequest $googleReviewRequest): JsonResponse
+    {
+        $payload = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $record = $this->service->cancel(
+            $googleReviewRequest,
+            $request->user(),
+            $payload['reason'] ?? null,
+        );
+
+        return response()->json([
+            'message' => 'Invio recensione annullato.',
+            'data' => new GoogleReviewRequestResource($record->load(['performanceRecord', 'patient', 'professional'])),
         ]);
     }
 
@@ -81,6 +113,15 @@ class GoogleReviewRequestController extends Controller
                 ? 'Messaggio WhatsApp inviato correttamente.'
                 : ($record->error_message ?: 'Invio non completato.'),
             'data' => new GoogleReviewRequestResource($record->load(['performanceRecord', 'patient', 'professional'])),
+        ]);
+    }
+
+    public function destroy(GoogleReviewRequest $googleReviewRequest): JsonResponse
+    {
+        $this->service->deleteCancelled($googleReviewRequest);
+
+        return response()->json([
+            'message' => 'Richiesta recensione annullata eliminata.',
         ]);
     }
 }

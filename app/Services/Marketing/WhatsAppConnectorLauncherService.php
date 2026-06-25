@@ -93,8 +93,9 @@ class WhatsAppConnectorLauncherService
     /**
      * @return array{stopped: bool, pids: array<int, int>, message: string, port: int}
      */
-    public function stopProcessOnPort(int $port = 3101): array
+    public function stopProcessOnPort(?int $port = null): array
     {
+        $port = $port ?: $this->connectorPort();
         $pids = $this->findListeningPids($port);
         if ($pids === []) {
             return [
@@ -130,6 +131,23 @@ class WhatsAppConnectorLauncherService
     private function nodeBinary(): string
     {
         return trim((string) config('services.whatsapp_puppeteer.node_binary', 'node')) ?: 'node';
+    }
+
+    private function connectorPort(): int
+    {
+        $configured = trim((string) config('services.whatsapp_puppeteer.base_url', ''));
+        if ($configured !== '') {
+            $parsed = parse_url($configured, PHP_URL_PORT);
+            if (is_int($parsed) && $parsed > 0) {
+                return $parsed;
+            }
+
+            if (is_string($parsed) && ctype_digit($parsed)) {
+                return (int) $parsed;
+            }
+        }
+
+        return 3101;
     }
 
     private function ensureLogFileExists(string $path): void

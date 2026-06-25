@@ -3,11 +3,14 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 
 const dotenv = require('dotenv');
 const express = require('express');
 const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const execFileAsync = promisify(execFile);
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
@@ -30,6 +33,8 @@ const SEND_DELAY_MS = Number(process.env.WHATSAPP_PUPPETEER_SEND_DELAY_MS || 900
 const MAX_SEND_RETRIES = Number(process.env.WHATSAPP_PUPPETEER_MAX_SEND_RETRIES || 2);
 const CONNECT_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_WAIT_MS || 20000);
 const CONNECT_POLL_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_POLL_MS || 300);
+const SESSION_RESET_DELAY_MS = Number(process.env.WHATSAPP_PUPPETEER_SESSION_RESET_DELAY_MS || 700);
+const CHROMIUM_SHUTDOWN_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CHROMIUM_SHUTDOWN_WAIT_MS || 1500);
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -41,6 +46,17 @@ let lastQrPayload = null;
 let activeClientGeneration = 0;
 let connectorOperationQueue = Promise.resolve();
 let currentInitPromise = null;
+let currentOperation = null;
+
+const SESSION_PROFILE_PATH = path.join(SESSION_PATH, `session-${CLIENT_ID}`);
+const STALE_BROWSER_MARKERS = Array.from(new Set([
+  SESSION_PATH,
+  SESSION_PROFILE_PATH,
+  `session-${CLIENT_ID}`,
+  CLIENT_ID,
+  path.basename(SESSION_PATH),
+  'puppeteer_dev_chrome_profile',
+])).filter(Boolean);
 
 const status = {
   state: 'disconnected',
@@ -104,6 +120,10 @@ function updateStatus(next = {}) {
   });
 }
 
+function setOperation(name) {
+  currentOperation = name;
+}
+
 function connectorResponse(extra = {}) {
   return {
     state: status.state,
@@ -142,6 +162,32 @@ function logConnector(event, details = {}) {
 function classifyError(error) {
   const message = String(error && error.message ? error.message : error || 'Errore tecnico sconosciuto');
   const lowered = message.toLowerCase();
+
+  if (
+    lowered.includes('already running for') ||
+    lowered.includes('userdatadir') ||
+    lowered.includes('stop the running browser first')
+  ) {
+    return {
+      providerStatus: 'browser_locked',
+      connectorState: 'browser_locked',
+      friendlyMessage: 'Browser precedente rimasto attivo sulla sessione WhatsApp. Esegui un reset sessione o attendi qualche secondo e riprova.',
+    };
+  }
+
+  if (
+    lowered.includes('eacces') ||
+    lowered.includes('eperm') ||
+    lowered.includes('permission denied') ||
+    lowered.includes('session cleanup failed') ||
+    lowered.includes('impossibile pulire la sessione')
+  ) {
+    return {
+      providerStatus: 'session_cleanup_failed',
+      connectorState: 'session_cleanup_failed',
+      friendlyMessage: 'Pulizia sessione WhatsApp fallita. Verificare permessi o processi Chromium residui.',
+    };
+  }
 
   if (
     lowered.includes('failed to launch') ||
@@ -227,16 +273,32 @@ function isConnectorReady() {
   return !!client && status.ready && status.state === 'connected';
 }
 
+function isConnectionStateActive() {
+  return currentOperation === 'connect'
+    || currentOperation === 'reconnect'
+    || currentOperation === 'reset-session'
+    || currentOperation === 'disconnect'
+    || currentInitPromise !== null
+    || [
+      'starting',
+      'connecting',
+      'authenticated',
+      'waiting_for_scan',
+      'qr_required',
+      'connected',
+    ].includes(status.state);
+}
+
 async function ensureSessionDirectory() {
   await fsp.mkdir(SESSION_PATH, { recursive: true });
 }
 
-async function removeSessionDirectory() {
-  if (!fs.existsSync(SESSION_PATH)) {
-    return;
-  }
+async function assertSessionDirectoryWritable() {
+  await ensureSessionDirectory();
 
-  await fsp.rm(SESSION_PATH, { recursive: true, force: true });
+  const probePath = path.join(SESSION_PATH, `.write-test-${process.pid}-${Date.now()}`);
+  await fsp.writeFile(probePath, 'ok', 'utf8');
+  await fsp.rm(probePath, { force: true });
 }
 
 async function hasPersistedSessionData() {
@@ -294,29 +356,227 @@ function runSerializedConnectorOperation(operation) {
   return queuedOperation;
 }
 
+function setCleanupFailedStatus(message, error) {
+  lastQrPayload = null;
+  updateStatus({
+    state: 'session_cleanup_failed',
+    ready: false,
+    qrRequired: false,
+    qrCodeDataUrl: null,
+    qrUpdatedAt: null,
+    message,
+    webState: null,
+    phoneNumber: null,
+    pushName: null,
+    lastErrorCode: 'session_cleanup_failed',
+    lastErrorMessage: String(error && error.message ? error.message : error || message),
+  });
+}
+
 function isActiveClient(targetClient, generation) {
   return client === targetClient && activeClientGeneration === generation;
 }
 
-async function destroyClient() {
-  if (!client) {
+function getTrackedBrowser(targetClient) {
+  if (!targetClient) {
+    return null;
+  }
+
+  return targetClient.pupBrowser || targetClient.browser || null;
+}
+
+async function terminateBrowserProcess(browser, reason = 'cleanup') {
+  if (!browser || typeof browser.process !== 'function') {
     return;
   }
 
-  const currentClient = client;
-  client = null;
-  currentInitPromise = null;
+  const child = browser.process();
+  if (!child || !child.pid) {
+    return;
+  }
+
+  logConnector('terminating browser process', {
+    reason,
+    pid: child.pid,
+  });
+
+  try {
+    child.kill('SIGTERM');
+  } catch (_) {
+    return;
+  }
+
+  await wait(CHROMIUM_SHUTDOWN_WAIT_MS);
+
+  if (child.exitCode === null) {
+    try {
+      child.kill('SIGKILL');
+    } catch (_) {
+      // Best effort cleanup.
+    }
+  }
+}
+
+async function closeTrackedBrowser(targetClient, reason = 'cleanup') {
+  const browser = getTrackedBrowser(targetClient);
+  if (!browser) {
+    return;
+  }
+
+  try {
+    if (typeof browser.close === 'function') {
+      await browser.close();
+    }
+  } catch (error) {
+    logConnector('browser close failed', {
+      reason,
+      message: String(error && error.message ? error.message : error),
+    });
+  }
+
+  await terminateBrowserProcess(browser, reason);
+}
+
+async function safeDestroyClient(reason = 'cleanup', targetClient = client) {
+  if (!targetClient) {
+    return;
+  }
+
+  if (targetClient === client) {
+    client = null;
+    currentInitPromise = null;
+  }
 
   const previousGeneration = activeClientGeneration;
-  logConnector('killing stale client', {
+  logConnector('destroy client requested', {
+    reason,
     generation: previousGeneration,
   });
 
   try {
-    currentClient.removeAllListeners();
-    await currentClient.destroy();
+    targetClient.removeAllListeners();
   } catch (_) {
     // Best effort cleanup.
+  }
+
+  await closeTrackedBrowser(targetClient, reason);
+
+  try {
+    await targetClient.destroy();
+  } catch (error) {
+    logConnector('client destroy failed', {
+      reason,
+      message: String(error && error.message ? error.message : error),
+    });
+  }
+
+  await closeTrackedBrowser(targetClient, `${reason}:post-destroy`);
+}
+
+async function isPidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function cleanupStaleChromiumProcesses() {
+  if (process.platform === 'win32') {
+    return [];
+  }
+
+  let stdout = '';
+  try {
+    const result = await execFileAsync('ps', ['-eo', 'pid=,command=']);
+    stdout = String(result.stdout || '');
+  } catch (error) {
+    logConnector('ps scan failed', {
+      message: String(error && error.message ? error.message : error),
+    });
+    return [];
+  }
+
+  const staleProcesses = stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\d+)\s+(.*)$/);
+      if (!match) {
+        return null;
+      }
+
+      return {
+        pid: Number(match[1]),
+        command: match[2],
+      };
+    })
+    .filter((entry) => entry && entry.pid > 0)
+    .filter((entry) => /chrom(e|ium)|chrome-headless-shell/i.test(entry.command))
+    .filter((entry) => STALE_BROWSER_MARKERS.some((marker) => entry.command.includes(marker)));
+
+  if (!staleProcesses.length) {
+    return [];
+  }
+
+  logConnector('stale chromium processes detected', {
+    processes: staleProcesses,
+  });
+
+  for (const processInfo of staleProcesses) {
+    try {
+      process.kill(processInfo.pid, 'SIGTERM');
+    } catch (_) {
+      // Best effort cleanup.
+    }
+  }
+
+  await wait(CHROMIUM_SHUTDOWN_WAIT_MS);
+
+  for (const processInfo of staleProcesses) {
+    if (await isPidAlive(processInfo.pid)) {
+      try {
+        process.kill(processInfo.pid, 'SIGKILL');
+      } catch (_) {
+        // Best effort cleanup.
+      }
+    }
+  }
+
+  return staleProcesses;
+}
+
+async function safeResetSessionDirectory(reason = 'manual_reset', options = {}) {
+  const skipDestroy = options.skipDestroy === true;
+
+  if (!skipDestroy) {
+    await safeDestroyClient(reason);
+  }
+
+  await cleanupStaleChromiumProcesses();
+  await wait(SESSION_RESET_DELAY_MS);
+
+  try {
+    await fsp.rm(SESSION_PATH, { recursive: true, force: true });
+    await ensureSessionDirectory();
+    await assertSessionDirectoryWritable();
+  } catch (error) {
+    logConnector('session cleanup failed', {
+      reason,
+      message: String(error && error.message ? error.message : error),
+    });
+    setCleanupFailedStatus('Impossibile pulire la sessione WhatsApp. Verificare permessi o processi Chromium residui.', error);
+    throw error;
+  }
+}
+
+async function ensureConnectorEnvironment() {
+  await assertSessionDirectoryWritable();
+
+  if (CHROMIUM_PATH && !fs.existsSync(CHROMIUM_PATH)) {
+    throw new Error(`Chromium executable not found at ${CHROMIUM_PATH}`);
   }
 }
 
@@ -338,11 +598,10 @@ async function initializeClient(options = {}) {
   }
 
   if (resetSession) {
-    await destroyClient();
-    await removeSessionDirectory();
+    await safeResetSessionDirectory('connect_reset');
   }
 
-  await ensureSessionDirectory();
+  await ensureConnectorEnvironment();
 
   activeClientGeneration += 1;
   const generation = activeClientGeneration;
@@ -407,7 +666,7 @@ async function initializeClient(options = {}) {
     lastQrPayload = qr;
     const qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 280 });
     updateStatus({
-      state: 'qr_ready',
+      state: 'qr_required',
       ready: false,
       qrRequired: true,
       qrCodeDataUrl,
@@ -428,7 +687,7 @@ async function initializeClient(options = {}) {
     }
 
     updateStatus({
-      state: 'authenticated',
+      state: 'connecting',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
@@ -487,7 +746,7 @@ async function initializeClient(options = {}) {
     }
 
     updateStatus({
-      state: 'auth_failure',
+      state: 'session_expired',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
@@ -502,31 +761,39 @@ async function initializeClient(options = {}) {
       generation,
       message: String(message || ''),
     });
-    nextClient.destroy().catch(() => undefined);
+    safeDestroyClient('auth_failure', nextClient).catch(() => undefined);
   });
 
-  nextClient.on('disconnected', (reason) => {
+  nextClient.on('disconnected', async (reason) => {
     if (handleStaleEvent('disconnected', { reason: String(reason || '') })) {
       return;
     }
 
-    updateStatus({
-      state: 'disconnected',
-      ready: false,
-      qrRequired: false,
-      qrCodeDataUrl: null,
-      qrUpdatedAt: null,
-      message: 'Connessione WhatsApp interrotta. Clicca Collega WhatsApp per generare un nuovo QR code.',
-      lastErrorCode: 'disconnected',
-      lastErrorMessage: String(reason || 'Connessione WhatsApp interrotta.'),
-    });
-    client = null;
-    currentInitPromise = null;
+    const normalizedReason = String(reason || '');
+    const isLogout = normalizedReason.toUpperCase().includes('LOGOUT');
     logConnector('disconnected', {
       generation,
-      reason: String(reason || ''),
+      reason: normalizedReason,
     });
-    nextClient.destroy().catch(() => undefined);
+
+    try {
+      await runSerializedConnectorOperation(async () => {
+        await safeDestroyClient('disconnected_event', nextClient);
+
+        if (isLogout) {
+          await safeResetSessionDirectory('logout_cleanup', { skipDestroy: true });
+          setDisconnectedStatus('WhatsApp disconnesso o sloggato. Genera un nuovo QR code per collegare di nuovo il dispositivo.');
+          return;
+        }
+
+        setDisconnectedStatus('Connessione WhatsApp interrotta. Clicca Collega WhatsApp per generare un nuovo QR code.');
+      });
+    } catch (error) {
+      setCleanupFailedStatus(
+        'Connessione WhatsApp interrotta, ma la pulizia della sessione non e stata completata.',
+        error
+      );
+    }
   });
 
   nextClient.on('loading_screen', (_percent, message) => {
@@ -553,6 +820,10 @@ async function initializeClient(options = {}) {
     } catch (error) {
       const classification = classifyError(error);
 
+      if (classification.connectorState === 'browser_locked') {
+        await cleanupStaleChromiumProcesses();
+      }
+
       if (isActiveClient(nextClient, generation)) {
         updateStatus({
           state: classification.connectorState,
@@ -567,6 +838,8 @@ async function initializeClient(options = {}) {
         client = null;
         currentInitPromise = null;
       }
+
+      await closeTrackedBrowser(nextClient, 'initialize_error');
 
       logConnector('error', {
         generation,
@@ -614,7 +887,7 @@ async function waitForFreshConnectState({ generation, qrNotBeforeMs }) {
       }
     }
 
-    if (['auth_failure', 'browser_unavailable', 'ui_incompatible', 'technical_error', 'session_expired'].includes(status.state)) {
+    if (['browser_unavailable', 'browser_locked', 'session_cleanup_failed', 'ui_incompatible', 'technical_error', 'session_expired', 'error'].includes(status.state)) {
       return {
         kind: 'error',
         message: status.lastErrorMessage || status.message,
@@ -875,9 +1148,22 @@ app.post('/connect', authorizeRequest, async (req, res) => {
   const resetSession = req.body?.reset_session ?? true;
 
   try {
+    if (isConnectionStateActive()) {
+      return res.status(202).json(connectorResponse({
+        requested_reset_session: Boolean(resetSession),
+        reused: true,
+        message: status.ready
+          ? 'WhatsApp e gia collegato.'
+          : (status.qrRequired
+            ? 'Generazione QR in corso. Scansiona il codice appena disponibile.'
+            : 'Collegamento WhatsApp gia in corso. Attendi qualche secondo.'),
+      }));
+    }
+
     logConnector('connect requested', {
       resetSession: Boolean(resetSession),
     });
+    setOperation('connect');
     const requestStartedAtMs = Date.now();
     const { generation } = await runSerializedConnectorOperation(() => initializeClient({ resetSession: Boolean(resetSession) }));
     const waitResult = await waitForFreshConnectState({
@@ -902,6 +1188,8 @@ app.post('/connect', authorizeRequest, async (req, res) => {
       last_error_code: classification.providerStatus,
       last_error_message: String(error?.message || error),
     }));
+  } finally {
+    setOperation(null);
   }
 });
 
@@ -909,9 +1197,20 @@ app.post('/reconnect', authorizeRequest, async (req, res) => {
   const resetSession = Boolean(req.body?.reset_session);
 
   try {
+    if (isConnectionStateActive()) {
+      return res.status(202).json(connectorResponse({
+        requested_reset_session: resetSession,
+        reused: true,
+        message: status.qrRequired
+          ? 'QR gia in preparazione. Scansiona il codice appena disponibile.'
+          : 'Riconnessione WhatsApp gia in corso. Attendi qualche secondo.',
+      }));
+    }
+
     logConnector('reconnect requested', {
       resetSession,
     });
+    setOperation('reconnect');
     await runSerializedConnectorOperation(() => initializeClient({ resetSession }));
     res.status(202).json(connectorResponse({
       requested_reset_session: resetSession,
@@ -927,15 +1226,17 @@ app.post('/reconnect', authorizeRequest, async (req, res) => {
       last_error_code: classification.providerStatus,
       last_error_message: String(error?.message || error),
     }));
+  } finally {
+    setOperation(null);
   }
 });
 
 app.post('/disconnect', authorizeRequest, async (_req, res) => {
   try {
     logConnector('disconnect requested');
+    setOperation('disconnect');
     await runSerializedConnectorOperation(async () => {
-      await destroyClient();
-      await removeSessionDirectory();
+      await safeResetSessionDirectory('manual_disconnect');
       setDisconnectedStatus('WhatsApp scollegato. Clicca Collega WhatsApp per generare un nuovo QR code.');
     });
 
@@ -950,20 +1251,22 @@ app.post('/disconnect', authorizeRequest, async (_req, res) => {
       last_error_code: classification.providerStatus,
       last_error_message: String(error?.message || error),
     }));
+  } finally {
+    setOperation(null);
   }
 });
 
 app.post('/reset-session', authorizeRequest, async (_req, res) => {
   try {
     logConnector('reset session requested');
+    setOperation('reset-session');
     await runSerializedConnectorOperation(async () => {
-      await destroyClient();
-      await removeSessionDirectory();
-      setDisconnectedStatus('Sessione WhatsApp resettata. Clicca Collega WhatsApp per generare un nuovo QR code.');
+      await safeResetSessionDirectory('manual_reset');
+      setDisconnectedStatus('Sessione WhatsApp pulita. Puoi generare un nuovo QR code.');
     });
 
     res.status(202).json(connectorResponse({
-      message: 'Sessione WhatsApp resettata correttamente.',
+      message: 'Sessione WhatsApp pulita. Puoi generare un nuovo QR code.',
     }));
   } catch (error) {
     const classification = classifyError(error);
@@ -973,6 +1276,8 @@ app.post('/reset-session', authorizeRequest, async (_req, res) => {
       last_error_code: classification.providerStatus,
       last_error_message: String(error?.message || error),
     }));
+  } finally {
+    setOperation(null);
   }
 });
 
@@ -997,7 +1302,7 @@ app.post('/send', authorizeRequest, async (req, res) => {
 
 app.listen(CONNECTOR_PORT, CONNECTOR_HOST, async () => {
   try {
-    await ensureSessionDirectory();
+    await ensureConnectorEnvironment();
     if (await hasPersistedSessionData()) {
       runSerializedConnectorOperation(() => initializeClient()).catch(() => undefined);
     } else {
@@ -1016,4 +1321,43 @@ app.listen(CONNECTOR_PORT, CONNECTOR_HOST, async () => {
     });
     console.error('[whatsapp-connector] startup error', error);
   }
+});
+
+async function shutdownConnector(signal) {
+  logConnector('shutdown requested', { signal });
+
+  try {
+    await runSerializedConnectorOperation(async () => {
+      await safeDestroyClient(`shutdown:${signal}`);
+      await cleanupStaleChromiumProcesses();
+      setDisconnectedStatus('WhatsApp non collegato. Il connettore e stato arrestato in modo controllato.');
+    });
+  } catch (error) {
+    logConnector('shutdown cleanup failed', {
+      signal,
+      message: String(error && error.message ? error.message : error),
+    });
+  } finally {
+    process.exit(0);
+  }
+}
+
+process.on('SIGINT', () => {
+  shutdownConnector('SIGINT').catch(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+  shutdownConnector('SIGTERM').catch(() => process.exit(0));
+});
+
+process.on('unhandledRejection', (error) => {
+  logConnector('unhandled rejection', {
+    message: String(error && error.message ? error.message : error),
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  logConnector('uncaught exception', {
+    message: String(error && error.message ? error.message : error),
+  });
 });

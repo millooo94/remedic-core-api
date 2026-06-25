@@ -63,6 +63,7 @@ class ProfessionalResource extends JsonResource
         return [
             'id' => $this->id,
             'subject_type' => $this->subject_type?->value ?? $this->subject_type,
+            'gender' => $this->gender?->value ?? $this->gender ?? 'unspecified',
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'company_name' => $this->company_name,
@@ -84,6 +85,8 @@ class ProfessionalResource extends JsonResource
                     'name' => $specialization->name,
                     'slug' => $specialization->slug,
                     'color_hex' => $specialization->color_hex,
+                    'professional_title_male' => $specialization->professional_title_male,
+                    'professional_title_female' => $specialization->professional_title_female,
                     'is_primary' => (bool) ($specialization->pivot?->is_primary ?? false),
                     'sort_order' => (int) ($specialization->pivot?->sort_order ?? 0),
                 ])->all()),

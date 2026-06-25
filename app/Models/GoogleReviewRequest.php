@@ -24,9 +24,14 @@ class GoogleReviewRequest extends Model
         'message_body',
         'status',
         'scheduled_at',
+        'manual_override',
+        'manual_override_at',
+        'manual_override_by',
         'sent_at',
         'excluded_at',
         'excluded_by',
+        'cancelled_at',
+        'cancelled_by',
         'error_message',
         'provider_status',
         'provider_message_id',
@@ -38,8 +43,11 @@ class GoogleReviewRequest extends Model
     {
         return [
             'scheduled_at' => 'datetime',
+            'manual_override' => 'boolean',
+            'manual_override_at' => 'datetime',
             'sent_at' => 'datetime',
             'excluded_at' => 'datetime',
+            'cancelled_at' => 'datetime',
             'provider_response' => 'array',
             'template_payload' => 'array',
         ];
@@ -68,5 +76,15 @@ class GoogleReviewRequest extends Model
     public function excludedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'excluded_by');
+    }
+
+    public function cancelledByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function manualOverrideByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manual_override_by');
     }
 }

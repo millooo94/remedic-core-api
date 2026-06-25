@@ -16,6 +16,8 @@ class Specialization extends Model
     protected $fillable = [
         'legacy_backend_id',
         'name',
+        'professional_title_male',
+        'professional_title_female',
         'slug',
         'color_hex',
         'icon_path',
@@ -49,6 +51,8 @@ class Specialization extends Model
             'is_web_active' => 'boolean',
             'color_hex' => 'string',
             'icon_path' => 'string',
+            'professional_title_male' => 'string',
+            'professional_title_female' => 'string',
             'sort_order' => 'integer',
         ];
     }
@@ -57,6 +61,8 @@ class Specialization extends Model
     {
         return $this->belongsToMany(Professional::class, 'professional_specialization')
             ->withPivot(['is_primary', 'sort_order'])
+            ->orderByPivot('sort_order')
+            ->orderBy('professionals.id')
             ->withTimestamps();
     }
 

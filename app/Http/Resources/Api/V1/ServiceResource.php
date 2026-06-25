@@ -49,6 +49,8 @@ class ServiceResource extends JsonResource
                     'name' => $specialization->name,
                     'slug' => $specialization->slug,
                     'color_hex' => $specialization->color_hex,
+                    'professional_title_male' => $specialization->professional_title_male,
+                    'professional_title_female' => $specialization->professional_title_female,
                     'is_primary' => (bool) ($specialization->pivot?->is_primary ?? false),
                     'sort_order' => (int) ($specialization->pivot?->sort_order ?? 0),
                 ])->all()),

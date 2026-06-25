@@ -6,6 +6,7 @@ use App\Enums\CalculationMode;
 use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Enums\PerformanceSplitMode;
+use App\Enums\VisitShift;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,7 @@ class PerformanceRecord extends Model
 
     protected $fillable = [
         'performed_at',
+        'visit_shift',
         'patient_id',
         'professional_id',
         'professional_name_snapshot',
@@ -49,6 +51,7 @@ class PerformanceRecord extends Model
     {
         return [
             'performed_at' => 'date',
+            'visit_shift' => VisitShift::class,
             'quantity' => 'integer',
             'unit_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',

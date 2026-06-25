@@ -9,8 +9,8 @@ use App\Http\Requests\Api\V1\PerformanceRecords\UpdatePerformanceRecordRequest;
 use App\Http\Resources\Api\V1\PerformanceRecordResource;
 use App\Models\PerformanceRecord;
 use App\Services\PerformanceRecordService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class PerformanceRecordController extends Controller
@@ -20,13 +20,15 @@ class PerformanceRecordController extends Controller
     ) {
     }
 
-    public function index(PerformanceRecordQueryRequest $request)
+    public function index(PerformanceRecordQueryRequest $request): JsonResponse
     {
         $filters = $request->filters();
         $perPage = (int) ($filters['per_page'] ?? 20);
         $records = $this->service->baseQuery($filters)->paginate($perPage)->withQueryString();
+        $payload = PerformanceRecordResource::collection($records)->response()->getData(true);
+        $payload['totals'] = $this->service->filteredTotals($filters);
 
-        return PerformanceRecordResource::collection($records);
+        return response()->json($payload);
     }
 
     public function store(StorePerformanceRecordRequest $request): PerformanceRecordResource

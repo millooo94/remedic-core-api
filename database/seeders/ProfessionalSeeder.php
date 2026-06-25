@@ -44,6 +44,7 @@ class ProfessionalSeeder extends Seeder
                 [
                     ...$professional,
                     'subject_type' => 'individual',
+                    'gender' => 'unspecified',
                     'company_name' => null,
                     'full_name' => trim($professional['last_name'].' '.$professional['first_name']),
                     'area_name' => $normalizedArea,
@@ -62,6 +63,7 @@ class ProfessionalSeeder extends Seeder
                 ['slug' => Str::slug((string) $normalizedArea)],
                 [
                     'name' => $normalizedArea,
+                    ...$this->professionalTitlesForArea($normalizedArea),
                     'robots' => 'index,follow',
                     'is_local_seo_enabled' => true,
                     'is_active' => true,
@@ -87,5 +89,29 @@ class ProfessionalSeeder extends Seeder
         return Specialization::query()->where('slug', $slug)->value('name')
             ?? ServiceCategory::query()->where('slug', $slug)->value('name')
             ?? $trimmed;
+    }
+
+    /**
+     * @return array{professional_title_male: string|null, professional_title_female: string|null}
+     */
+    private function professionalTitlesForArea(string $areaName): array
+    {
+        return match (Str::lower($areaName)) {
+            'angiologia' => ['professional_title_male' => 'angiologo', 'professional_title_female' => 'angiologa'],
+            'cardiologia' => ['professional_title_male' => 'cardiologo', 'professional_title_female' => 'cardiologa'],
+            'chirurgia plastica' => ['professional_title_male' => 'chirurgo plastico', 'professional_title_female' => 'chirurga plastica'],
+            'chirurgia vascolare' => ['professional_title_male' => 'chirurgo vascolare', 'professional_title_female' => 'chirurga vascolare'],
+            'dermatologia' => ['professional_title_male' => 'dermatologo', 'professional_title_female' => 'dermatologa'],
+            'endocrinologia' => ['professional_title_male' => 'endocrinologo', 'professional_title_female' => 'endocrinologa'],
+            'ginecologia' => ['professional_title_male' => 'ginecologo', 'professional_title_female' => 'ginecologa'],
+            'medicina estetica' => ['professional_title_male' => 'medico estetico', 'professional_title_female' => 'medica estetica'],
+            'medicina interna' => ['professional_title_male' => 'internista', 'professional_title_female' => 'internista'],
+            'neurologia' => ['professional_title_male' => 'neurologo', 'professional_title_female' => 'neurologa'],
+            'nutrizione' => ['professional_title_male' => 'nutrizionista', 'professional_title_female' => 'nutrizionista'],
+            'psicologia clinica' => ['professional_title_male' => 'psicologo clinico', 'professional_title_female' => 'psicologa clinica'],
+            'reumatologia' => ['professional_title_male' => 'reumatologo', 'professional_title_female' => 'reumatologa'],
+            'urologia' => ['professional_title_male' => 'urologo', 'professional_title_female' => 'urologa'],
+            default => ['professional_title_male' => null, 'professional_title_female' => null],
+        };
     }
 }

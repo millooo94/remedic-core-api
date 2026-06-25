@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1\Professionals;
 
+use App\Enums\ProfessionalGender;
 use App\Enums\ProfessionalSubjectType;
 use App\Support\Professionals\IbanFormatter;
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,6 +19,7 @@ class StoreProfessionalRequest extends FormRequest
     {
         return [
             'subject_type' => ['required', Rule::enum(ProfessionalSubjectType::class)],
+            'gender' => ['sometimes', Rule::enum(ProfessionalGender::class)],
             'first_name' => ['nullable', 'required_if:subject_type,individual', 'prohibited_if:subject_type,company', 'string', 'max:120'],
             'last_name' => ['nullable', 'required_if:subject_type,individual', 'prohibited_if:subject_type,company', 'string', 'max:120'],
             'company_name' => ['nullable', 'required_if:subject_type,company', 'prohibited_if:subject_type,individual', 'string', 'max:190'],
@@ -56,6 +58,7 @@ class StoreProfessionalRequest extends FormRequest
 
         $this->merge([
             'subject_type' => $subjectType,
+            'gender' => $this->input('gender', ProfessionalGender::Unspecified->value),
             'first_name' => $firstName,
             'last_name' => $lastName,
             'company_name' => $companyName,

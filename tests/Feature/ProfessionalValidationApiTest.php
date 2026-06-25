@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Models\Specialization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -12,6 +13,24 @@ use Tests\TestCase;
 class ProfessionalValidationApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function specializationPayload(): array
+    {
+        $specialization = Specialization::query()->firstOrCreate(
+            ['slug' => 'cardiologia'],
+            [
+                'name' => 'Cardiologia',
+                'is_active' => true,
+                'sort_order' => 0,
+            ],
+        );
+
+        return [
+            'area_name' => $specialization->name,
+            'area_names' => [$specialization->name],
+            'specialization_ids' => [$specialization->id],
+        ];
+    }
 
     #[Test]
     public function it_rejects_iban_values_that_become_invalid_after_normalization(): void
@@ -23,11 +42,9 @@ class ProfessionalValidationApiTest extends TestCase
             'subject_type' => 'individual',
             'first_name' => 'Mario',
             'last_name' => 'Rossi',
-            'area_name' => 'Cardiologia',
-            'area_names' => ['Cardiologia'],
             'iban' => 'IT60 1234 5678',
             'is_active' => true,
-        ])
+        ] + $this->specializationPayload())
             ->assertStatus(422)
             ->assertJsonValidationErrors(['iban']);
     }
@@ -40,10 +57,8 @@ class ProfessionalValidationApiTest extends TestCase
 
         $this->postJson('/api/v1/professionals', [
             'subject_type' => 'company',
-            'area_name' => 'Cardiologia',
-            'area_names' => ['Cardiologia'],
             'is_active' => true,
-        ])
+        ] + $this->specializationPayload())
             ->assertStatus(422)
             ->assertJsonValidationErrors(['company_name']);
     }
@@ -59,10 +74,8 @@ class ProfessionalValidationApiTest extends TestCase
             'first_name' => 'Mario',
             'last_name' => 'Rossi',
             'company_name' => 'Studio Rossi SRL',
-            'area_name' => 'Cardiologia',
-            'area_names' => ['Cardiologia'],
             'is_active' => true,
-        ])
+        ] + $this->specializationPayload())
             ->assertStatus(422)
             ->assertJsonValidationErrors(['company_name']);
     }

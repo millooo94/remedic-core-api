@@ -13,6 +13,8 @@ class SpecializationResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'professional_title_male' => $this->professional_title_male,
+            'professional_title_female' => $this->professional_title_female,
             'slug' => $this->slug,
             'color_hex' => $this->color_hex,
             'icon_path' => $this->icon_path,

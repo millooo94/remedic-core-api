@@ -49,6 +49,7 @@ class PerformanceRecordApiTest extends TestCase
 
         $this->postJson('/api/v1/performance-records', [
             'performed_at' => '2026-04-10',
+            'visit_shift' => 'morning',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
             'patient_ids' => [$patient->id],
@@ -68,6 +69,7 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonPath('net_divisible_amount', '100.00')
             ->assertJsonPath('professional_amount', '70.00')
             ->assertJsonPath('center_amount', '30.00')
+            ->assertJsonPath('visit_shift', 'morning')
             ->assertJsonPath('payment_method', 'cash')
             ->assertJsonPath('payment_status', 'da_pagare')
             ->assertJsonPath('is_black', true)
@@ -644,6 +646,35 @@ class PerformanceRecordApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $blackNotLiquidated['id']);
+    }
+
+    #[Test]
+    public function it_returns_filtered_center_and_professional_totals_independent_from_pagination(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-10',
+            'unit_amount' => 100,
+            'percentage_value' => 60,
+            'notes' => 'totals-a',
+        ]))->assertCreated();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-11',
+            'unit_amount' => 200,
+            'percentage_value' => 25,
+            'notes' => 'totals-b',
+        ]))->assertCreated();
+
+        $this->getJson('/api/v1/performance-records?date_from=2026-04-01&date_to=2026-04-30&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('totals.center_share', 190)
+            ->assertJsonPath('totals.professional_share', 110);
     }
 
     private function createProfessionalServiceContext(): array

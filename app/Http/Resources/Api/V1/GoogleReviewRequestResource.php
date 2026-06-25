@@ -32,8 +32,11 @@ class GoogleReviewRequestResource extends JsonResource
                 default => ucfirst((string) $this->status),
             },
             'scheduled_at' => optional($this->scheduled_at)->toIso8601String(),
+            'manual_override' => (bool) $this->manual_override,
+            'manual_override_at' => optional($this->manual_override_at)->toIso8601String(),
             'sent_at' => optional($this->sent_at)->toIso8601String(),
             'excluded_at' => optional($this->excluded_at)->toIso8601String(),
+            'cancelled_at' => optional($this->cancelled_at)->toIso8601String(),
             'error_message' => $this->error_message,
             'provider_status' => $this->provider_status,
             'provider_message_id' => $this->provider_message_id,
@@ -42,6 +45,11 @@ class GoogleReviewRequestResource extends JsonResource
             'performance_record' => $this->whenLoaded('performanceRecord', fn () => [
                 'id' => $this->performanceRecord?->id,
                 'performed_at' => optional($this->performanceRecord?->performed_at)->toDateString(),
+                'visit_shift' => $this->performanceRecord?->visit_shift?->value ?? $this->performanceRecord?->visit_shift,
+                'visit_shift_label' => match ($this->performanceRecord?->visit_shift?->value ?? $this->performanceRecord?->visit_shift) {
+                    'afternoon' => 'Pomeriggio/Sera',
+                    default => 'Mattina',
+                },
                 'service_name_snapshot' => $this->performanceRecord?->service_name_snapshot,
             ]),
             'patient' => $this->whenLoaded('patient', fn () => $this->patient ? new PatientResource($this->patient) : null),

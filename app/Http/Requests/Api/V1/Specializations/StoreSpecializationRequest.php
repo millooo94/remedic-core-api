@@ -17,6 +17,8 @@ class StoreSpecializationRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:190'],
+            'professional_title_male' => ['nullable', 'string', 'max:190'],
+            'professional_title_female' => ['nullable', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:190', Rule::unique('specializations', 'slug')],
             'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'icon_svg' => ['nullable', 'file', 'mimes:svg', 'max:1024'],
@@ -33,6 +35,8 @@ class StoreSpecializationRequest extends FormRequest
 
         $this->merge([
             'name' => $name,
+            'professional_title_male' => $this->normalizeOptionalString($this->input('professional_title_male')),
+            'professional_title_female' => $this->normalizeOptionalString($this->input('professional_title_female')),
             'slug' => Str::slug($slug !== '' ? $slug : $name),
             'color_hex' => $this->normalizeColorHex($this->input('color_hex')),
             'remove_icon' => $this->boolean('remove_icon'),
@@ -55,5 +59,16 @@ class StoreSpecializationRequest extends FormRequest
         $normalized = str_starts_with($normalized, '#') ? $normalized : "#{$normalized}";
 
         return preg_match('/^#[0-9A-F]{6}$/', $normalized) === 1 ? $normalized : $normalized;
+    }
+
+    private function normalizeOptionalString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $normalized = trim($value);
+
+        return $normalized === '' ? null : $normalized;
     }
 }
