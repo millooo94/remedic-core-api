@@ -1007,7 +1007,7 @@ async function initializeClient(options = {}) {
       return;
     }
 
-    if (!status.qrRequired) {
+    if (!status.qrRequired && ['starting', 'waiting_for_scan'].includes(status.state)) {
       updateStatus({
         state: 'waiting_for_scan',
         ready: false,
@@ -1360,7 +1360,7 @@ app.get('/status', authorizeRequest, async (_req, res) => {
 });
 
 app.post('/connect', authorizeRequest, async (req, res) => {
-  const resetSession = req.body?.reset_session ?? true;
+  const resetSession = req.body?.reset_session ?? false;
 
   try {
     if (isConnectionStateActive()) {
