@@ -285,7 +285,7 @@ class IntegrationService
         $integration = $this->whatsAppSnapshot();
         $hasQrReady = (bool) ($integration['qr_required'] ?? false) && filled($integration['qr_code_data_url'] ?? null);
         $isWaitingForConnection = in_array(($integration['session_status'] ?? null), [self::STATUS_CONNECTING], true)
-            || in_array(($integration['connector_state'] ?? null), ['qr_required', 'qr_ready', 'connecting', 'initializing', 'authenticated'], true);
+            || in_array(($integration['connector_state'] ?? null), ['qr_required', 'qr_ready', 'connecting', 'initializing', 'authenticated', 'waiting_for_scan'], true);
 
         if (($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID) {
             return [
@@ -372,10 +372,10 @@ class IntegrationService
             ];
         }
 
-        if (in_array(($integration['connector_state'] ?? null), ['starting', 'initializing', 'waiting_for_scan', 'qr_ready', 'authenticated'], true)) {
+        if (in_array(($integration['connector_state'] ?? null), ['starting', 'initializing', 'waiting_for_scan', 'qr_ready', 'authenticated', 'connecting'], true)) {
             return [
                 'success' => true,
-                'message' => 'Si aprira Chrome con WhatsApp Web. Attendi il QR e scansiona per collegare il dispositivo.',
+                'message' => 'Si aprira Chrome con WhatsApp Web. Attendi il QR oppure il completamento della verifica sessione.',
                 'action' => 'pair',
                 'status' => 'pairing_started',
                 'integration' => $integration,

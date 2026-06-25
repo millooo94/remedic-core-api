@@ -202,6 +202,64 @@ class IntegrationApiTest extends TestCase
     }
 
     #[Test]
+    public function it_exposes_qr_timeout_whatsapp_connect_failures_as_recoverable_errors(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $this->mock(WhatsAppPuppeteerService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('connect')
+                ->once()
+                ->with(true)
+                ->andReturn([
+                    'state' => 'qr_timeout',
+                    'ready' => false,
+                    'message' => 'QR non generato. Riprova collegamento.',
+                    'qr_required' => false,
+                    'qr_code_data_url' => null,
+                    'qr_updated_at' => null,
+                    'web_state' => null,
+                    'queue_depth' => 0,
+                    'phone_number' => null,
+                    'push_name' => null,
+                    'last_error_code' => 'qr_timeout',
+                    'last_error_message' => 'QR non generato. Riprova collegamento.',
+                    'last_event_at' => now()->toIso8601String(),
+                    'last_connected_at' => null,
+                ]);
+
+            $mock->shouldReceive('status')
+                ->once()
+                ->andReturn([
+                    'state' => 'qr_timeout',
+                    'ready' => false,
+                    'message' => 'QR non generato. Riprova collegamento.',
+                    'qr_required' => false,
+                    'qr_code_data_url' => null,
+                    'qr_updated_at' => null,
+                    'web_state' => null,
+                    'queue_depth' => 0,
+                    'phone_number' => null,
+                    'push_name' => null,
+                    'last_error_code' => 'qr_timeout',
+                    'last_error_message' => 'QR non generato. Riprova collegamento.',
+                    'last_event_at' => now()->toIso8601String(),
+                    'last_connected_at' => null,
+                ]);
+        });
+
+        $this->postJson('/api/v1/integrations/whatsapp/connect', [
+            'reset_session' => true,
+        ])
+            ->assertAccepted()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('status', 'error')
+            ->assertJsonPath('integration.session_status', 'error')
+            ->assertJsonPath('integration.connector_state', 'qr_timeout')
+            ->assertJsonPath('integration.last_error', 'QR non generato. Riprova collegamento.')
+            ->assertJsonPath('message', 'QR non generato. Riprova collegamento.');
+    }
+
+    #[Test]
     public function it_starts_visible_whatsapp_pairing_and_returns_pairing_started(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));

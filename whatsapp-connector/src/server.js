@@ -35,6 +35,8 @@ const CONNECT_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_WAIT_MS ||
 const CONNECT_POLL_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_POLL_MS || 300);
 const SESSION_RESET_DELAY_MS = Number(process.env.WHATSAPP_PUPPETEER_SESSION_RESET_DELAY_MS || 700);
 const CHROMIUM_SHUTDOWN_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CHROMIUM_SHUTDOWN_WAIT_MS || 1500);
+const QR_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_QR_TIMEOUT_MS || 25000);
+const CONNECTING_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECTING_TIMEOUT_MS || 60000);
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -47,6 +49,10 @@ let activeClientGeneration = 0;
 let connectorOperationQueue = Promise.resolve();
 let currentInitPromise = null;
 let currentOperation = null;
+let isResettingSession = false;
+let isConnectingSession = false;
+let qrWatchdog = null;
+let connectingWatchdog = null;
 
 const SESSION_PROFILE_PATH = path.join(SESSION_PATH, `session-${CLIENT_ID}`);
 const STALE_BROWSER_MARKERS = Array.from(new Set([
@@ -57,6 +63,13 @@ const STALE_BROWSER_MARKERS = Array.from(new Set([
   path.basename(SESSION_PATH),
   'puppeteer_dev_chrome_profile',
 ])).filter(Boolean);
+const STALE_BROWSER_COMMAND_PATTERNS = [
+  /\/snap\/chromium\/.*\/chrome/i,
+  /\bchromium-browser\b/i,
+  /\bchrome_crashpad_handler\b/i,
+  /\bcrashpad_handler\b/i,
+];
+const PROCESS_OWNER = String(process.env.USER || process.env.LOGNAME || '').trim();
 
 const status = {
   state: 'disconnected',
@@ -122,6 +135,20 @@ function updateStatus(next = {}) {
 
 function setOperation(name) {
   currentOperation = name;
+}
+
+function clearQrWatchdog() {
+  if (qrWatchdog) {
+    clearTimeout(qrWatchdog);
+    qrWatchdog = null;
+  }
+}
+
+function clearConnectingWatchdog() {
+  if (connectingWatchdog) {
+    clearTimeout(connectingWatchdog);
+    connectingWatchdog = null;
+  }
 }
 
 function connectorResponse(extra = {}) {
@@ -274,7 +301,9 @@ function isConnectorReady() {
 }
 
 function isConnectionStateActive() {
-  return currentOperation === 'connect'
+  return isResettingSession
+    || isConnectingSession
+    || currentOperation === 'connect'
     || currentOperation === 'reconnect'
     || currentOperation === 'reset-session'
     || currentOperation === 'disconnect'
@@ -333,6 +362,9 @@ async function hasPersistedSessionData() {
 }
 
 function setDisconnectedStatus(message = 'WhatsApp non collegato. Clicca Collega WhatsApp per generare un nuovo QR code.') {
+  clearQrWatchdog();
+  clearConnectingWatchdog();
+  isConnectingSession = false;
   lastQrPayload = null;
   updateStatus({
     state: 'disconnected',
@@ -357,6 +389,9 @@ function runSerializedConnectorOperation(operation) {
 }
 
 function setCleanupFailedStatus(message, error) {
+  clearQrWatchdog();
+  clearConnectingWatchdog();
+  isConnectingSession = false;
   lastQrPayload = null;
   updateStatus({
     state: 'session_cleanup_failed',
@@ -489,7 +524,7 @@ async function cleanupStaleChromiumProcesses() {
 
   let stdout = '';
   try {
-    const result = await execFileAsync('ps', ['-eo', 'pid=,command=']);
+    const result = await execFileAsync('ps', ['-eo', 'pid=,user=,command=']);
     stdout = String(result.stdout || '');
   } catch (error) {
     logConnector('ps scan failed', {
@@ -503,19 +538,30 @@ async function cleanupStaleChromiumProcesses() {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const match = line.match(/^(\d+)\s+(.*)$/);
+      const match = line.match(/^(\d+)\s+(\S+)\s+(.*)$/);
       if (!match) {
         return null;
       }
 
       return {
         pid: Number(match[1]),
-        command: match[2],
+        user: match[2],
+        command: match[3],
       };
     })
     .filter((entry) => entry && entry.pid > 0)
-    .filter((entry) => /chrom(e|ium)|chrome-headless-shell/i.test(entry.command))
-    .filter((entry) => STALE_BROWSER_MARKERS.some((marker) => entry.command.includes(marker)));
+    .filter((entry) => /chrom(e|ium)|chrome-headless-shell|chrome_crashpad_handler|crashpad_handler/i.test(entry.command))
+    .filter((entry) => {
+      const commandMatchesMarker = STALE_BROWSER_MARKERS.some((marker) => entry.command.includes(marker));
+      const commandMatchesSnapPattern = STALE_BROWSER_COMMAND_PATTERNS.some((pattern) => pattern.test(entry.command));
+      const matchesSameUser = PROCESS_OWNER !== '' && entry.user === PROCESS_OWNER;
+
+      if (commandMatchesMarker) {
+        return true;
+      }
+
+      return matchesSameUser && commandMatchesSnapPattern;
+    });
 
   if (!staleProcesses.length) {
     return [];
@@ -550,15 +596,15 @@ async function cleanupStaleChromiumProcesses() {
 
 async function safeResetSessionDirectory(reason = 'manual_reset', options = {}) {
   const skipDestroy = options.skipDestroy === true;
-
-  if (!skipDestroy) {
-    await safeDestroyClient(reason);
-  }
-
-  await cleanupStaleChromiumProcesses();
-  await wait(SESSION_RESET_DELAY_MS);
+  isResettingSession = true;
 
   try {
+    if (!skipDestroy) {
+      await safeDestroyClient(reason);
+    }
+
+    await cleanupStaleChromiumProcesses();
+    await wait(SESSION_RESET_DELAY_MS);
     await fsp.rm(SESSION_PATH, { recursive: true, force: true });
     await ensureSessionDirectory();
     await assertSessionDirectoryWritable();
@@ -569,6 +615,8 @@ async function safeResetSessionDirectory(reason = 'manual_reset', options = {}) 
     });
     setCleanupFailedStatus('Impossibile pulire la sessione WhatsApp. Verificare permessi o processi Chromium residui.', error);
     throw error;
+  } finally {
+    isResettingSession = false;
   }
 }
 
@@ -578,6 +626,152 @@ async function ensureConnectorEnvironment() {
   if (CHROMIUM_PATH && !fs.existsSync(CHROMIUM_PATH)) {
     throw new Error(`Chromium executable not found at ${CHROMIUM_PATH}`);
   }
+}
+
+async function recoverFromTransientSessionState({
+  generation,
+  nextState,
+  message,
+  errorCode,
+  reason,
+}) {
+  if (generation !== activeClientGeneration) {
+    return false;
+  }
+
+  const targetClient = client;
+  isConnectingSession = false;
+  currentInitPromise = null;
+  clearQrWatchdog();
+  clearConnectingWatchdog();
+  lastQrPayload = null;
+
+  updateStatus({
+    state: nextState,
+    ready: false,
+    qrRequired: false,
+    qrCodeDataUrl: null,
+    qrUpdatedAt: null,
+    message,
+    webState: null,
+    phoneNumber: null,
+    pushName: null,
+    lastErrorCode: errorCode,
+    lastErrorMessage: message,
+  });
+
+  logConnector(reason, {
+    generation,
+    nextState,
+    errorCode,
+    message,
+  });
+
+  try {
+    if (targetClient) {
+      await safeDestroyClient(reason, targetClient);
+    }
+
+    await cleanupStaleChromiumProcesses();
+    await wait(SESSION_RESET_DELAY_MS);
+    await fsp.rm(SESSION_PATH, { recursive: true, force: true });
+    await ensureSessionDirectory();
+    await assertSessionDirectoryWritable();
+  } catch (error) {
+    setCleanupFailedStatus('Impossibile pulire la sessione WhatsApp dopo un collegamento non completato.', error);
+    return false;
+  }
+
+  updateStatus({
+    state: nextState,
+    ready: false,
+    qrRequired: false,
+    qrCodeDataUrl: null,
+    qrUpdatedAt: null,
+    message,
+    webState: null,
+    phoneNumber: null,
+    pushName: null,
+    lastErrorCode: errorCode,
+    lastErrorMessage: message,
+  });
+
+  return true;
+}
+
+function startQrWatchdog(generation) {
+  clearQrWatchdog();
+
+  qrWatchdog = setTimeout(() => {
+    runSerializedConnectorOperation(async () => {
+      if (generation !== activeClientGeneration) {
+        return;
+      }
+
+      if (
+        status.ready
+        || status.qrRequired
+        || [
+          'connected',
+          'qr_required',
+          'session_expired',
+          'browser_unavailable',
+          'browser_locked',
+          'session_cleanup_failed',
+          'ui_incompatible',
+          'technical_error',
+          'error',
+          'qr_timeout',
+          'connecting_timeout',
+          'stale_authenticated_session',
+        ].includes(status.state)
+      ) {
+        return;
+      }
+
+      await recoverFromTransientSessionState({
+        generation,
+        nextState: 'qr_timeout',
+        errorCode: 'qr_timeout',
+        message: 'QR non generato. Riprova collegamento.',
+        reason: 'qr timeout reached',
+      });
+    }).catch((error) => {
+      logConnector('qr watchdog cleanup failed', {
+        generation,
+        message: String(error && error.message ? error.message : error),
+      });
+    });
+  }, QR_TIMEOUT_MS);
+}
+
+function startConnectingWatchdog(generation) {
+  clearConnectingWatchdog();
+
+  connectingWatchdog = setTimeout(() => {
+    runSerializedConnectorOperation(async () => {
+      if (generation !== activeClientGeneration) {
+        return;
+      }
+
+      if (status.ready || !['connecting', 'authenticated'].includes(status.state)) {
+        return;
+      }
+
+      await recoverFromTransientSessionState({
+        generation,
+        nextState: 'connecting_timeout',
+        errorCode: 'stale_authenticated_session',
+        message: 'La sessione WhatsApp non si e completata. Genera un nuovo QR.',
+        reason: 'connecting watchdog timeout reached',
+      });
+    }).catch((error) => {
+      logConnector('connecting watchdog cleanup failed', {
+        generation,
+        message: String(error && error.message ? error.message : error),
+      });
+    });
+  }, CONNECTING_TIMEOUT_MS);
 }
 
 async function initializeClient(options = {}) {
@@ -602,9 +796,12 @@ async function initializeClient(options = {}) {
   }
 
   await ensureConnectorEnvironment();
+  isConnectingSession = true;
 
   activeClientGeneration += 1;
   const generation = activeClientGeneration;
+  clearQrWatchdog();
+  clearConnectingWatchdog();
 
   updateStatus({
     state: 'starting',
@@ -663,6 +860,7 @@ async function initializeClient(options = {}) {
       return;
     }
 
+    clearQrWatchdog();
     lastQrPayload = qr;
     const qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 280 });
     updateStatus({
@@ -686,14 +884,16 @@ async function initializeClient(options = {}) {
       return;
     }
 
+    clearQrWatchdog();
     updateStatus({
       state: 'connecting',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
       qrUpdatedAt: null,
-      message: 'Sessione autenticata, sincronizzazione WhatsApp in corso.',
+      message: 'Verifica sessione WhatsApp in corso...',
     });
+    startConnectingWatchdog(generation);
     logConnector('authenticated', {
       generation,
     });
@@ -704,6 +904,8 @@ async function initializeClient(options = {}) {
       return;
     }
 
+    clearQrWatchdog();
+    clearConnectingWatchdog();
     const info = nextClient.info || null;
     lastQrPayload = null;
     updateStatus({
@@ -745,6 +947,8 @@ async function initializeClient(options = {}) {
       return;
     }
 
+    clearQrWatchdog();
+    clearConnectingWatchdog();
     updateStatus({
       state: 'session_expired',
       ready: false,
@@ -769,6 +973,8 @@ async function initializeClient(options = {}) {
       return;
     }
 
+    clearQrWatchdog();
+    clearConnectingWatchdog();
     const normalizedReason = String(reason || '');
     const isLogout = normalizedReason.toUpperCase().includes('LOGOUT');
     logConnector('disconnected', {
@@ -801,11 +1007,13 @@ async function initializeClient(options = {}) {
       return;
     }
 
-    updateStatus({
-      state: 'waiting_for_scan',
-      ready: false,
-      message: message ? `Preparazione WhatsApp Web: ${message}` : 'Preparazione WhatsApp Web in corso.',
-    });
+    if (!status.qrRequired) {
+      updateStatus({
+        state: 'waiting_for_scan',
+        ready: false,
+        message: message ? `Preparazione WhatsApp Web: ${message}` : 'Preparazione WhatsApp Web in corso.',
+      });
+    }
     logConnector('loading_screen', {
       generation,
       message: String(message || ''),
@@ -813,6 +1021,7 @@ async function initializeClient(options = {}) {
   });
 
   client = nextClient;
+  startQrWatchdog(generation);
 
   const initPromise = (async () => {
     try {
@@ -825,6 +1034,8 @@ async function initializeClient(options = {}) {
       }
 
       if (isActiveClient(nextClient, generation)) {
+        clearQrWatchdog();
+        clearConnectingWatchdog();
         updateStatus({
           state: classification.connectorState,
           ready: false,
@@ -845,6 +1056,10 @@ async function initializeClient(options = {}) {
         generation,
         message: String(error?.message || error),
       });
+    } finally {
+      if (generation === activeClientGeneration) {
+        isConnectingSession = false;
+      }
     }
   })();
 
@@ -887,7 +1102,7 @@ async function waitForFreshConnectState({ generation, qrNotBeforeMs }) {
       }
     }
 
-    if (['browser_unavailable', 'browser_locked', 'session_cleanup_failed', 'ui_incompatible', 'technical_error', 'session_expired', 'error'].includes(status.state)) {
+    if (['browser_unavailable', 'browser_locked', 'session_cleanup_failed', 'ui_incompatible', 'technical_error', 'session_expired', 'error', 'qr_timeout', 'connecting_timeout', 'stale_authenticated_session'].includes(status.state)) {
       return {
         kind: 'error',
         message: status.lastErrorMessage || status.message,
@@ -1171,14 +1386,31 @@ app.post('/connect', authorizeRequest, async (req, res) => {
       qrNotBeforeMs: requestStartedAtMs,
     });
 
+    if (waitResult.kind === 'timeout') {
+      await runSerializedConnectorOperation(() => recoverFromTransientSessionState({
+        generation,
+        nextState: 'qr_timeout',
+        errorCode: 'qr_timeout',
+        message: 'QR non generato. Riprova collegamento.',
+        reason: 'connect wait timed out before qr generation',
+      }));
+    }
+
+    const responseWaitResult = waitResult.kind === 'timeout'
+      ? (status.state === 'session_cleanup_failed' ? 'session_cleanup_failed' : 'qr_timeout')
+      : waitResult.kind;
+    const responseMessage = waitResult.kind === 'qr_ready'
+      ? 'Scansiona il QR code con WhatsApp.'
+      : waitResult.kind === 'connected'
+        ? 'WhatsApp collegato correttamente.'
+        : waitResult.kind === 'timeout'
+          ? status.message || 'QR non generato. Riprova collegamento.'
+          : waitResult.message || 'Generazione di un nuovo QR code WhatsApp avviata.';
+
     res.status(202).json(connectorResponse({
       requested_reset_session: Boolean(resetSession),
-      wait_result: waitResult.kind,
-      message: waitResult.kind === 'qr_ready'
-        ? 'Scansiona il QR code con WhatsApp.'
-        : waitResult.kind === 'connected'
-          ? 'WhatsApp collegato correttamente.'
-          : waitResult.message || 'Generazione di un nuovo QR code WhatsApp avviata.',
+      wait_result: responseWaitResult,
+      message: responseMessage,
     }));
   } catch (error) {
     const classification = classifyError(error);
@@ -1325,6 +1557,8 @@ app.listen(CONNECTOR_PORT, CONNECTOR_HOST, async () => {
 
 async function shutdownConnector(signal) {
   logConnector('shutdown requested', { signal });
+  clearQrWatchdog();
+  clearConnectingWatchdog();
 
   try {
     await runSerializedConnectorOperation(async () => {
