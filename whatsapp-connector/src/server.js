@@ -620,6 +620,17 @@ async function safeResetSessionDirectory(reason = 'manual_reset', options = {}) 
   }
 }
 
+async function hasLocalAuthSession() {
+  const localAuthPath = path.join(SESSION_PATH, `session-${CLIENT_ID}`);
+
+  try {
+    const entries = await fsp.readdir(localAuthPath);
+    return entries.length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function ensureConnectorEnvironment() {
   await assertSessionDirectoryWritable();
 
@@ -1360,7 +1371,10 @@ app.get('/status', authorizeRequest, async (_req, res) => {
 });
 
 app.post('/connect', authorizeRequest, async (req, res) => {
-  const resetSession = req.body?.reset_session ?? false;
+  const explicitResetSession = req.body?.reset_session;
+  const resetSession = explicitResetSession === undefined
+    ? !(await hasLocalAuthSession())
+    : Boolean(explicitResetSession);
 
   try {
     if (isConnectionStateActive()) {
@@ -1468,6 +1482,21 @@ app.post('/disconnect', authorizeRequest, async (_req, res) => {
     logConnector('disconnect requested');
     setOperation('disconnect');
     await runSerializedConnectorOperation(async () => {
+      const clientToLogout = client;
+
+      if (clientToLogout && typeof clientToLogout.logout === 'function') {
+        try {
+          logConnector('logout client requested', { reason: 'manual_disconnect' });
+          await clientToLogout.logout();
+          logConnector('logout client completed', { reason: 'manual_disconnect' });
+        } catch (error) {
+          logConnector('logout client failed', {
+            reason: 'manual_disconnect',
+            message: String(error && error.message ? error.message : error),
+          });
+        }
+      }
+
       await safeResetSessionDirectory('manual_disconnect');
       setDisconnectedStatus('WhatsApp scollegato. Clicca Collega WhatsApp per generare un nuovo QR code.');
     });
