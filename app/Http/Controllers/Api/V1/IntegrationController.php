@@ -103,7 +103,7 @@ class IntegrationController extends Controller
         ]);
 
         return response()->json(
-            $this->integrationService->connectWhatsApp((bool) ($payload['reset_session'] ?? true)),
+            $this->integrationService->connectWhatsApp((bool) ($payload['reset_session'] ?? false)),
             Response::HTTP_ACCEPTED
         );
     }

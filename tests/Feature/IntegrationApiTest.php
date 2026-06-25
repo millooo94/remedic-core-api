@@ -202,6 +202,60 @@ class IntegrationApiTest extends TestCase
     }
 
     #[Test]
+    public function it_tries_to_restore_an_existing_whatsapp_session_without_reset_by_default(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $this->mock(WhatsAppPuppeteerService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('connect')
+                ->once()
+                ->with(false)
+                ->andReturn([
+                    'state' => 'connected',
+                    'ready' => true,
+                    'message' => 'Sessione WhatsApp ripristinata correttamente.',
+                    'qr_required' => false,
+                    'qr_code_data_url' => null,
+                    'qr_updated_at' => null,
+                    'web_state' => 'CONNECTED',
+                    'queue_depth' => 0,
+                    'phone_number' => '390950904525',
+                    'push_name' => 'Remedic',
+                    'last_error_code' => null,
+                    'last_error_message' => null,
+                    'last_event_at' => now()->toIso8601String(),
+                    'last_connected_at' => now()->toIso8601String(),
+                ]);
+
+            $mock->shouldReceive('status')
+                ->once()
+                ->andReturn([
+                    'state' => 'connected',
+                    'ready' => true,
+                    'message' => 'WhatsApp Web collegato e pronto all\'invio.',
+                    'qr_required' => false,
+                    'qr_code_data_url' => null,
+                    'qr_updated_at' => null,
+                    'web_state' => 'CONNECTED',
+                    'queue_depth' => 0,
+                    'phone_number' => '390950904525',
+                    'push_name' => 'Remedic',
+                    'last_error_code' => null,
+                    'last_error_message' => null,
+                    'last_event_at' => now()->toIso8601String(),
+                    'last_connected_at' => now()->toIso8601String(),
+                ]);
+        });
+
+        $this->postJson('/api/v1/integrations/whatsapp/connect')
+            ->assertAccepted()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('status', 'session_valid')
+            ->assertJsonPath('message', 'Sessione WhatsApp ripristinata correttamente.')
+            ->assertJsonPath('integration.session_status', 'session_valid');
+    }
+
+    #[Test]
     public function it_exposes_qr_timeout_whatsapp_connect_failures_as_recoverable_errors(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));

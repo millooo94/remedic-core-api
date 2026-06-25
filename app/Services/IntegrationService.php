@@ -261,7 +261,7 @@ class IntegrationService
     /**
      * @return array<string, mixed>
      */
-    public function connectWhatsApp(bool $resetSession = true): array
+    public function connectWhatsApp(bool $resetSession = false): array
     {
         $account = $this->ensureAccountRecord(self::PROVIDER_WHATSAPP);
         $account->forceFill([
@@ -290,7 +290,9 @@ class IntegrationService
         if (($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID) {
             return [
                 'success' => true,
-                'message' => 'WhatsApp collegato correttamente.',
+                'message' => $resetSession
+                    ? 'WhatsApp collegato correttamente.'
+                    : 'Sessione WhatsApp ripristinata correttamente.',
                 'action' => 'connect',
                 'status' => self::STATUS_SESSION_VALID,
                 'integration' => $integration,
@@ -300,7 +302,9 @@ class IntegrationService
         if ($hasQrReady) {
             return [
                 'success' => true,
-                'message' => 'Scansiona il QR code con WhatsApp.',
+                'message' => $resetSession
+                    ? 'Scansiona il QR code con WhatsApp.'
+                    : 'Sessione non riutilizzabile. Scansiona il QR code con WhatsApp.',
                 'action' => 'connect',
                 'status' => 'qr_ready',
                 'integration' => $integration,
@@ -310,7 +314,9 @@ class IntegrationService
         if ($isWaitingForConnection) {
             return [
                 'success' => true,
-                'message' => 'Collegamento WhatsApp in attesa di scansione QR.',
+                'message' => $resetSession
+                    ? 'Collegamento WhatsApp in attesa di scansione QR.'
+                    : 'Verifica sessione WhatsApp in corso. Se necessario verra richiesto un nuovo QR.',
                 'action' => 'connect',
                 'status' => self::STATUS_CONNECTING,
                 'integration' => $integration,
