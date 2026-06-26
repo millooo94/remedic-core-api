@@ -64,6 +64,8 @@ return [
         'node_binary' => env('WHATSAPP_PUPPETEER_NODE_BINARY', 'node'),
         'connector_workdir' => env('WHATSAPP_PUPPETEER_WORKDIR', base_path('whatsapp-connector')),
         'startup_wait_ms' => (int) env('WHATSAPP_PUPPETEER_STARTUP_WAIT_MS', 2000),
+        'launch_cooldown_seconds' => (int) env('WHATSAPP_PUPPETEER_LAUNCH_COOLDOWN_SECONDS', 20),
+        'disconnect_notification_to' => env('WHATSAPP_PUPPETEER_DISCONNECT_NOTIFICATION_TO', 'humancaretelemedicine@gmail.com'),
     ],
 
     'geocoding' => [

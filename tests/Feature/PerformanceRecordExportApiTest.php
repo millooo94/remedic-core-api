@@ -286,6 +286,90 @@ class PerformanceRecordExportApiTest extends TestCase
         $this->assertSame(1, $subtotals['Bianchi Laura']['total']['performance_count']);
     }
 
+    #[Test]
+    public function it_excludes_provvigione_from_professional_payable_totals_but_keeps_it_visible_in_exports(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $category = ServiceCategory::factory()->create([
+            'name' => 'Dermatologia export provvigione',
+            'slug' => 'dermatologia-export-provvigione',
+        ]);
+
+        $professional = Professional::factory()->create([
+            'full_name' => 'Di Salvo Antonino',
+            'first_name' => 'Antonino',
+            'last_name' => 'Di Salvo',
+            'area_name' => 'Dermatologia',
+        ]);
+
+        $service = Service::factory()->create([
+            'category_id' => $category->id,
+            'display_name' => 'Visita dermatologica provvigione',
+            'canonical_name' => 'Visita dermatologica provvigione',
+            'slug' => 'visita-dermatologica-provvigione',
+        ]);
+
+        ProfessionalService::query()->create([
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'price_amount' => 300,
+            'is_active' => true,
+        ]);
+
+        $performanceService = app(PerformanceRecordService::class);
+
+        $performanceService->create([
+            'performed_at' => '2026-05-18',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 100,
+            'payment_method' => 'cash',
+            'payment_status' => 'da_pagare',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+            'is_invoiced' => false,
+            'is_black' => false,
+            'notes' => 'white-standard',
+        ], $user);
+
+        $performanceService->create([
+            'performed_at' => '2026-05-19',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 300,
+            'payment_method' => 'cash',
+            'payment_status' => 'da_pagare',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 20,
+            'is_invoiced' => false,
+            'is_provvigione' => true,
+            'notes' => 'provvigione-standard',
+        ], $user);
+
+        $preview = app(PerformanceRecordExportService::class)->build([
+            'date_from' => '2026-05-01',
+            'date_to' => '2026-05-31',
+        ]);
+
+        $this->assertSame(['white', 'provvigione'], $preview['visible_fiscal_types']);
+        $this->assertSame(2, $preview['totals']['performance_count']);
+        $this->assertSame(70.0, $preview['totals']['professional_amount']);
+        $this->assertSame(70.0, $preview['totals']['white']['professional_amount']);
+        $this->assertSame(0.0, $preview['totals']['provvigione']['professional_amount']);
+        $provvigioneRecord = collect($preview['records'])->firstWhere('fiscal_type_label', 'Provvigione');
+        $this->assertNotNull($provvigioneRecord);
+        $this->assertSame(0.0, $provvigioneRecord['professional_amount']);
+        $this->assertSame('Da incassare a Remedic', $provvigioneRecord['payment_status_label']);
+        $this->assertStringContainsString('Provvigione Remedic', (string) $provvigioneRecord['notes']);
+        $this->assertStringContainsString('Provvigioni Remedic', $preview['message']);
+    }
+
     private function createPatientIds(int $count): array
     {
         return Patient::factory()

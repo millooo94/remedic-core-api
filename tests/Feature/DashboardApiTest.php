@@ -262,7 +262,66 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('cards.average_center_gain_performance', 24)
             ->assertJsonPath('cards.total_variable_costs', 76)
             ->assertJsonPath('cards.total_center_costs', 76)
-            ->assertJsonPath('cards.net_center_margin', 4);
+            ->assertJsonPath('cards.net_center_margin', 24);
+    }
+
+    #[Test]
+    public function it_counts_only_the_remedic_commission_as_revenue_for_provvigione_records(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        Sanctum::actingAs($user);
+
+        $professional = Professional::factory()->create([
+            'full_name' => 'Russo Ilenia',
+            'area_name' => 'Nutrizione',
+        ]);
+        $category = $this->findOrCreateCategory('Nutrizione', 'nutrizione');
+        $service = Service::factory()->create([
+            'category_id' => $category->id,
+            'display_name' => 'Controllo nutrizionale provvigione',
+            'canonical_name' => 'Controllo nutrizionale provvigione',
+            'slug' => 'nutrizione-controllo-provvigione',
+        ]);
+        ProfessionalService::query()->create([
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'price_amount' => 300,
+            'is_active' => true,
+        ]);
+
+        app(PerformanceRecordService::class)->create([
+            'performed_at' => '2026-03-22',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => $this->createPatientIds(1),
+            'quantity' => 1,
+            'unit_amount' => 300,
+            'payment_method' => 'cash',
+            'payment_status' => 'da_pagare',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 20,
+            'is_black' => false,
+            'is_provvigione' => true,
+        ], $user);
+
+        $this->getJson('/api/v1/dashboard/summary?month=3&year=2026')
+            ->assertOk()
+            ->assertJsonPath('cards.total_performances', 1)
+            ->assertJsonPath('cards.performance_type_breakdown.standard', 0)
+            ->assertJsonPath('cards.performance_type_breakdown.black', 1)
+            ->assertJsonPath('cards.performance_type_breakdown.promo', 0)
+            ->assertJsonPath('cards.performance_type_breakdown.provvigione', 1)
+            ->assertJsonPath('cards.total_center_amount', 60)
+            ->assertJsonPath('cards.total_professional_amount', 0)
+            ->assertJsonPath('cards.total_revenue_amount', 60)
+            ->assertJsonPath('cards.revenue_payment_breakdown.cash', 60)
+            ->assertJsonPath('cards.revenue_payment_breakdown.cash_breakdown.provvigione', 60)
+            ->assertJsonPath('cards.professional_amount_breakdown.total', 0)
+            ->assertJsonPath('cards.professional_amount_breakdown.fiscal_split.total.provvigione', 0)
+            ->assertJsonPath('cards.provvigione_collection_breakdown.total', 60)
+            ->assertJsonPath('cards.provvigione_collection_breakdown.collected', 0)
+            ->assertJsonPath('cards.provvigione_collection_breakdown.to_collect', 60)
+            ->assertJsonPath('cards.net_center_margin', 60);
     }
 
     #[Test]
@@ -421,7 +480,7 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('cards.total_professional_amount', 120)
             ->assertJsonPath('cards.performance_count_ranking.0.professional_name', 'Neurologo EMG')
             ->assertJsonPath('cards.revenue_ranking.0.professional_name', 'Neurologo EMG')
-            ->assertJsonPath('cards.revenue_ranking.0.revenue_total', 70);
+            ->assertJsonPath('cards.revenue_ranking.0.revenue_total', 150);
 
         $this->getJson('/api/v1/dashboard/monthly-trends?month=3&year=2026')
             ->assertOk()

@@ -133,6 +133,57 @@ function updateStatus(next = {}) {
   });
 }
 
+function isRecoveringState(rawState) {
+  return [
+    'automation_unavailable',
+    'browser_locked',
+    'session_cleanup_failed',
+    'connecting_timeout',
+    'stale_authenticated_session',
+    'qr_timeout',
+  ].includes(String(rawState || ''));
+}
+
+function deriveNormalizedState() {
+  if (status.ready && status.state === 'connected') {
+    return queueDepth > 0 ? 'sending' : 'ready';
+  }
+
+  if (status.qrRequired && status.qrCodeDataUrl) {
+    return 'qr_required';
+  }
+
+  switch (String(status.state || '')) {
+    case 'starting':
+    case 'initializing':
+    case 'waiting_for_scan':
+      return 'starting';
+    case 'authenticated':
+    case 'connecting':
+      return 'authenticated';
+    case 'connected':
+      return queueDepth > 0 ? 'sending' : (status.ready ? 'ready' : 'authenticated');
+    case 'disconnected':
+    case 'session_expired':
+    case 'auth_failure':
+      return 'disconnected';
+    case 'browser_locked':
+    case 'session_cleanup_failed':
+    case 'automation_unavailable':
+    case 'connecting_timeout':
+    case 'stale_authenticated_session':
+    case 'qr_timeout':
+      return 'recovering';
+    case 'browser_unavailable':
+    case 'ui_incompatible':
+    case 'technical_error':
+    case 'error':
+      return 'error';
+    default:
+      return status.ready ? 'ready' : 'error';
+  }
+}
+
 function setOperation(name) {
   currentOperation = name;
 }
@@ -152,9 +203,14 @@ function clearConnectingWatchdog() {
 }
 
 function connectorResponse(extra = {}) {
+  const normalizedState = deriveNormalizedState();
+
   return {
     state: status.state,
+    normalized_state: normalizedState,
     ready: status.ready,
+    can_send: isConnectorReady(),
+    is_recovering: isRecoveringState(status.state) || normalizedState === 'recovering',
     message: status.message,
     qr_required: status.qrRequired,
     qr_code_data_url: status.qrCodeDataUrl,
@@ -897,7 +953,7 @@ async function initializeClient(options = {}) {
 
     clearQrWatchdog();
     updateStatus({
-      state: 'connecting',
+      state: 'authenticated',
       ready: false,
       qrRequired: false,
       qrCodeDataUrl: null,
@@ -1193,6 +1249,12 @@ function buildMediaFromPayload({ mediaPath, mediaBase64, mediaMimeType, mediaNam
 
 async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeType, mediaName }) {
   if (!isConnectorReady()) {
+    logConnector('send blocked - connector not ready', {
+      normalizedState: deriveNormalizedState(),
+      qrRequired: status.qrRequired,
+      queueDepth,
+    });
+
     return {
       delivery_status: 'failed',
       provider_status: status.qrRequired ? 'qr_required' : 'session_not_ready',
@@ -1230,6 +1292,12 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
 
     media = mediaBuild.media;
   }
+
+  logConnector('send requested', {
+    targetTail: normalizedTarget.slice(-4),
+    hasMedia,
+    queueDepth,
+  });
 
   for (let attempt = 1; attempt <= MAX_SEND_RETRIES; attempt += 1) {
     try {
@@ -1274,6 +1342,12 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
         );
       }
 
+      logConnector('send success', {
+        targetTail: normalizedTarget.slice(-4),
+        hasMedia,
+        messageId: sentMessage?.id?._serialized || null,
+      });
+
       return {
         delivery_status: 'sent',
         provider_status: 'sent',
@@ -1290,6 +1364,15 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
     } catch (error) {
       const classification = classifyError(error);
       const retryable = classification.providerStatus === 'timeout' || classification.providerStatus === 'technical_error';
+
+      logConnector('send failed', {
+        targetTail: normalizedTarget.slice(-4),
+        attempt,
+        retryable,
+        providerStatus: classification.providerStatus,
+        connectorState: classification.connectorState,
+        message: String(error?.message || error),
+      });
 
       if (retryable && attempt < MAX_SEND_RETRIES) {
         await wait(750);
@@ -1367,6 +1450,8 @@ app.get('/status', authorizeRequest, async (_req, res) => {
   res.json(connectorResponse({
     session_path: SESSION_PATH,
     last_qr_available: !!lastQrPayload,
+    has_local_auth_session: await hasLocalAuthSession(),
+    has_persisted_session: await hasPersistedSessionData(),
   }));
 });
 

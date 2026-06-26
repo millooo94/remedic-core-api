@@ -76,7 +76,10 @@ class IntegrationApiTest extends TestCase
         $this->assertNotNull($account);
         $this->assertTrue((bool) $account->enabled);
         $this->assertSame('Canale marketing principale', $account->notes);
-        $this->assertTrue($account->config_json === null || $account->config_json === []);
+        $this->assertIsArray($account->config_json ?? []);
+        $this->assertArrayNotHasKey('api_token', $account->config_json ?? []);
+        $this->assertArrayNotHasKey('phone_number_id', $account->config_json ?? []);
+        $this->assertArrayNotHasKey('business_id', $account->config_json ?? []);
     }
 
     #[Test]
@@ -740,5 +743,104 @@ class IntegrationApiTest extends TestCase
         $this->postJson('/api/v1/integrations/miodottore/connect-session')->assertNotFound();
         $this->getJson('/api/v1/integrations/miodottore/connect-session/test-token')->assertNotFound();
         $this->postJson('/api/v1/integrations/miodottore/cancel-connect-session')->assertNotFound();
+    }
+
+    #[Test]
+    public function it_exposes_the_normalized_whatsapp_operational_state_in_status_responses(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ExternalProviderAccount::query()->create([
+            'provider' => 'whatsapp',
+            'label' => 'WhatsApp',
+            'enabled' => true,
+            'login_status' => 'connecting',
+        ]);
+
+        $this->mock(WhatsAppPuppeteerService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('status')
+                ->atLeast()->once()
+                ->andReturn([
+                    'state' => 'authenticated',
+                    'normalized_state' => 'authenticated',
+                    'ready' => false,
+                    'can_send' => false,
+                    'is_recovering' => false,
+                    'message' => 'Sessione autenticata. Verifica finale in corso prima di rendere il canale operativo.',
+                    'qr_required' => false,
+                    'qr_code_data_url' => null,
+                    'qr_updated_at' => null,
+                    'web_state' => 'CONNECTED',
+                    'queue_depth' => 0,
+                    'phone_number' => '393331234567',
+                    'push_name' => 'Remedic',
+                    'last_error_code' => null,
+                    'last_error_message' => null,
+                    'last_event_at' => now()->toIso8601String(),
+                    'last_connected_at' => null,
+                    'process_id' => 4321,
+                    'session_path' => storage_path('app/whatsapp-web-session'),
+                    'client_generation' => 7,
+                    'has_local_auth_session' => true,
+                    'has_persisted_session' => true,
+                ]);
+        });
+
+        $this->getJson('/api/v1/integrations/whatsapp/status')
+            ->assertOk()
+            ->assertJsonPath('connected', false)
+            ->assertJsonPath('can_send', false)
+            ->assertJsonPath('operational_state', 'authenticated')
+            ->assertJsonPath('integration.operational_state', 'authenticated')
+            ->assertJsonPath('integration.operational_state_label', 'Verifica finale')
+            ->assertJsonPath('integration.status_hint', 'Autenticazione completata, verifica finale in corso.')
+            ->assertJsonPath('integration.process_id', 4321)
+            ->assertJsonPath('integration.has_local_auth_session', true);
+    }
+
+    #[Test]
+    public function whatsapp_diagnose_command_reports_the_real_operational_state(): void
+    {
+        ExternalProviderAccount::query()->create([
+            'provider' => 'whatsapp',
+            'label' => 'WhatsApp',
+            'enabled' => true,
+            'login_status' => 'session_valid',
+            'last_session_verified_at' => now(),
+        ]);
+
+        $this->mock(WhatsAppPuppeteerService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('status')
+                ->atLeast()->once()
+                ->andReturn([
+                    'state' => 'connected',
+                    'normalized_state' => 'ready',
+                    'ready' => true,
+                    'can_send' => true,
+                    'is_recovering' => false,
+                    'message' => 'WhatsApp Web collegato e pronto all invio.',
+                    'qr_required' => false,
+                    'qr_code_data_url' => null,
+                    'queue_depth' => 0,
+                    'phone_number' => '393331234567',
+                    'push_name' => 'Remedic',
+                    'process_id' => 9876,
+                    'session_path' => storage_path('app/whatsapp-web-session'),
+                    'client_generation' => 2,
+                    'has_local_auth_session' => true,
+                    'has_persisted_session' => true,
+                    'last_error_code' => null,
+                    'last_error_message' => null,
+                    'last_event_at' => now()->toIso8601String(),
+                    'last_connected_at' => now()->toIso8601String(),
+                ]);
+        });
+
+        $this->artisan('whatsapp:diagnose')
+            ->expectsOutputToContain('Diagnostica WhatsApp')
+            ->expectsOutputToContain('Operational state: ready')
+            ->expectsOutputToContain('Can send: yes')
+            ->expectsOutputToContain('Suggerimento: Canale operativo: puoi inviare messaggi.')
+            ->assertExitCode(0);
     }
 }

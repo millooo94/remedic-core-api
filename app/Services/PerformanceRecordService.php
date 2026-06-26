@@ -30,8 +30,7 @@ class PerformanceRecordService
         private readonly PerformanceRecordFilters $filters,
         private readonly PerformanceExpenseSyncService $performanceExpenseSyncService,
         private readonly GoogleReviewRequestService $googleReviewRequestService,
-    ) {
-    }
+    ) {}
 
     public function baseQuery(array $filters = []): Builder
     {
@@ -44,17 +43,17 @@ class PerformanceRecordService
 
     public function filteredTotals(array $filters = []): array
     {
-        $query = PerformanceRecord::query();
+        $query = PerformanceRecord::query()->select([
+            'professional_amount',
+            'center_amount',
+            'is_provvigione',
+        ]);
         $this->filters->apply($query, $filters);
-
-        $totals = $query
-            ->selectRaw('COALESCE(SUM(center_amount), 0) as center_share')
-            ->selectRaw('COALESCE(SUM(professional_amount), 0) as professional_share')
-            ->first();
+        $records = $query->get();
 
         return [
-            'center_share' => (float) ($totals?->center_share ?? 0),
-            'professional_share' => (float) ($totals?->professional_share ?? 0),
+            'center_share' => round((float) $records->sum(fn(PerformanceRecord $record) => $this->recognizedCenterShareForList($record)), 2),
+            'professional_share' => round((float) $records->sum(fn(PerformanceRecord $record) => $this->payableProfessionalShareForList($record)), 2),
         ];
     }
 
@@ -191,31 +190,56 @@ class PerformanceRecordService
         }
 
         $manualArea = isset($payload['area_name']) ? trim((string) $payload['area_name']) : '';
-        $isInvoiced = (bool) ($payload['is_invoiced'] ?? $existing?->is_invoiced ?? false);
-        $isBlack = (bool) ($payload['is_black'] ?? $existing?->is_black ?? false);
         $isPromo = (bool) ($payload['is_promo'] ?? $existing?->is_promo ?? false);
+        $isProvvigione = (bool) ($payload['is_provvigione'] ?? $existing?->is_provvigione ?? false);
+        $isBlack = $isProvvigione || (bool) ($payload['is_black'] ?? $existing?->is_black ?? false);
+        $isInvoiced = $isProvvigione ? false : (bool) ($payload['is_invoiced'] ?? $existing?->is_invoiced ?? false);
         $paymentMethod = PaymentMethod::tryFrom((string) ($payload['payment_method'] ?? ''))
             ?? ($existing?->payment_method instanceof PaymentMethod ? $existing->payment_method : null)
             ?? PaymentMethod::Card;
 
-        if ($isBlack && $isInvoiced) {
+        if (! $isProvvigione && $isBlack && $isInvoiced) {
             throw ValidationException::withMessages([
                 'is_black' => 'Una prestazione black non puo essere segnata come fatturata.',
                 'is_invoiced' => 'Una prestazione black non puo essere segnata come fatturata.',
             ]);
         }
 
-        if ($isBlack && $paymentMethod === PaymentMethod::Card) {
+        if (! $isProvvigione && $isBlack && $paymentMethod === PaymentMethod::Card) {
             throw ValidationException::withMessages([
                 'payment_method' => 'Una prestazione black non puo essere registrata con pagamento carta.',
             ]);
         }
 
-        if ($isBlack && $isPromo) {
+        if (! $isProvvigione && $isBlack && $isPromo) {
             throw ValidationException::withMessages([
                 'is_black' => 'Una prestazione non puo essere contemporaneamente black e promo.',
                 'is_promo' => 'Una prestazione non puo essere contemporaneamente black e promo.',
             ]);
+        }
+
+        if ($isProvvigione && $isInvoiced) {
+            throw ValidationException::withMessages([
+                'is_provvigione' => 'Una prestazione in provvigione non puo essere segnata come fatturata da Remedic.',
+                'is_invoiced' => 'Una prestazione in provvigione non puo essere segnata come fatturata da Remedic.',
+            ]);
+        }
+
+        if ($isProvvigione && $paymentMethod === PaymentMethod::Card) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Una prestazione in provvigione non puo essere registrata con pagamento carta del centro.',
+            ]);
+        }
+
+        if ($isProvvigione && $isPromo) {
+            throw ValidationException::withMessages([
+                'is_provvigione' => 'Una prestazione non puo essere contemporaneamente promo e provvigione.',
+                'is_promo' => 'Una prestazione non puo essere contemporaneamente promo e provvigione.',
+            ]);
+        }
+
+        if ($isProvvigione && $splitMode === PerformanceSplitMode::Standard) {
+            [$professionalAmount, $centerAmount] = [$centerAmount, $professionalAmount];
         }
 
         return [
@@ -238,13 +262,15 @@ class PerformanceRecordService
                 'fixed_amount' => $fixedAmount,
                 'professional_amount' => $professionalAmount,
                 'center_amount' => $centerAmount,
-                'payment_method' => $paymentMethod->value,
+                'payment_method' => ($isBlack || $isProvvigione ? PaymentMethod::Cash : $paymentMethod)->value,
+                // Per le provvigioni lo stato tiene traccia dell'incasso Remedic, non della liquidazione del professionista.
                 'payment_status' => PaymentStatus::tryFrom((string) ($payload['payment_status'] ?? ''))?->value
                     ?? $existing?->payment_status?->value
                     ?? PaymentStatus::DaPagare->value,
                 'is_invoiced' => $isInvoiced,
                 'is_black' => $isBlack,
                 'is_promo' => $isPromo,
+                'is_provvigione' => $isProvvigione,
                 'notes' => $payload['notes'] ?? null,
                 'created_by' => $existing?->created_by ?? $actor->id,
                 'updated_by' => $actor->id,
@@ -291,9 +317,9 @@ class PerformanceRecordService
         }
 
         $professionalIds = collect($payloadSplits)
-            ->filter(fn (array $split) => ($split['subject_type'] ?? null) === PerformanceSplitSubjectType::Professional->value)
-            ->map(fn (array $split) => (int) ($split['professional_id'] ?? 0))
-            ->filter(fn (int $id) => $id > 0)
+            ->filter(fn(array $split) => ($split['subject_type'] ?? null) === PerformanceSplitSubjectType::Professional->value)
+            ->map(fn(array $split) => (int) ($split['professional_id'] ?? 0))
+            ->filter(fn(int $id) => $id > 0)
             ->unique()
             ->values();
 
@@ -403,8 +429,8 @@ class PerformanceRecordService
         }
 
         return array_values(array_unique(array_map(
-            static fn (mixed $value): int => (int) $value,
-            array_filter($rawPatientIds, static fn (mixed $value): bool => is_numeric($value) && (int) $value > 0),
+            static fn(mixed $value): int => (int) $value,
+            array_filter($rawPatientIds, static fn(mixed $value): bool => is_numeric($value) && (int) $value > 0),
         )));
     }
 
@@ -424,5 +450,17 @@ class PerformanceRecordService
             'new_values' => $newValues,
             'created_at' => now(),
         ]);
+    }
+
+    private function recognizedCenterShareForList(PerformanceRecord $record): float
+    {
+        return (float) $record->center_amount;
+    }
+
+    private function payableProfessionalShareForList(PerformanceRecord $record): float
+    {
+        return (float) ($record->is_provvigione
+            ? 0
+            : $record->professional_amount);
     }
 }

@@ -29,6 +29,7 @@ class ProfessionalStatementService
             ->whereDate('performed_at', '>=', $period['start_date'])
             ->whereDate('performed_at', '<=', $period['end_date'])
             ->where('is_invoiced', false)
+            ->where('is_provvigione', false)
             ->where(function ($query) use ($professional): void {
                 $query
                     ->where(function ($standard) use ($professional): void {

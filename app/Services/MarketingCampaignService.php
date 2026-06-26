@@ -547,8 +547,8 @@ class MarketingCampaignService
             return;
         }
 
-        $status = $this->whatsAppPuppeteerService->status();
-        if (($status['ready'] ?? false) === true) {
+        $status = $this->whatsAppPuppeteerService->status(false);
+        if ($this->whatsAppPuppeteerService->isOperational($status)) {
             return;
         }
 

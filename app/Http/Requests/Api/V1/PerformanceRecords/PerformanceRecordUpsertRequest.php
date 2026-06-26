@@ -26,10 +26,17 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
             ));
         }
 
-        $this->merge([
+        $normalizedPayload = [
             'patient_ids' => $patientIds,
             'visit_shift' => $this->input('visit_shift', VisitShift::Morning->value),
-        ]);
+        ];
+
+        if ($this->boolean('is_provvigione')) {
+            $normalizedPayload['is_black'] = true;
+            $normalizedPayload['is_invoiced'] = false;
+        }
+
+        $this->merge($normalizedPayload);
     }
 
     public function authorize(): bool
@@ -66,6 +73,7 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
             'is_invoiced' => ['nullable', 'boolean'],
             'is_black' => ['nullable', 'boolean'],
             'is_promo' => ['nullable', 'boolean'],
+            'is_provvigione' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
@@ -195,21 +203,39 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
                     $validator->errors()->add('service_name', 'Se non selezioni una prestazione dal catalogo devi indicarne il nome.');
                 }
 
-                if ($this->boolean('is_black') && $this->boolean('is_invoiced')) {
+                if (! $this->boolean('is_provvigione') && $this->boolean('is_black') && $this->boolean('is_invoiced')) {
                     $message = 'Una prestazione black non puo essere segnata come fatturata.';
 
                     $validator->errors()->add('is_black', $message);
                     $validator->errors()->add('is_invoiced', $message);
                 }
 
-                if ($this->boolean('is_black') && (string) $this->input('payment_method') === 'card') {
+                if (! $this->boolean('is_provvigione') && $this->boolean('is_black') && (string) $this->input('payment_method') === 'card') {
                     $validator->errors()->add('payment_method', 'Una prestazione black non puo essere registrata con pagamento carta.');
                 }
 
-                if ($this->boolean('is_black') && $this->boolean('is_promo')) {
+                if (! $this->boolean('is_provvigione') && $this->boolean('is_black') && $this->boolean('is_promo')) {
                     $message = 'Una prestazione non puo essere contemporaneamente black e promo.';
 
                     $validator->errors()->add('is_black', $message);
+                    $validator->errors()->add('is_promo', $message);
+                }
+
+                if ($this->boolean('is_provvigione') && $this->boolean('is_invoiced')) {
+                    $message = 'Una prestazione in provvigione non puo essere segnata come fatturata da Remedic.';
+
+                    $validator->errors()->add('is_provvigione', $message);
+                    $validator->errors()->add('is_invoiced', $message);
+                }
+
+                if ($this->boolean('is_provvigione') && (string) $this->input('payment_method') === 'card') {
+                    $validator->errors()->add('payment_method', 'Una prestazione in provvigione non puo essere registrata con pagamento carta del centro.');
+                }
+
+                if ($this->boolean('is_provvigione') && $this->boolean('is_promo')) {
+                    $message = 'Una prestazione non puo essere contemporaneamente promo e provvigione.';
+
+                    $validator->errors()->add('is_provvigione', $message);
                     $validator->errors()->add('is_promo', $message);
                 }
             },

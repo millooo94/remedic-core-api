@@ -8,7 +8,7 @@ use RuntimeException;
 class WhatsAppConnectorLauncherService
 {
     /**
-     * @return array{started: bool, message: string, command?: string, working_directory?: string, stdout_log?: string, stderr_log?: string}
+     * @return array{started: bool, message: string, command?: string, working_directory?: string, stdout_log?: string, stderr_log?: string, reused?: bool}
      */
     public function launch(bool $headless = true): array
     {
@@ -30,6 +30,25 @@ class WhatsAppConnectorLauncherService
             return [
                 'started' => false,
                 'message' => 'Script server.js del connettore WhatsApp non trovato.',
+                'working_directory' => $workingDirectory,
+            ];
+        }
+
+        $listeningPids = $this->findListeningPids($this->connectorPort());
+        if ($listeningPids !== []) {
+            return [
+                'started' => true,
+                'reused' => true,
+                'message' => 'Connettore WhatsApp gia attivo sulla porta configurata.',
+                'working_directory' => $workingDirectory,
+            ];
+        }
+
+        if ($this->launchRecentlyRequested()) {
+            return [
+                'started' => true,
+                'reused' => true,
+                'message' => 'Avvio del connettore WhatsApp gia richiesto. Attendere qualche secondo.',
                 'working_directory' => $workingDirectory,
             ];
         }
@@ -63,6 +82,8 @@ class WhatsAppConnectorLauncherService
             } else {
                 exec($command);
             }
+
+            $this->markLaunchRequested();
         } catch (\Throwable $exception) {
             Log::error('WhatsApp connector launch failed.', [
                 'message' => $exception->getMessage(),
@@ -110,6 +131,8 @@ class WhatsAppConnectorLauncherService
             $this->killPid($pid);
         }
 
+        $this->clearLaunchMarker();
+
         Log::info('Stopped connector processes on port.', [
             'port' => $port,
             'pids' => $pids,
@@ -150,6 +173,16 @@ class WhatsAppConnectorLauncherService
         return 3101;
     }
 
+    private function launchMarkerPath(): string
+    {
+        return storage_path('framework/cache/whatsapp-connector-launch.json');
+    }
+
+    private function launchCooldownSeconds(): int
+    {
+        return max(5, (int) config('services.whatsapp_puppeteer.launch_cooldown_seconds', 20));
+    }
+
     private function ensureLogFileExists(string $path): void
     {
         $directory = dirname($path);
@@ -159,6 +192,59 @@ class WhatsAppConnectorLauncherService
 
         if (! is_file($path)) {
             file_put_contents($path, '');
+        }
+    }
+
+    private function markLaunchRequested(): void
+    {
+        $path = $this->launchMarkerPath();
+        $directory = dirname($path);
+        if (! is_dir($directory)) {
+            mkdir($directory, 0777, true);
+        }
+
+        file_put_contents($path, json_encode([
+            'requested_at' => now()->toIso8601String(),
+            'pid' => getmypid(),
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function clearLaunchMarker(): void
+    {
+        $path = $this->launchMarkerPath();
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+
+    private function launchRecentlyRequested(): bool
+    {
+        $path = $this->launchMarkerPath();
+        if (! is_file($path)) {
+            return false;
+        }
+
+        $contents = @file_get_contents($path);
+        if (! is_string($contents) || trim($contents) === '') {
+            return false;
+        }
+
+        try {
+            /** @var array{requested_at?: string|null} $payload */
+            $payload = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+            $requestedAt = isset($payload['requested_at']) ? strtotime((string) $payload['requested_at']) : false;
+            if ($requestedAt === false) {
+                return false;
+            }
+
+            $isRecent = (time() - $requestedAt) < $this->launchCooldownSeconds();
+            if (! $isRecent) {
+                $this->clearLaunchMarker();
+            }
+
+            return $isRecent;
+        } catch (\Throwable) {
+            return false;
         }
     }
 

@@ -21,6 +21,17 @@ class PerformanceRecordsExportSummarySheet implements FromArray, ShouldAutoSize,
 
     public function array(): array
     {
+        $visibleFiscalTypes = $this->exportData['visible_fiscal_types'] ?? [];
+        $breakdownLabel = in_array('black', $visibleFiscalTypes, true) && in_array('provvigione', $visibleFiscalTypes, true)
+            ? 'Riepilogo Ordinarie / Speciali / Provvigioni'
+            : (in_array('black', $visibleFiscalTypes, true)
+                ? 'Riepilogo Ordinarie / Speciali'
+                : (in_array('provvigione', $visibleFiscalTypes, true)
+                    ? (in_array('white', $visibleFiscalTypes, true)
+                        ? 'Riepilogo Ordinarie / Provvigioni'
+                        : 'Riepilogo Provvigioni')
+                    : 'Riepilogo Ordinarie'));
+
         $rows = [
             [mb_strtoupper((string) $this->exportData['document_title'])],
             ['Data generazione: '.Carbon::parse($this->exportData['generated_at'])->format('d/m/Y H:i')],
@@ -33,7 +44,7 @@ class PerformanceRecordsExportSummarySheet implements FromArray, ShouldAutoSize,
             ['Prestazioni fatturate', $this->exportData['totals']['invoiced_count']],
             ['Totale quota professionista filtrata', $this->exportData['totals']['professional_amount']],
             [],
-            ['Riepilogo White / Black'],
+            [$breakdownLabel],
             ['Tipo', 'Prestazioni', 'Righe', 'Quota Professionista'],
         ];
 

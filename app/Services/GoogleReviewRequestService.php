@@ -382,12 +382,12 @@ class GoogleReviewRequestService
             return $request->refresh();
         }
 
-        $status = $this->whatsAppPuppeteerService->status();
-        if (($status['ready'] ?? false) !== true) {
+        $status = $this->whatsAppPuppeteerService->status(false);
+        if (! $this->whatsAppPuppeteerService->isOperational($status)) {
             $request->forceFill([
                 'status' => self::STATUS_ERROR,
                 'error_message' => 'WhatsApp Business non collegato. Configuralo nella sezione Integrazioni.',
-                'provider_status' => $status['state'] ?? 'not_ready',
+                'provider_status' => $status['normalized_state'] ?? $status['state'] ?? 'not_ready',
                 'provider_response' => $status,
             ])->save();
 

@@ -300,13 +300,32 @@
         $visibleFiscalTypes = $exportData['visible_fiscal_types'] ?? [];
         $breakdownRows = array_values(array_filter($exportData['fiscal_breakdown'] ?? [], fn ($row) => ($row['type'] ?? null) !== 'total'));
         $showSpeciali = in_array('black', $visibleFiscalTypes, true);
-        $breakdownHeading = $showSpeciali ? 'Ripartizione ordinarie / speciali' : 'Ripartizione quota professionista';
-        $breakdownCopy = $showSpeciali
-            ? 'Ordinarie e speciali sono mostrate come ripartizione della quota professionista totale.'
-            : 'Nel prospetto corrente sono presenti solo prestazioni ordinarie.';
-        $professionalBreakdownCopy = $showSpeciali
-            ? 'Ogni professionista mostra ordinarie, speciali e totale in una scheda ordinata, con maggiore enfasi sulla riga finale.'
-            : 'Ogni professionista mostra la quota professionista ordinaria e il totale del periodo filtrato.';
+        $showProvvigione = in_array('provvigione', $visibleFiscalTypes, true);
+        $breakdownHeading = $showSpeciali && $showProvvigione
+            ? 'Ripartizione ordinarie / speciali / provvigioni'
+            : ($showSpeciali
+                ? 'Ripartizione ordinarie / speciali'
+                : ($showProvvigione
+                    ? (in_array('white', $visibleFiscalTypes, true) ? 'Ripartizione ordinarie / provvigioni' : 'Ripartizione provvigioni')
+                    : 'Ripartizione quota professionista'));
+        $breakdownCopy = $showSpeciali && $showProvvigione
+            ? 'Ordinarie, speciali e provvigioni sono mostrate come ripartizione della quota professionista totale.'
+            : ($showSpeciali
+                ? 'Ordinarie e speciali sono mostrate come ripartizione della quota professionista totale.'
+                : ($showProvvigione
+                    ? (in_array('white', $visibleFiscalTypes, true)
+                        ? 'Ordinarie e provvigioni sono mostrate come ripartizione della quota professionista totale.'
+                        : 'Nel prospetto corrente sono presenti solo prestazioni in provvigione.')
+                    : 'Nel prospetto corrente sono presenti solo prestazioni ordinarie.'));
+        $professionalBreakdownCopy = $showSpeciali && $showProvvigione
+            ? 'Ogni professionista mostra ordinarie, speciali, provvigioni e totale in una scheda ordinata, con maggiore enfasi sulla riga finale.'
+            : ($showSpeciali
+                ? 'Ogni professionista mostra ordinarie, speciali e totale in una scheda ordinata, con maggiore enfasi sulla riga finale.'
+                : ($showProvvigione
+                    ? (in_array('white', $visibleFiscalTypes, true)
+                        ? 'Ogni professionista mostra ordinarie, provvigioni e totale in una scheda ordinata.'
+                        : 'Ogni professionista mostra le provvigioni del periodo filtrato e il totale finale.')
+                    : 'Ogni professionista mostra la quota professionista ordinaria e il totale del periodo filtrato.'));
     @endphp
 
     <table class="header-table">

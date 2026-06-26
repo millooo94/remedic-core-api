@@ -23,7 +23,7 @@ class PerformanceRecordQueryRequest extends FormRequest
             'service_id' => ['nullable', 'integer', 'exists:services,id'],
             'invoice_filter' => ['nullable', Rule::in(['all', 'invoiced', 'not_invoiced'])],
             'liquidation_filter' => ['nullable', Rule::in(['all', 'liquidated', 'not_liquidated'])],
-            'fiscal_filter' => ['nullable', Rule::in(['all', 'white', 'black'])],
+            'fiscal_filter' => ['nullable', Rule::in(['all', 'white', 'black', 'provvigione'])],
             'month' => ['nullable', 'integer', 'between:1,12'],
             'year' => ['nullable', 'integer', 'between:2000,2100'],
             'date_from' => ['nullable', 'date'],

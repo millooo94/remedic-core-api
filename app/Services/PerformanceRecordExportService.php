@@ -60,13 +60,14 @@ class PerformanceRecordExportService
                 'service_name' => $record->service_name_snapshot,
                 'quantity' => (int) $record->quantity,
                 'total_amount' => (float) $record->total_amount,
-                'professional_amount' => (float) $record->professional_amount,
+                'professional_amount' => $this->payableProfessionalAmountForRecord($record),
                 'payment_status' => $this->paymentStatusValue($record),
                 'payment_status_label' => $this->paymentStatusLabel($record),
                 'is_invoiced' => (bool) $record->is_invoiced,
                 'invoicing_status' => $record->is_invoiced ? 'Fatturata' : 'Da fatturare',
                 'is_black' => (bool) $record->is_black,
-                'fiscal_type_label' => $record->is_black ? 'Speciali' : 'Ordinarie',
+                'is_provvigione' => (bool) $record->is_provvigione,
+                'fiscal_type_label' => $this->fiscalTypeLabel($this->fiscalTypeForRecord($record)),
                 'notes' => $this->exportNotesFor($record),
             ])->all(),
             'totals' => $totals,
@@ -101,12 +102,13 @@ class PerformanceRecordExportService
     {
         $whiteCounts = $this->buildRecordTypeTotals($records, 'white');
         $blackCounts = $this->buildRecordTypeTotals($records, 'black');
-        $whiteAmount = round((float) $professionalAllocations
-            ->where('fiscal_type', 'white')
-            ->sum('professional_amount'), 2);
-        $blackAmount = round((float) $professionalAllocations
-            ->where('fiscal_type', 'black')
-            ->sum('professional_amount'), 2);
+        $whiteAmount = round((float) $professionalAllocations->where('fiscal_type', 'white')->sum('professional_amount'), 2);
+        $blackAmount = round((float) $professionalAllocations->where('fiscal_type', 'black')->sum('professional_amount'), 2);
+        $provvigioneCounts = $this->buildRecordTypeTotals($records, 'provvigione');
+        $provvigioneAmount = round((float) $professionalAllocations->where('fiscal_type', 'provvigione')->sum('professional_amount'), 2);
+        $provvigioneCenterAmount = round((float) $records
+            ->filter(fn (PerformanceRecord $record) => $this->fiscalTypeForRecord($record) === 'provvigione')
+            ->sum(fn (PerformanceRecord $record) => (float) $record->center_amount), 2);
 
         return [
             'records_count' => $records->count(),
@@ -119,7 +121,7 @@ class PerformanceRecordExportService
                 ->filter(fn (PerformanceRecord $record) => (bool) $record->is_invoiced)
                 ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
             'total_amount' => round((float) $records->sum(fn (PerformanceRecord $record) => (float) $record->total_amount), 2),
-            'professional_amount' => round((float) $records->sum(fn (PerformanceRecord $record) => (float) $record->professional_amount), 2),
+            'professional_amount' => round((float) $professionalAllocations->sum('professional_amount'), 2),
             'visible_fiscal_types' => $visibleFiscalTypes,
             'white' => [
                 ...$whiteCounts,
@@ -129,10 +131,15 @@ class PerformanceRecordExportService
                 ...$blackCounts,
                 'professional_amount' => $blackAmount,
             ],
+            'provvigione' => [
+                ...$provvigioneCounts,
+                'professional_amount' => $provvigioneAmount,
+                'recognized_center_amount' => $provvigioneCenterAmount,
+            ],
             'total' => [
                 'records_count' => $records->count(),
                 'performance_count' => (int) $records->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
-                'professional_amount' => round((float) $records->sum(fn (PerformanceRecord $record) => (float) $record->professional_amount), 2),
+                'professional_amount' => round((float) $professionalAllocations->sum('professional_amount'), 2),
             ],
         ];
     }
@@ -145,6 +152,7 @@ class PerformanceRecordExportService
                 $professionalName = (string) ($group->first()['professional_name'] ?? 'Professionista');
                 $white = $this->summarizeAllocationRows($group->where('fiscal_type', 'white'));
                 $black = $this->summarizeAllocationRows($group->where('fiscal_type', 'black'));
+                $provvigione = $this->summarizeAllocationRows($group->where('fiscal_type', 'provvigione'));
                 $total = $this->summarizeAllocationRows($group);
 
                 return [
@@ -154,10 +162,12 @@ class PerformanceRecordExportService
                     'professional_amount' => $total['professional_amount'],
                     'white' => $white,
                     'black' => $black,
+                    'provvigione' => $provvigione,
                     'total' => $total,
                     'fiscal_breakdown' => $this->buildFiscalBreakdownRowsFromSummaries([
                         'white' => $white,
                         'black' => $black,
+                        'provvigione' => $provvigione,
                         'total' => $total,
                     ], $visibleFiscalTypes),
                 ];
@@ -215,8 +225,8 @@ class PerformanceRecordExportService
                 ->values();
         }
 
-        $amount = round((float) $record->professional_amount, 2);
-        if ($amount <= 0) {
+        $amount = $this->payableProfessionalAmountForRecord($record);
+        if ($amount <= 0 && ! $record->is_provvigione) {
             return collect();
         }
 
@@ -247,6 +257,7 @@ class PerformanceRecordExportService
         return $this->buildFiscalBreakdownRowsFromSummaries([
             'white' => $totals['white'],
             'black' => $totals['black'],
+            'provvigione' => $totals['provvigione'],
             'total' => $totals['total'],
         ], $visibleFiscalTypes);
     }
@@ -350,6 +361,7 @@ class PerformanceRecordExportService
             $labels[] = 'Tipo: '.match ($filters['fiscal_filter']) {
                 'white' => 'Ordinarie',
                 'black' => 'Speciali',
+                'provvigione' => 'Provvigione',
                 default => 'Tutte',
             };
         }
@@ -397,6 +409,10 @@ class PerformanceRecordExportService
             $parts[] = 'Promo';
         }
 
+        if ($record->is_provvigione) {
+            $parts[] = 'Provvigione Remedic';
+        }
+
         $note = trim((string) ($record->notes ?? ''));
         if ($note !== '') {
             $parts[] = $note;
@@ -412,6 +428,12 @@ class PerformanceRecordExportService
 
     private function paymentStatusLabel(PerformanceRecord $record): string
     {
+        if ($record->is_provvigione) {
+            return $this->paymentStatusValue($record) === PaymentStatus::Pagata->value
+                ? 'Incassata da Remedic'
+                : 'Da incassare a Remedic';
+        }
+
         return $this->paymentStatusValue($record) === PaymentStatus::Pagata->value
             ? 'Liquidata'
             : 'Da liquidare';
@@ -422,7 +444,8 @@ class PerformanceRecordExportService
         $selected = match ($filters['fiscal_filter'] ?? 'all') {
             'white' => ['white'],
             'black' => ['black'],
-            default => ['white', 'black'],
+            'provvigione' => ['provvigione'],
+            default => ['white', 'black', 'provvigione'],
         };
 
         if (($filters['fiscal_filter'] ?? 'all') !== 'all') {
@@ -441,6 +464,10 @@ class PerformanceRecordExportService
 
     private function fiscalTypeForRecord(PerformanceRecord $record): string
     {
+        if ($record->is_provvigione) {
+            return 'provvigione';
+        }
+
         return $record->is_black ? 'black' : 'white';
     }
 
@@ -449,12 +476,15 @@ class PerformanceRecordExportService
         return match ($type) {
             'white' => 'Ordinarie',
             'black' => 'Speciali',
+            'provvigione' => 'Provvigione',
             default => 'Totale',
         };
     }
 
     private function buildMessage(array $totals, array $visibleFiscalTypes): string
     {
+        $provvigioneCommissionTotal = round((float) ($totals['provvigione']['recognized_center_amount'] ?? 0), 2);
+
         if ($visibleFiscalTypes === ['white']) {
             return sprintf(
                 'Totale quota professionista ordinaria filtrata: %s su %d prestazioni filtrate.',
@@ -471,13 +501,29 @@ class PerformanceRecordExportService
             );
         }
 
+        if ($visibleFiscalTypes === ['provvigione']) {
+            return sprintf(
+                'Totale provvigioni Remedic filtrate: %s su %d prestazioni filtrate.',
+                $this->formatEuro($provvigioneCommissionTotal),
+                (int) $totals['provvigione']['performance_count'],
+            );
+        }
+
         return sprintf(
-            'Totale quota professionista filtrata: %s (Ordinarie %s, Speciali %s) su %d prestazioni filtrate.',
+            'Totale quota professionista filtrata: %s (Ordinarie %s, Speciali %s) + Provvigioni Remedic %s su %d prestazioni filtrate.',
             $this->formatEuro((float) $totals['total']['professional_amount']),
             $this->formatEuro((float) $totals['white']['professional_amount']),
             $this->formatEuro((float) $totals['black']['professional_amount']),
+            $this->formatEuro($provvigioneCommissionTotal),
             (int) $totals['total']['performance_count'],
         );
+    }
+
+    private function payableProfessionalAmountForRecord(PerformanceRecord $record): float
+    {
+        return $record->is_provvigione
+            ? 0.0
+            : round((float) $record->professional_amount, 2);
     }
 
     private function formatEuro(float $amount): string

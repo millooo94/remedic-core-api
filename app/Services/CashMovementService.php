@@ -130,7 +130,7 @@ class CashMovementService
         return DB::transaction(function () use ($performanceRecord, $actor): ?CashMovement {
             $existing = $this->findPerformanceRecordMovement($performanceRecord);
 
-            if ($performanceRecord->payment_method !== PaymentMethod::Cash) {
+            if ($performanceRecord->payment_method !== PaymentMethod::Cash || $performanceRecord->is_provvigione) {
                 if ($existing !== null) {
                     $this->deleteExistingMovement($existing, $actor, 'movement');
                 }

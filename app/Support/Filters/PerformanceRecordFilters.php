@@ -34,9 +34,12 @@ class PerformanceRecordFilters
                     'invoiced' => $builder->where('is_invoiced', true),
                     'not_invoiced' => ($filters['fiscal_filter'] ?? null) === 'black'
                         ? $builder->where('is_black', true)
+                        : (($filters['fiscal_filter'] ?? null) === 'provvigione'
+                            ? $builder->where('is_provvigione', true)
                         : $builder
                             ->where('is_invoiced', false)
-                            ->where('is_black', false),
+                            ->where('is_black', false)
+                            ->where('is_provvigione', false)),
                     default => null,
                 };
             })
@@ -49,8 +52,9 @@ class PerformanceRecordFilters
             })
             ->when($filters['fiscal_filter'] ?? null, function (Builder $builder, string $fiscalFilter): void {
                 match ($fiscalFilter) {
-                    'white' => $builder->where('is_black', false),
+                    'white' => $builder->where('is_black', false)->where('is_provvigione', false),
                     'black' => $builder->where('is_black', true),
+                    'provvigione' => $builder->where('is_provvigione', true),
                     default => null,
                 };
             })

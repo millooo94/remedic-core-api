@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Mail\WhatsAppDisconnectedMail;
 use App\Jobs\MiodottoreLoginJob;
 use App\Models\ExternalProviderAccount;
 use App\Models\ExternalProviderLoginSession;
 use App\Services\Marketing\WhatsAppPuppeteerService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -214,13 +217,16 @@ class IntegrationService
     public function whatsAppStatus(): array
     {
         $integration = $this->whatsAppSnapshot();
-        $connected = ($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID;
+        $connected = (bool) ($integration['can_send'] ?? false);
 
         return [
             'provider' => self::PROVIDER_WHATSAPP,
             'login_status' => $integration['session_status'],
             'connected' => $connected,
             'can_sync' => $connected,
+            'operational_state' => $integration['operational_state'] ?? null,
+            'can_send' => $connected,
+            'is_recovering' => (bool) ($integration['is_recovering'] ?? false),
             'storage_state_configured' => false,
             'last_error' => $integration['last_error'] ?? null,
             'last_login_at' => $integration['last_login_at'] ?? null,
@@ -238,7 +244,9 @@ class IntegrationService
     {
         $account = $this->ensureAccountRecord(self::PROVIDER_WHATSAPP);
         $status = $this->whatsAppPuppeteerService->status();
-        $nextStatus = $this->resolveWhatsAppStatus($account, $status);
+        $operationalState = $this->normalizeWhatsAppOperationalState($account, $status);
+        $canSend = $this->whatsAppCanSend($status);
+        $nextStatus = $this->resolveWhatsAppStatus($account, $status, $operationalState, $canSend);
 
         $account->forceFill([
             'enabled' => (bool) $account->enabled,
@@ -246,11 +254,11 @@ class IntegrationService
             'last_error' => $nextStatus === self::STATUS_SESSION_VALID ? null : ($status['message'] ?? 'Stato WhatsApp non disponibile.'),
             'last_test_at' => now(),
             'last_session_verified_at' => now(),
-            'last_login_at' => ($status['ready'] ?? false) ? now() : $account->last_login_at,
+            'last_login_at' => $canSend ? now() : $account->last_login_at,
         ])->save();
 
         return [
-            'success' => ($status['ready'] ?? false) === true,
+            'success' => $canSend,
             'message' => (string) ($status['message'] ?? 'Test WhatsApp completato.'),
             'action' => 'test_connection',
             'status' => $nextStatus,
@@ -271,7 +279,9 @@ class IntegrationService
         ])->save();
 
         $status = $this->whatsAppPuppeteerService->connect($resetSession);
-        $nextStatus = $this->resolveWhatsAppStatus($account, $status);
+        $operationalState = $this->normalizeWhatsAppOperationalState($account, $status);
+        $canSend = $this->whatsAppCanSend($status);
+        $nextStatus = $this->resolveWhatsAppStatus($account, $status, $operationalState, $canSend);
 
         $account->forceFill([
             'login_status' => $nextStatus,
@@ -279,15 +289,15 @@ class IntegrationService
                 ? null
                 : ($status['message'] ?? null),
             'last_session_verified_at' => now(),
-            'last_login_at' => ($status['ready'] ?? false) ? now() : $account->last_login_at,
+            'last_login_at' => $canSend ? now() : $account->last_login_at,
         ])->save();
 
         $integration = $this->whatsAppSnapshot();
         $hasQrReady = (bool) ($integration['qr_required'] ?? false) && filled($integration['qr_code_data_url'] ?? null);
-        $isWaitingForConnection = in_array(($integration['session_status'] ?? null), [self::STATUS_CONNECTING], true)
-            || in_array(($integration['connector_state'] ?? null), ['qr_required', 'qr_ready', 'connecting', 'initializing', 'authenticated', 'waiting_for_scan'], true);
+        $isWaitingForConnection = in_array(($integration['operational_state'] ?? null), ['starting', 'authenticated', 'qr_required'], true)
+            || in_array(($integration['session_status'] ?? null), [self::STATUS_CONNECTING], true);
 
-        if (($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID) {
+        if (($integration['can_send'] ?? false) === true || ($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID) {
             return [
                 'success' => true,
                 'message' => $resetSession
@@ -315,8 +325,12 @@ class IntegrationService
             return [
                 'success' => true,
                 'message' => $resetSession
-                    ? 'Collegamento WhatsApp in attesa di scansione QR.'
-                    : 'Verifica sessione WhatsApp in corso. Se necessario verra richiesto un nuovo QR.',
+                    ? (($integration['operational_state'] ?? null) === 'qr_required'
+                        ? 'Collegamento WhatsApp in attesa di scansione QR.'
+                        : 'Collegamento WhatsApp in inizializzazione. Attendi il QR oppure la conferma finale.')
+                    : (($integration['operational_state'] ?? null) === 'authenticated'
+                        ? 'Sessione WhatsApp autenticata. Verifica finale in corso prima di rendere il canale operativo.'
+                        : 'Verifica sessione WhatsApp in corso. Se necessario verra richiesto un nuovo QR.'),
                 'action' => 'connect',
                 'status' => self::STATUS_CONNECTING,
                 'integration' => $integration,
@@ -345,7 +359,9 @@ class IntegrationService
         ])->save();
 
         $status = $this->whatsAppPuppeteerService->pair();
-        $nextStatus = $this->resolveWhatsAppStatus($account, $status);
+        $operationalState = $this->normalizeWhatsAppOperationalState($account, $status);
+        $canSend = $this->whatsAppCanSend($status);
+        $nextStatus = $this->resolveWhatsAppStatus($account, $status, $operationalState, $canSend);
 
         $account->forceFill([
             'login_status' => $nextStatus,
@@ -353,12 +369,12 @@ class IntegrationService
                 ? null
                 : ($status['message'] ?? null),
             'last_session_verified_at' => now(),
-            'last_login_at' => ($status['ready'] ?? false) ? now() : $account->last_login_at,
+            'last_login_at' => $canSend ? now() : $account->last_login_at,
         ])->save();
 
         $integration = $this->whatsAppSnapshot();
 
-        if (($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID) {
+        if (($integration['can_send'] ?? false) === true || ($integration['session_status'] ?? null) === self::STATUS_SESSION_VALID) {
             return [
                 'success' => true,
                 'message' => 'WhatsApp collegato correttamente.',
@@ -378,7 +394,7 @@ class IntegrationService
             ];
         }
 
-        if (in_array(($integration['connector_state'] ?? null), ['starting', 'initializing', 'waiting_for_scan', 'qr_ready', 'authenticated', 'connecting'], true)) {
+        if (in_array(($integration['operational_state'] ?? null), ['starting', 'authenticated', 'qr_required'], true)) {
             return [
                 'success' => true,
                 'message' => 'Si aprira Chrome con WhatsApp Web. Attendi il QR oppure il completamento della verifica sessione.',
@@ -410,10 +426,11 @@ class IntegrationService
         ])->save();
 
         $status = $this->whatsAppPuppeteerService->reconnect($resetSession);
-        $nextStatus = $this->resolveWhatsAppStatus($account, $status);
-        $success = ($status['ready'] ?? false) === true
-            || ($status['qr_required'] ?? false) === true
-            || in_array(($status['state'] ?? null), ['starting', 'initializing', 'authenticated', 'waiting_for_scan', 'qr_ready'], true);
+        $operationalState = $this->normalizeWhatsAppOperationalState($account, $status);
+        $canSend = $this->whatsAppCanSend($status);
+        $nextStatus = $this->resolveWhatsAppStatus($account, $status, $operationalState, $canSend);
+        $success = $canSend
+            || in_array($operationalState, ['starting', 'authenticated', 'qr_required'], true);
 
         $account->forceFill([
             'login_status' => $nextStatus,
@@ -421,7 +438,7 @@ class IntegrationService
                 ? null
                 : ($status['message'] ?? null),
             'last_session_verified_at' => now(),
-            'last_login_at' => ($status['ready'] ?? false) ? now() : $account->last_login_at,
+            'last_login_at' => $canSend ? now() : $account->last_login_at,
         ])->save();
 
         return [
@@ -1179,12 +1196,26 @@ class IntegrationService
     {
         $definition = $this->providerDefinition(self::PROVIDER_WHATSAPP);
         $account = $this->findAccount(self::PROVIDER_WHATSAPP);
-        $connectorStatus = $this->whatsAppPuppeteerService->status();
-        $status = $this->resolveWhatsAppStatus($account, $connectorStatus);
+        $connectorStatus = $this->whatsAppPuppeteerService->status((bool) ($account?->enabled ?? false));
+        $operationalState = $this->normalizeWhatsAppOperationalState($account, $connectorStatus);
+        $canSend = $this->whatsAppCanSend($connectorStatus);
+        $status = $this->resolveWhatsAppStatus($account, $connectorStatus, $operationalState, $canSend);
         $config = $account?->config_json ?? [];
-        $lastError = in_array($status, [self::STATUS_SESSION_VALID, self::STATUS_DISCONNECTED, self::STATUS_CONNECTING], true)
-            ? null
-            : (($connectorStatus['message'] ?? null) ?: $account?->last_error);
+        $lastError = $this->resolveWhatsAppLastError(
+            sessionStatus: $status,
+            operationalState: $operationalState,
+            connectorStatus: $connectorStatus,
+            account: $account,
+        );
+        $account = $this->syncWhatsAppAccountSnapshot(
+            account: $account,
+            status: $status,
+            operationalState: $operationalState,
+            canSend: $canSend,
+            lastError: $lastError,
+            connectorStatus: $connectorStatus,
+        );
+        $config = $account?->config_json ?? $config;
 
         return [
             'provider' => self::PROVIDER_WHATSAPP,
@@ -1211,11 +1242,14 @@ class IntegrationService
             'provider_meta' => $config,
             'connector_state' => $connectorStatus['state'] ?? null,
             'connector_ready' => (bool) ($connectorStatus['ready'] ?? false),
+            'operational_state' => $operationalState,
+            'operational_state_label' => $this->whatsAppOperationalStateLabel($operationalState),
+            'can_send' => $canSend,
+            'is_recovering' => $operationalState === 'recovering',
             'connector_message' => (string) (
-                $status === self::STATUS_DISCONNECTED
-                    ? 'WhatsApp non collegato. Clicca Collega WhatsApp per generare un nuovo QR code.'
-                    : ($connectorStatus['message'] ?? 'Stato WhatsApp non disponibile.')
+                $this->whatsAppConnectorMessage($operationalState, $status, $connectorStatus)
             ),
+            'status_hint' => $this->whatsAppStatusHint($operationalState),
             'phone_number' => $connectorStatus['phone_number'] ?? null,
             'push_name' => $connectorStatus['push_name'] ?? null,
             'queue_depth' => (int) ($connectorStatus['queue_depth'] ?? 0),
@@ -1229,37 +1263,276 @@ class IntegrationService
             'process_id' => $connectorStatus['process_id'] ?? null,
             'session_path' => $connectorStatus['session_path'] ?? null,
             'client_generation' => $connectorStatus['client_generation'] ?? null,
+            'last_qr_available' => (bool) ($connectorStatus['last_qr_available'] ?? false),
+            'has_local_auth_session' => $connectorStatus['has_local_auth_session'] ?? null,
+            'has_persisted_session' => $connectorStatus['has_persisted_session'] ?? null,
         ];
     }
 
-    private function resolveWhatsAppStatus(?ExternalProviderAccount $account, array $connectorStatus): string
+    private function syncWhatsAppAccountSnapshot(
+        ?ExternalProviderAccount $account,
+        string $status,
+        ?string $operationalState,
+        bool $canSend,
+        ?string $lastError,
+        array $connectorStatus,
+    ): ?ExternalProviderAccount {
+        if (! $account) {
+            return null;
+        }
+
+        $config = $account->config_json ?? [];
+        $previousOperational = (bool) ($config['whatsapp_last_known_operational'] ?? false);
+        $disconnectNotified = (bool) ($config['whatsapp_disconnect_notified'] ?? false);
+        $currentOperational = $canSend;
+        $eventAt = now();
+        $changed = false;
+
+        if ($account->login_status !== $status) {
+            $account->login_status = $status;
+            $changed = true;
+        }
+
+        if ($account->last_error !== $lastError) {
+            $account->last_error = $lastError;
+            $changed = true;
+        }
+
+        if ($currentOperational) {
+            if ($account->last_login_at === null || ! $previousOperational) {
+                $account->last_login_at = $eventAt;
+                $changed = true;
+            }
+
+            if ($account->last_session_verified_at === null || $account->login_status !== self::STATUS_SESSION_VALID || ! $previousOperational) {
+                $account->last_session_verified_at = $eventAt;
+                $changed = true;
+            }
+
+            if ($disconnectNotified || isset($config['whatsapp_disconnect_notified_at'])) {
+                $config['whatsapp_disconnect_notified'] = false;
+                $config['whatsapp_disconnect_notified_at'] = null;
+                $changed = true;
+            }
+        } elseif ($previousOperational && ! $disconnectNotified) {
+            $this->sendWhatsAppDisconnectedMail(
+                previousState: self::STATUS_SESSION_VALID,
+                currentState: $status,
+                phoneNumber: $connectorStatus['phone_number'] ?? null,
+                lastError: $lastError,
+                eventAt: $eventAt,
+            );
+
+            $config['whatsapp_disconnect_notified'] = true;
+            $config['whatsapp_disconnect_notified_at'] = $eventAt->toIso8601String();
+            $changed = true;
+        }
+
+        if (($config['whatsapp_last_known_operational'] ?? null) !== $currentOperational) {
+            $config['whatsapp_last_known_operational'] = $currentOperational;
+            $changed = true;
+        }
+
+        $config['whatsapp_last_known_status'] = $status;
+        $config['whatsapp_last_known_operational_state'] = $operationalState;
+        $account->config_json = $config;
+
+        if ($changed) {
+            $account->save();
+        }
+
+        return $account;
+    }
+
+    private function sendWhatsAppDisconnectedMail(
+        string $previousState,
+        string $currentState,
+        mixed $phoneNumber,
+        ?string $lastError,
+        Carbon $eventAt,
+    ): void {
+        $recipient = trim((string) config('services.whatsapp_puppeteer.disconnect_notification_to', 'humancaretelemedicine@gmail.com'));
+        if ($recipient === '') {
+            return;
+        }
+
+        $appUrl = rtrim((string) (config('app.frontend_url') ?: config('app.url')), '/');
+        $details = [
+            'previous_state_label' => $this->statusLabel($previousState),
+            'current_state_label' => $this->statusLabel($currentState),
+            'phone_number' => filled($phoneNumber) ? (string) $phoneNumber : 'Non disponibile',
+            'event_at_label' => $eventAt->timezone(config('app.timezone', 'UTC'))->format('d/m/Y H:i:s'),
+            'last_error' => $lastError ?: 'Non disponibile',
+            'app_url' => $appUrl !== '' ? $appUrl.'/integrations/whatsapp' : null,
+        ];
+
+        try {
+            Mail::to($recipient)->send(new WhatsAppDisconnectedMail($details));
+        } catch (\Throwable $exception) {
+            Log::error('Failed to send WhatsApp disconnected notification.', [
+                'recipient' => $recipient,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function resolveWhatsAppStatus(
+        ?ExternalProviderAccount $account,
+        array $connectorStatus,
+        ?string $operationalState = null,
+        ?bool $canSend = null,
+    ): string
     {
+        $operationalState ??= $this->normalizeWhatsAppOperationalState($account, $connectorStatus);
+        $canSend ??= $this->whatsAppCanSend($connectorStatus);
+
         if (! $account?->enabled) {
             return self::STATUS_DISCONNECTED;
         }
 
-        if (($connectorStatus['ready'] ?? false) === true) {
+        if ($canSend) {
             return self::STATUS_SESSION_VALID;
         }
 
-        if (($connectorStatus['qr_required'] ?? false) === true) {
-            return self::STATUS_CONNECTING;
+        $state = (string) ($connectorStatus['state'] ?? '');
+        return match ($operationalState) {
+            'starting', 'authenticated', 'qr_required' => self::STATUS_CONNECTING,
+            'disconnected' => in_array($state, ['session_expired', 'auth_failure'], true)
+                ? self::STATUS_SESSION_EXPIRED
+                : self::STATUS_DISCONNECTED,
+            'recovering', 'error' => in_array($state, ['session_expired', 'auth_failure'], true)
+                ? self::STATUS_SESSION_EXPIRED
+                : self::STATUS_ERROR,
+            default => self::STATUS_ERROR,
+        };
+    }
+
+    private function normalizeWhatsAppOperationalState(?ExternalProviderAccount $account, array $connectorStatus): string
+    {
+        if (! $account?->enabled) {
+            return 'not_configured';
+        }
+
+        $normalized = trim((string) ($connectorStatus['normalized_state'] ?? ''));
+        if ($normalized !== '') {
+            return $normalized;
         }
 
         $state = (string) ($connectorStatus['state'] ?? '');
-        if (in_array($state, ['starting', 'initializing', 'authenticated', 'connecting', 'waiting_for_scan', 'qr_ready'], true)) {
-            return self::STATUS_CONNECTING;
+        if ($this->whatsAppCanSend($connectorStatus)) {
+            return ((int) ($connectorStatus['queue_depth'] ?? 0)) > 0 ? 'sending' : 'ready';
         }
 
-        if (in_array($state, ['session_expired', 'auth_failure'], true)) {
-            return self::STATUS_SESSION_EXPIRED;
+        if (($connectorStatus['qr_required'] ?? false) === true) {
+            return 'qr_required';
         }
 
-        if ($state === 'disconnected') {
-            return self::STATUS_DISCONNECTED;
+        return match ($state) {
+            'starting', 'initializing', 'waiting_for_scan' => 'starting',
+            'authenticated', 'connecting' => 'authenticated',
+            'automation_unavailable', 'browser_locked', 'session_cleanup_failed', 'connecting_timeout', 'stale_authenticated_session', 'qr_timeout' => 'recovering',
+            'browser_unavailable', 'ui_incompatible', 'technical_error', 'error' => 'error',
+            'disconnected', 'session_expired', 'auth_failure' => 'disconnected',
+            default => 'error',
+        };
+    }
+
+    private function whatsAppOperationalStateLabel(string $state): string
+    {
+        return match ($state) {
+            'not_configured' => 'Non configurato',
+            'starting' => 'Avvio in corso',
+            'qr_required' => 'QR richiesto',
+            'authenticated' => 'Verifica finale',
+            'ready' => 'Pronto',
+            'sending' => 'Invio in corso',
+            'disconnected' => 'Scollegato',
+            'recovering' => 'Recupero in corso',
+            default => 'Errore',
+        };
+    }
+
+    private function whatsAppStatusHint(string $operationalState): string
+    {
+        return match ($operationalState) {
+            'not_configured' => 'Clicca Collega a WhatsApp per iniziare il collegamento.',
+            'starting' => 'Il connettore si sta avviando.',
+            'qr_required' => 'Scansiona il QR con WhatsApp Web.',
+            'authenticated' => 'Autenticazione completata, verifica finale in corso.',
+            'ready' => 'Il canale puo inviare messaggi.',
+            'sending' => 'E in corso almeno un invio WhatsApp.',
+            'disconnected' => 'Serve un collegamento o un nuovo QR.',
+            'recovering' => 'Il sistema sta tentando di ripulire o recuperare la sessione.',
+            default => 'Verifica il connettore o rigenera il QR.',
+        };
+    }
+
+    private function whatsAppConnectorMessage(string $operationalState, string $sessionStatus, array $connectorStatus): string
+    {
+        if ($operationalState === 'not_configured') {
+            return 'WhatsApp non collegato. Clicca Collega a WhatsApp per generare un nuovo QR code.';
         }
 
-        return self::STATUS_ERROR;
+        if ($operationalState === 'ready') {
+            return 'WhatsApp Web collegato e pronto all invio.';
+        }
+
+        if ($operationalState === 'sending') {
+            return 'Invio WhatsApp in corso.';
+        }
+
+        if ($operationalState === 'qr_required') {
+            return 'QR richiesto: scansiona il codice con WhatsApp per completare il collegamento.';
+        }
+
+        if ($operationalState === 'authenticated') {
+            return 'Sessione autenticata. Verifica finale in corso prima di rendere il canale operativo.';
+        }
+
+        if ($operationalState === 'starting') {
+            return 'Avvio del connettore WhatsApp in corso.';
+        }
+
+        if ($operationalState === 'recovering') {
+            return (string) (($connectorStatus['message'] ?? null) ?: 'Recupero della sessione WhatsApp in corso.');
+        }
+
+        if ($sessionStatus === self::STATUS_DISCONNECTED) {
+            return 'WhatsApp non collegato. Clicca Collega a WhatsApp per generare un nuovo QR code.';
+        }
+
+        return (string) (($connectorStatus['message'] ?? null) ?: 'Stato WhatsApp non disponibile.');
+    }
+
+    private function resolveWhatsAppLastError(
+        string $sessionStatus,
+        string $operationalState,
+        array $connectorStatus,
+        ?ExternalProviderAccount $account,
+    ): ?string {
+        if ($sessionStatus === self::STATUS_SESSION_VALID) {
+            return null;
+        }
+
+        if (in_array($operationalState, ['starting', 'authenticated', 'qr_required', 'not_configured'], true)) {
+            return null;
+        }
+
+        if ($sessionStatus === self::STATUS_DISCONNECTED && (string) ($connectorStatus['state'] ?? '') === 'disconnected') {
+            return null;
+        }
+
+        return ($connectorStatus['message'] ?? null) ?: $account?->last_error;
+    }
+
+    private function whatsAppCanSend(array $connectorStatus): bool
+    {
+        if (array_key_exists('can_send', $connectorStatus)) {
+            return (bool) $connectorStatus['can_send'];
+        }
+
+        return (bool) ($connectorStatus['ready'] ?? false) === true
+            && (string) ($connectorStatus['state'] ?? '') === 'connected';
     }
 
     private function providerDefinition(string $provider): array

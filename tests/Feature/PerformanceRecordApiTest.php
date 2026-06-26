@@ -232,6 +232,74 @@ class PerformanceRecordApiTest extends TestCase
     }
 
     #[Test]
+    public function it_creates_provvigione_records_without_generating_professional_costs(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $response = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-13',
+            'unit_amount' => 300,
+            'payment_method' => 'cash',
+            'percentage_value' => 20,
+            'is_black' => false,
+            'is_invoiced' => true,
+            'is_provvigione' => true,
+        ]))->assertCreated()
+            ->assertJsonPath('is_provvigione', true)
+            ->assertJsonPath('is_black', true)
+            ->assertJsonPath('payment_method', 'cash')
+            ->assertJsonPath('is_invoiced', false)
+            ->assertJsonPath('professional_amount', '240.00')
+            ->assertJsonPath('center_amount', '60.00');
+
+        $recordId = (int) $response->json('id');
+
+        $this->assertDatabaseMissing('expense_records', [
+            'source_performance_record_id' => $recordId,
+            'generation_key' => 'performance:'.$recordId.':standard',
+        ]);
+    }
+
+    #[Test]
+    public function it_allows_provvigione_together_with_black_when_requested_explicitly(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-14',
+            'unit_amount' => 300,
+            'payment_method' => 'cash',
+            'percentage_value' => 20,
+            'is_black' => true,
+            'is_provvigione' => true,
+        ]))->assertCreated()
+            ->assertJsonPath('is_provvigione', true)
+            ->assertJsonPath('is_black', true);
+    }
+
+    #[Test]
+    public function it_rejects_provvigione_when_promo_is_enabled(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-15',
+            'unit_amount' => 300,
+            'payment_method' => 'cash',
+            'percentage_value' => 20,
+            'is_provvigione' => true,
+            'is_promo' => true,
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['is_provvigione', 'is_promo']);
+    }
+
+    #[Test]
     public function it_deletes_performance_records_without_touching_manual_cash_movements(): void
     {
         $user = User::factory()->create(['role' => UserRole::Admin]);
@@ -677,6 +745,33 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonPath('totals.professional_share', 110);
     }
 
+    #[Test]
+    public function it_excludes_external_professional_value_from_filtered_totals_for_provvigione(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-10',
+            'unit_amount' => 100,
+            'percentage_value' => 60,
+        ]))->assertCreated();
+
+        $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-12',
+            'unit_amount' => 300,
+            'percentage_value' => 20,
+            'payment_method' => 'cash',
+            'is_provvigione' => true,
+        ]))->assertCreated();
+
+        $this->getJson('/api/v1/performance-records?date_from=2026-04-01&date_to=2026-04-30')
+            ->assertOk()
+            ->assertJsonPath('totals.center_share', 100)
+            ->assertJsonPath('totals.professional_share', 60);
+    }
+
     private function createProfessionalServiceContext(): array
     {
         $professional = Professional::factory()->create([
@@ -722,6 +817,7 @@ class PerformanceRecordApiTest extends TestCase
             'calculation_mode' => 'percentage',
             'percentage_value' => 70,
             'is_black' => false,
+            'is_provvigione' => false,
             'is_promo' => false,
             'notes' => null,
         ], $overrides);

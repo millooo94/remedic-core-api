@@ -18,7 +18,7 @@ class WhatsAppPuppeteerService
     /**
      * @return array<string, mixed>
      */
-    public function status(): array
+    public function status(bool $allowAutoLaunch = true): array
     {
         try {
             $response = $this->client()->get('/status');
@@ -36,6 +36,10 @@ class WhatsAppPuppeteerService
                 ? $this->normalizeStatusPayload($payload)
                 : $this->unavailableStatus();
         } catch (ConnectionException) {
+            if (! $allowAutoLaunch) {
+                return $this->unavailableStatus();
+            }
+
             $launchAttempt = $this->launcherService->launch(true);
             if (! ($launchAttempt['started'] ?? false)) {
                 return $this->unavailableStatus(
@@ -306,6 +310,27 @@ class WhatsAppPuppeteerService
     public function send(string $target, string $message, ?string $subject = null, array $context = []): MarketingChannelSendResult
     {
         try {
+            $status = $this->status(false);
+            if (! $this->isOperational($status)) {
+                Log::warning('WhatsApp send blocked because connector is not operational.', [
+                    'state' => $status['state'] ?? null,
+                    'normalized_state' => $status['normalized_state'] ?? null,
+                    'can_send' => $status['can_send'] ?? false,
+                    'message' => $status['message'] ?? null,
+                ]);
+
+                return MarketingChannelSendResult::failed(
+                    providerStatus: $this->nullableString($status['last_error_code'] ?? null) ?? 'session_not_ready',
+                    errorMessage: $this->nullableString($status['message'] ?? null) ?? 'WhatsApp non pronto all invio.',
+                    response: $status,
+                );
+            }
+
+            Log::info('WhatsApp send requested.', [
+                'target_tail' => substr(preg_replace('/\D+/', '', $target) ?? '', -4),
+                'has_media' => filled($context['media_path'] ?? null) || filled($context['media_base64'] ?? null),
+            ]);
+
             $response = $this->client()->post('/send', [
                 'target' => $target,
                 'message' => $message,
@@ -336,7 +361,7 @@ class WhatsAppPuppeteerService
                 );
             }
 
-            return match ($payload['delivery_status'] ?? 'failed') {
+            $result = match ($payload['delivery_status'] ?? 'failed') {
                 'sent' => MarketingChannelSendResult::sent(
                     messageId: $this->nullableString($payload['message_id'] ?? null),
                     providerStatus: $this->nullableString($payload['provider_status'] ?? 'sent'),
@@ -353,12 +378,26 @@ class WhatsAppPuppeteerService
                     response: $this->arrayOrNull($payload['response'] ?? null),
                 ),
             };
+
+            Log::info('WhatsApp send completed.', [
+                'delivery_status' => $result->deliveryStatus,
+                'provider_status' => $result->providerStatus,
+                'message_id' => $result->messageId,
+            ]);
+
+            return $result;
         } catch (ConnectionException) {
+            Log::error('WhatsApp send failed because connector is unreachable.');
+
             return MarketingChannelSendResult::failed(
                 providerStatus: 'connector_unreachable',
                 errorMessage: 'Connettore WhatsApp non raggiungibile. Verificare il processo Puppeteer sul server.',
             );
         } catch (\Throwable $exception) {
+            Log::error('WhatsApp send failed with unexpected exception.', [
+                'message' => $exception->getMessage(),
+            ]);
+
             return MarketingChannelSendResult::failed(
                 providerStatus: 'technical_error',
                 errorMessage: 'Errore tecnico durante l\'invio WhatsApp.',
@@ -371,8 +410,8 @@ class WhatsAppPuppeteerService
 
     public function ensureReadyForInteractiveUse(): void
     {
-        $status = $this->status();
-        if (($status['ready'] ?? false) === true) {
+        $status = $this->status(false);
+        if ($this->isOperational($status)) {
             return;
         }
 
@@ -387,9 +426,19 @@ class WhatsAppPuppeteerService
         string $state = 'automation_unavailable',
         ?string $technicalMessage = null,
     ): array {
-        return [
+        $normalizedState = $this->deriveNormalizedState([
             'state' => $state,
             'ready' => false,
+            'qr_required' => false,
+            'queue_depth' => 0,
+        ]);
+
+        return [
+            'state' => $state,
+            'normalized_state' => $normalizedState,
+            'ready' => false,
+            'can_send' => false,
+            'is_recovering' => $normalizedState === 'recovering',
             'message' => $message,
             'qr_required' => false,
             'qr_code_data_url' => null,
@@ -411,9 +460,14 @@ class WhatsAppPuppeteerService
      */
     private function normalizeStatusPayload(array $payload): array
     {
+        $normalizedState = $payload['normalized_state'] ?? $this->deriveNormalizedState($payload);
+
         return [
             'state' => $payload['state'] ?? 'automation_unavailable',
+            'normalized_state' => $normalizedState,
             'ready' => (bool) ($payload['ready'] ?? false),
+            'can_send' => (bool) ($payload['can_send'] ?? $this->deriveCanSend($payload)),
+            'is_recovering' => (bool) ($payload['is_recovering'] ?? ($normalizedState === 'recovering')),
             'message' => $payload['message'] ?? 'Stato WhatsApp non disponibile.',
             'qr_required' => (bool) ($payload['qr_required'] ?? false),
             'qr_code_data_url' => $payload['qr_code_data_url'] ?? null,
@@ -426,7 +480,58 @@ class WhatsAppPuppeteerService
             'last_error_message' => $payload['last_error_message'] ?? null,
             'last_event_at' => $payload['last_event_at'] ?? null,
             'last_connected_at' => $payload['last_connected_at'] ?? null,
+            'process_id' => $payload['process_id'] ?? null,
+            'session_path' => $payload['session_path'] ?? null,
+            'client_generation' => $payload['client_generation'] ?? null,
+            'last_qr_available' => (bool) ($payload['last_qr_available'] ?? false),
+            'has_local_auth_session' => isset($payload['has_local_auth_session']) ? (bool) $payload['has_local_auth_session'] : null,
+            'has_persisted_session' => isset($payload['has_persisted_session']) ? (bool) $payload['has_persisted_session'] : null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $status
+     */
+    public function isOperational(array $status): bool
+    {
+        return (bool) ($status['can_send'] ?? $this->deriveCanSend($status));
+    }
+
+    /**
+     * @param  array<string, mixed>  $status
+     */
+    private function deriveCanSend(array $status): bool
+    {
+        return (bool) ($status['ready'] ?? false) === true
+            && (string) ($status['state'] ?? '') === 'connected';
+    }
+
+    /**
+     * @param  array<string, mixed>  $status
+     */
+    private function deriveNormalizedState(array $status): string
+    {
+        $rawState = (string) ($status['state'] ?? '');
+        $ready = (bool) ($status['ready'] ?? false);
+        $qrRequired = (bool) ($status['qr_required'] ?? false);
+        $queueDepth = (int) ($status['queue_depth'] ?? 0);
+
+        if ($ready && $rawState === 'connected') {
+            return $queueDepth > 0 ? 'sending' : 'ready';
+        }
+
+        if ($qrRequired) {
+            return 'qr_required';
+        }
+
+        return match ($rawState) {
+            'starting', 'initializing', 'waiting_for_scan' => 'starting',
+            'authenticated', 'connecting' => 'authenticated',
+            'automation_unavailable', 'browser_locked', 'session_cleanup_failed', 'connecting_timeout', 'stale_authenticated_session', 'qr_timeout' => 'recovering',
+            'disconnected', 'session_expired', 'auth_failure' => 'disconnected',
+            'browser_unavailable', 'ui_incompatible', 'technical_error', 'error' => 'error',
+            default => $ready ? 'ready' : 'error',
+        };
     }
 
     private function client(): \Illuminate\Http\Client\PendingRequest

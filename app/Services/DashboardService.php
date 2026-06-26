@@ -31,13 +31,20 @@ class DashboardService
         $fixedCosts = round((float) $fixedExpenseAllocations->sum('allocated_amount'), 2);
         $variableCosts = round((float) $variableExpenseRecords->sum('amount'), 2);
         $centerTotal = round((float) $performanceRecords->sum('center_amount'), 2);
-        $professionalTotal = round((float) $performanceRecords->sum('professional_amount'), 2);
-        $revenueTotal = round((float) $performanceRecords->sum('total_amount'), 2);
+        $professionalTotal = round((float) $performanceRecords->sum(fn (PerformanceRecord $record) => $this->dashboardProfessionalAmountForRecord($record)), 2);
+        $revenueTotal = round((float) $performanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $cashPerformanceRecords = $performanceRecords->where('payment_method', PaymentMethod::Cash);
-        $cashRevenueTotal = round((float) $cashPerformanceRecords->sum('total_amount'), 2);
-        $cashBlackRevenueTotal = round((float) $cashPerformanceRecords->where('is_black', true)->sum('total_amount'), 2);
-        $cashFatturatiRevenueTotal = round((float) $cashPerformanceRecords->where('is_black', false)->sum('total_amount'), 2);
-        $cardRevenueTotal = round((float) $performanceRecords->where('payment_method', PaymentMethod::Card)->sum('total_amount'), 2);
+        $cashRevenueTotal = round((float) $cashPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
+        $cashBlackRevenueTotal = round((float) $cashPerformanceRecords->where('is_black', true)->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
+        $cashFatturatiRevenueTotal = round((float) $cashPerformanceRecords
+            ->filter(fn (PerformanceRecord $record) => ! $record->is_black && ! $record->is_provvigione)
+            ->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
+        $cashProvvigioneRevenueTotal = round((float) $cashPerformanceRecords
+            ->where('is_provvigione', true)
+            ->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
+        $cardRevenueTotal = round((float) $performanceRecords
+            ->where('payment_method', PaymentMethod::Card)
+            ->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $totalPerformances = (int) $performanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $promoPerformances = (int) $performanceRecords
             ->where('is_promo', true)
@@ -45,11 +52,14 @@ class DashboardService
         $blackPerformances = (int) $performanceRecords
             ->where('is_black', true)
             ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
+        $provvigionePerformances = (int) $performanceRecords
+            ->where('is_provvigione', true)
+            ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $standardPerformances = (int) $performanceRecords
-            ->filter(fn (PerformanceRecord $record) => ! $record->is_black && ! $record->is_promo)
+            ->filter(fn (PerformanceRecord $record) => ! $record->is_black && ! $record->is_promo && ! $record->is_provvigione)
             ->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $nonPromoPerformanceRecords = $performanceRecords->where('is_promo', false);
-        $nonPromoRevenueTotal = round((float) $nonPromoPerformanceRecords->sum('total_amount'), 2);
+        $nonPromoRevenueTotal = round((float) $nonPromoPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $nonPromoCenterTotal = round((float) $nonPromoPerformanceRecords->sum('center_amount'), 2);
         $nonPromoPerformanceCount = (int) $nonPromoPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $averagePerformanceCost = $nonPromoPerformanceCount > 0
@@ -59,7 +69,7 @@ class DashboardService
             ? round($nonPromoCenterTotal / $nonPromoPerformanceCount, 2)
             : 0.0;
         $nonBlackPerformanceRecords = $nonPromoPerformanceRecords->where('is_black', false);
-        $nonBlackRevenueTotal = round((float) $nonBlackPerformanceRecords->sum('total_amount'), 2);
+        $nonBlackRevenueTotal = round((float) $nonBlackPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $nonBlackCenterTotal = round((float) $nonBlackPerformanceRecords->sum('center_amount'), 2);
         $nonBlackPerformanceCount = (int) $nonBlackPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $averagePerformanceCostExcludingBlack = $nonBlackPerformanceCount > 0
@@ -70,17 +80,17 @@ class DashboardService
             : 0.0;
         $blackCenterNet = round((float) $performanceRecords->where('is_black', true)->sum('center_amount'), 2);
         $totalCenterCosts = round($fixedCosts + $variableCosts, 2);
-        $netCenterMargin = round(($centerTotal + $professionalTotal) - $totalCenterCosts, 2);
+        $netCenterMargin = round($revenueTotal - $totalCenterCosts, 2);
 
         $previousFixedCosts = round((float) $previousFixedExpenseAllocations->sum('allocated_amount'), 2);
         $previousVariableCosts = round((float) $previousVariableExpenseRecords->sum('amount'), 2);
         $previousCenterTotal = round((float) $previousPerformanceRecords->sum('center_amount'), 2);
-        $previousProfessionalTotal = round((float) $previousPerformanceRecords->sum('professional_amount'), 2);
-        $previousRevenueTotal = round((float) $previousPerformanceRecords->sum('total_amount'), 2);
+        $previousProfessionalTotal = round((float) $previousPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->dashboardProfessionalAmountForRecord($record)), 2);
+        $previousRevenueTotal = round((float) $previousPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $previousTotalPerformances = (int) $previousPerformanceRecords->sum(fn (PerformanceRecord $record) => (int) $record->quantity);
         $previousBlackCenterNet = round((float) $previousPerformanceRecords->where('is_black', true)->sum('center_amount'), 2);
         $previousTotalCenterCosts = round($previousFixedCosts + $previousVariableCosts, 2);
-        $previousNetCenterMargin = round(($previousCenterTotal + $previousProfessionalTotal) - $previousTotalCenterCosts, 2);
+        $previousNetCenterMargin = round($previousRevenueTotal - $previousTotalCenterCosts, 2);
 
         $performanceCountRanking = $this->performanceCountRanking($performanceRecords);
         $revenueRanking = $this->revenueRanking($performanceRecords);
@@ -105,6 +115,7 @@ class DashboardService
                     'standard' => $standardPerformances,
                     'black' => $blackPerformances,
                     'promo' => $promoPerformances,
+                    'provvigione' => $provvigionePerformances,
                 ],
                 'total_center_amount' => $centerTotal,
                 'total_professional_amount' => $professionalTotal,
@@ -115,6 +126,7 @@ class DashboardService
                     'cash_breakdown' => [
                         'black' => $cashBlackRevenueTotal,
                         'fatturati' => $cashFatturatiRevenueTotal,
+                        'provvigione' => $cashProvvigioneRevenueTotal,
                     ],
                 ],
                 'total_fixed_costs' => $fixedCosts,
@@ -127,6 +139,7 @@ class DashboardService
                 'total_center_costs' => $totalCenterCosts,
                 'net_center_margin' => $netCenterMargin,
                 'professional_amount_breakdown' => $this->professionalAmountBreakdown($performanceRecords),
+                'provvigione_collection_breakdown' => $this->provvigioneCollectionBreakdown($performanceRecords),
                 'top_by_performance_count' => $topByCount,
                 'top_by_revenue' => $topByRevenue,
                 'top_by_specialization' => $topBySpecialization,
@@ -147,7 +160,9 @@ class DashboardService
                     'average_performance_cost' => $this->buildComparison(
                         $averagePerformanceCost,
                         $this->averageForComparison(
-                            round((float) $previousPerformanceRecords->where('is_promo', false)->sum('total_amount'), 2),
+                            round((float) $previousPerformanceRecords
+                                ->where('is_promo', false)
+                                ->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2),
                             (int) $previousPerformanceRecords
                                 ->where('is_promo', false)
                                 ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
@@ -182,6 +197,7 @@ class DashboardService
                 'label' => $cursor->translatedFormat('M Y'),
                 'center_amount' => 0.0,
                 'professional_amount' => 0.0,
+                'recognized_revenue' => 0.0,
                 'fixed_costs' => 0.0,
                 'variable_costs' => 0.0,
                 'net_margin' => 0.0,
@@ -199,7 +215,8 @@ class DashboardService
 
             $row = $months->get($key);
             $row['center_amount'] += (float) $record->center_amount;
-            $row['professional_amount'] += (float) $record->professional_amount;
+            $row['professional_amount'] += $this->dashboardProfessionalAmountForRecord($record);
+            $row['recognized_revenue'] += $this->recognizedRevenueForRecord($record);
             $months->put($key, $row);
         }
 
@@ -227,7 +244,8 @@ class DashboardService
             $row['professional_amount'] = round($row['professional_amount'], 2);
             $row['fixed_costs'] = round($row['fixed_costs'], 2);
             $row['variable_costs'] = round($row['variable_costs'], 2);
-            $row['net_margin'] = round(($row['center_amount'] + $row['professional_amount']) - ($row['fixed_costs'] + $row['variable_costs']), 2);
+            $row['net_margin'] = round(($row['recognized_revenue'] ?? 0) - ($row['fixed_costs'] + $row['variable_costs']), 2);
+            unset($row['recognized_revenue']);
 
             return $row;
         })->values()->all();
@@ -324,16 +342,37 @@ class DashboardService
                 'total' => [
                     'white' => $this->sumProfessionalAllocations($allocations, null, false),
                     'black' => $this->sumProfessionalAllocations($allocations, null, true),
+                    'provvigione' => $this->sumProfessionalAllocations($allocations, null, true, true),
                 ],
                 'liquidated' => [
                     'white' => $this->sumProfessionalAllocations($allocations, PaymentStatus::Pagata->value, false),
                     'black' => $this->sumProfessionalAllocations($allocations, PaymentStatus::Pagata->value, true),
+                    'provvigione' => $this->sumProfessionalAllocations($allocations, PaymentStatus::Pagata->value, true, true),
                 ],
                 'to_liquidate' => [
                     'white' => $this->sumProfessionalAllocations($allocations, PaymentStatus::DaPagare->value, false),
                     'black' => $this->sumProfessionalAllocations($allocations, PaymentStatus::DaPagare->value, true),
+                    'provvigione' => $this->sumProfessionalAllocations($allocations, PaymentStatus::DaPagare->value, true, true),
                 ],
             ],
+        ];
+    }
+
+    private function provvigioneCollectionBreakdown(Collection $records): array
+    {
+        $provvigioneRecords = $records->filter(fn (PerformanceRecord $record) => (bool) $record->is_provvigione);
+        $total = round((float) $provvigioneRecords->sum('center_amount'), 2);
+        $collected = round((float) $provvigioneRecords
+            ->filter(fn (PerformanceRecord $record) => ($record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value) === PaymentStatus::Pagata->value)
+            ->sum('center_amount'), 2);
+        $toCollect = round($total - $collected, 2);
+
+        return [
+            'total' => $total,
+            'collected' => $collected,
+            'to_collect' => $toCollect,
+            'collected_percent' => $total > 0 ? round(($collected / $total) * 100, 2) : 0.0,
+            'to_collect_percent' => $total > 0 ? round(($toCollect / $total) * 100, 2) : 0.0,
         ];
     }
 
@@ -347,7 +386,7 @@ class DashboardService
                 'promo_performances' => (int) $group
                     ->where('is_promo', true)
                     ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
-                'revenue_total' => round((float) $group->sum('total_amount'), 2),
+                'revenue_total' => round((float) $group->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2),
             ])
             ->sortBy([
                 ['performances', 'desc'],
@@ -368,7 +407,7 @@ class DashboardService
                 'promo_performances' => (int) $group
                     ->where('is_promo', true)
                     ->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
-                'revenue_total' => round((float) $group->sum('total_amount'), 2),
+                'revenue_total' => round((float) $group->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2),
             ])
             ->sortBy([
                 ['performances', 'desc'],
@@ -404,11 +443,12 @@ class DashboardService
                     $rows->push([
                         'professional_id' => $first?->professional_id,
                         'professional_name' => trim((string) ($first?->professional_name_snapshot ?: $first?->professional?->full_name ?: 'Non specificato')) ?: 'Non specificato',
-                        'amount' => $amount,
+                        'amount' => $record->is_provvigione ? 0.0 : $amount,
                         'is_black' => (bool) $record->is_black,
+                        'is_provvigione' => (bool) $record->is_provvigione,
                         'performances' => (int) $record->quantity,
                         'promo_performances' => $record->is_promo ? (int) $record->quantity : 0,
-                        'revenue_total' => $amount,
+                        'revenue_total' => $this->recognizedRevenueForRecord($record),
                         'payment_status' => $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value,
                     ]);
                 }
@@ -419,11 +459,12 @@ class DashboardService
             $rows->push([
                 'professional_id' => $record->professional_id,
                 'professional_name' => trim((string) ($record->professional_name_snapshot ?: '')) ?: 'Non specificato',
-                'amount' => (float) $record->professional_amount,
+                'amount' => $this->dashboardProfessionalAmountForRecord($record),
                 'is_black' => (bool) $record->is_black,
+                'is_provvigione' => (bool) $record->is_provvigione,
                 'performances' => (int) $record->quantity,
                 'promo_performances' => $record->is_promo ? (int) $record->quantity : 0,
-                'revenue_total' => (float) $record->total_amount,
+                'revenue_total' => $this->recognizedRevenueForRecord($record),
                 'payment_status' => $record->payment_status?->value ?? $record->payment_status ?? PaymentStatus::DaPagare->value,
             ]);
         }
@@ -431,11 +472,15 @@ class DashboardService
         return $rows;
     }
 
-    private function sumProfessionalAllocations(Collection $allocations, ?string $paymentStatus, bool $isBlack): float
+    private function sumProfessionalAllocations(Collection $allocations, ?string $paymentStatus, bool $isBlack, bool $isProvvigione = false): float
     {
         return round((float) $allocations
-            ->filter(function (array $allocation) use ($paymentStatus, $isBlack): bool {
+            ->filter(function (array $allocation) use ($paymentStatus, $isBlack, $isProvvigione): bool {
                 if ((bool) ($allocation['is_black'] ?? false) !== $isBlack) {
+                    return false;
+                }
+
+                if ((bool) ($allocation['is_provvigione'] ?? false) !== $isProvvigione) {
                     return false;
                 }
 
@@ -446,6 +491,21 @@ class DashboardService
                 return ($allocation['payment_status'] ?? PaymentStatus::DaPagare->value) === $paymentStatus;
             })
             ->sum('amount'), 2);
+    }
+
+    private function recognizedRevenueForRecord(PerformanceRecord $record): float
+    {
+        return round(
+            (float) ($record->is_provvigione ? $record->center_amount : $record->total_amount),
+            2,
+        );
+    }
+
+    private function dashboardProfessionalAmountForRecord(PerformanceRecord $record): float
+    {
+        return $record->is_provvigione
+            ? 0.0
+            : round((float) $record->professional_amount, 2);
     }
 
     private function normalizedRankingLabel(?string $value): string

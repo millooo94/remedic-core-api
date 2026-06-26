@@ -63,9 +63,11 @@ class PerformanceRecordResource extends JsonResource
             ])->values()),
             'payment_method' => $this->payment_method?->value ?? $this->payment_method,
             'payment_status' => $this->payment_status?->value ?? $this->payment_status ?? 'da_pagare',
+            'payment_status_label' => $this->paymentStatusLabel(),
             'is_invoiced' => (bool) $this->is_invoiced,
             'is_black' => (bool) $this->is_black,
             'is_promo' => (bool) $this->is_promo,
+            'is_provvigione' => (bool) $this->is_provvigione,
             'notes' => $this->notes,
             'patient' => $primaryPatient ? new PatientResource($primaryPatient) : null,
             'patients' => $this->whenLoaded('patients', fn () => PatientResource::collection($this->patients)),
@@ -74,5 +76,20 @@ class PerformanceRecordResource extends JsonResource
             'created_at' => optional($this->created_at)->toIso8601String(),
             'updated_at' => optional($this->updated_at)->toIso8601String(),
         ];
+    }
+
+    private function paymentStatusLabel(): string
+    {
+        $paymentStatus = $this->payment_status?->value ?? $this->payment_status ?? 'da_pagare';
+
+        if ((bool) $this->is_provvigione) {
+            return $paymentStatus === 'pagata'
+                ? 'Incassata da Remedic'
+                : 'Da incassare a Remedic';
+        }
+
+        return $paymentStatus === 'pagata'
+            ? 'Liquidata'
+            : 'Da liquidare';
     }
 }
