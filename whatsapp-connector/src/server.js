@@ -29,6 +29,7 @@ const HEADLESS = toBoolean(process.env.WHATSAPP_PUPPETEER_HEADLESS, true);
 const DISABLE_SANDBOX = toBoolean(process.env.WHATSAPP_PUPPETEER_DISABLE_SANDBOX, true);
 const LAUNCH_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_LAUNCH_TIMEOUT_MS || 120000);
 const MESSAGE_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_MESSAGE_TIMEOUT_MS || 45000);
+const ACK_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_PUPPETEER_ACK_POLL_INTERVAL_MS || 500);
 const SEND_DELAY_MS = Number(process.env.WHATSAPP_PUPPETEER_SEND_DELAY_MS || 900);
 const MAX_SEND_RETRIES = Number(process.env.WHATSAPP_PUPPETEER_MAX_SEND_RETRIES || 2);
 const CONNECT_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_WAIT_MS || 20000);
@@ -53,6 +54,7 @@ let isResettingSession = false;
 let isConnectingSession = false;
 let qrWatchdog = null;
 let connectingWatchdog = null;
+const messageAckMap = new Map();
 
 const SESSION_PROFILE_PATH = path.join(SESSION_PATH, `session-${CLIENT_ID}`);
 const STALE_BROWSER_MARKERS = Array.from(new Set([
@@ -106,6 +108,48 @@ function isoNow() {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeAckValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const normalized = Number(value);
+  return Number.isFinite(normalized) ? normalized : null;
+}
+
+function extractMessageId(message) {
+  return message?.id?._serialized || null;
+}
+
+async function waitForAck(messageId, initialAck, minAck = 1, timeoutMs = MESSAGE_TIMEOUT_MS) {
+  const normalizedInitialAck = normalizeAckValue(initialAck);
+
+  if (!messageId) {
+    return null;
+  }
+
+  if (normalizedInitialAck !== null && (normalizedInitialAck >= minAck || normalizedInitialAck < 0)) {
+    return normalizedInitialAck;
+  }
+
+  const startedAt = Date.now();
+
+  while ((Date.now() - startedAt) < timeoutMs) {
+    const trackedAck = normalizeAckValue(messageAckMap.get(messageId));
+    if (trackedAck !== null && (trackedAck >= minAck || trackedAck < 0)) {
+      return trackedAck;
+    }
+
+    await wait(ACK_POLL_INTERVAL_MS);
+  }
+
+  return normalizeAckValue(messageAckMap.get(messageId)) ?? normalizedInitialAck;
 }
 
 function resolveSessionPath(configuredPath, fallbackPath) {
@@ -864,6 +908,7 @@ async function initializeClient(options = {}) {
 
   await ensureConnectorEnvironment();
   isConnectingSession = true;
+  messageAckMap.clear();
 
   activeClientGeneration += 1;
   const generation = activeClientGeneration;
@@ -993,6 +1038,19 @@ async function initializeClient(options = {}) {
       phoneNumber: info?.wid?.user || null,
       pushName: info?.pushname || null,
     });
+  });
+
+  nextClient.on('message_ack', (message, ack) => {
+    if (handleStaleEvent('message_ack', { messageId: extractMessageId(message), ack })) {
+      return;
+    }
+
+    const messageId = extractMessageId(message);
+    if (!messageId) {
+      return;
+    }
+
+    messageAckMap.set(messageId, normalizeAckValue(ack));
   });
 
   nextClient.on('change_state', (webState) => {
@@ -1325,41 +1383,104 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
       }
 
       let sentMessage = null;
+      const lookupChatId = numberId._serialized;
+      const sendChatId = `${normalizedTarget}@c.us`;
+      let usedSendChatId = sendChatId;
 
-      if (hasMedia && media) {
-        sentMessage = await withTimeout(
-          client.sendMessage(numberId._serialized, media, {
-            caption: message,
-          }),
+      const sendPayload = async (chatId) => {
+        if (hasMedia && media) {
+          return withTimeout(
+            client.sendMessage(chatId, media, {
+              caption: message,
+            }),
+            MESSAGE_TIMEOUT_MS,
+            'Send WhatsApp timeout'
+          );
+        }
+
+        return withTimeout(
+          client.sendMessage(chatId, message),
           MESSAGE_TIMEOUT_MS,
           'Send WhatsApp timeout'
         );
-      } else {
-        sentMessage = await withTimeout(
-          client.sendMessage(numberId._serialized, message),
-          MESSAGE_TIMEOUT_MS,
-          'Send WhatsApp timeout'
-        );
+      };
+
+      try {
+        sentMessage = await sendPayload(sendChatId);
+      } catch (primarySendError) {
+        const primaryMessage = String(primarySendError?.message || primarySendError);
+        const fallbackAllowed = lookupChatId !== sendChatId;
+
+        logConnector('send primary destination failed', {
+          targetTail: normalizedTarget.slice(-4),
+          lookupChatId,
+          sendChatId,
+          fallbackAllowed,
+          message: primaryMessage,
+        });
+
+        if (!fallbackAllowed) {
+          throw primarySendError;
+        }
+
+        usedSendChatId = lookupChatId;
+        sentMessage = await sendPayload(lookupChatId);
       }
 
       logConnector('send success', {
         targetTail: normalizedTarget.slice(-4),
         hasMedia,
+        lookupChatId,
+        sendChatId: usedSendChatId,
         messageId: sentMessage?.id?._serialized || null,
       });
 
+      const messageId = extractMessageId(sentMessage);
+      const initialAck = normalizeAckValue(sentMessage?.ack);
+      const finalAck = await waitForAck(messageId, initialAck, 1, MESSAGE_TIMEOUT_MS);
+      const baseResponse = {
+        chat_id: usedSendChatId,
+        lookup_chat_id: lookupChatId,
+        send_chat_id: usedSendChatId,
+        ack: finalAck,
+        initial_ack: initialAck,
+        final_ack: finalAck,
+        from_me: sentMessage?.fromMe ?? true,
+        media_sent: hasMedia,
+      };
+
+      if (finalAck !== null && finalAck >= 1) {
+        return {
+          delivery_status: 'sent',
+          provider_status: 'sent',
+          message_id: messageId,
+          error_message: null,
+          response: baseResponse,
+          sent_at: isoNow(),
+        };
+      }
+
+      if (finalAck !== null && finalAck < 0) {
+        return {
+          delivery_status: 'failed',
+          provider_status: 'send_error',
+          message_id: messageId,
+          error_message: 'WhatsApp ha restituito un errore durante l invio del messaggio.',
+          response: {
+            ...baseResponse,
+            technical_message: 'WhatsApp ha marcato il messaggio con ack negativo.',
+          },
+          sent_at: null,
+        };
+      }
+
       return {
-        delivery_status: 'sent',
-        provider_status: 'sent',
-        message_id: sentMessage?.id?._serialized || null,
-        error_message: null,
-        response: {
-          chat_id: numberId._serialized,
-          ack: sentMessage?.ack ?? null,
-          from_me: sentMessage?.fromMe ?? true,
-          media_sent: hasMedia,
-        },
-        sent_at: isoNow(),
+        delivery_status: 'failed',
+        provider_status: 'send_not_confirmed',
+        message_id: messageId,
+        error_message: 'WhatsApp non ha confermato l invio del messaggio.',
+        response: baseResponse,
+        sent_at: null,
       };
     } catch (error) {
       const classification = classifyError(error);
