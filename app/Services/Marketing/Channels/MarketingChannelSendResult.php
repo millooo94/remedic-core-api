@@ -49,11 +49,12 @@ final class MarketingChannelSendResult
     /**
      * @param  array<string, mixed>|null  $response
      */
-    public static function failed(?string $providerStatus, ?string $errorMessage, ?array $response = null): self
+    public static function failed(?string $providerStatus, ?string $errorMessage, ?array $response = null, ?string $messageId = null): self
     {
         return new self(
             deliveryStatus: 'failed',
             providerStatus: $providerStatus,
+            messageId: $messageId,
             errorMessage: $errorMessage,
             response: $response,
         );

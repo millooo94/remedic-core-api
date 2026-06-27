@@ -361,21 +361,32 @@ class WhatsAppPuppeteerService
                 );
             }
 
-            $result = match ($payload['delivery_status'] ?? 'failed') {
-                'sent' => MarketingChannelSendResult::sent(
-                    messageId: $this->nullableString($payload['message_id'] ?? null),
-                    providerStatus: $this->nullableString($payload['provider_status'] ?? 'sent'),
-                    response: $this->arrayOrNull($payload['response'] ?? null),
-                ),
+            $deliveryStatus = $this->nullableString($payload['delivery_status'] ?? null) ?? 'failed';
+            $providerStatus = $this->nullableString($payload['provider_status'] ?? null);
+
+            $result = match ($deliveryStatus) {
+                'sent' => ($providerStatus === null || $providerStatus === 'sent')
+                    ? MarketingChannelSendResult::sent(
+                        messageId: $this->nullableString($payload['message_id'] ?? null),
+                        providerStatus: $providerStatus ?? 'sent',
+                        response: $this->arrayOrNull($payload['response'] ?? null),
+                    )
+                    : MarketingChannelSendResult::failed(
+                        providerStatus: $providerStatus,
+                        errorMessage: $this->nullableString($payload['error_message'] ?? null) ?? 'WhatsApp non ha confermato l\'invio del messaggio.',
+                        response: $this->arrayOrNull($payload['response'] ?? null),
+                        messageId: $this->nullableString($payload['message_id'] ?? null),
+                    ),
                 'excluded' => MarketingChannelSendResult::excluded(
-                    providerStatus: $this->nullableString($payload['provider_status'] ?? 'excluded'),
+                    providerStatus: $providerStatus ?? 'excluded',
                     errorMessage: $this->nullableString($payload['error_message'] ?? 'Destinatario non disponibile su WhatsApp.'),
                     response: $this->arrayOrNull($payload['response'] ?? null),
                 ),
                 default => MarketingChannelSendResult::failed(
-                    providerStatus: $this->nullableString($payload['provider_status'] ?? 'technical_error'),
+                    providerStatus: $providerStatus ?? 'technical_error',
                     errorMessage: $this->nullableString($payload['error_message'] ?? 'Errore tecnico durante l\'invio WhatsApp.'),
                     response: $this->arrayOrNull($payload['response'] ?? null),
+                    messageId: $this->nullableString($payload['message_id'] ?? null),
                 ),
             };
 

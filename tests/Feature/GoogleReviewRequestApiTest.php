@@ -565,6 +565,106 @@ class GoogleReviewRequestApiTest extends TestCase
         Carbon::setTestNow();
     }
 
+    #[Test]
+    public function the_scheduled_command_does_not_mark_a_google_review_as_sent_when_whatsapp_ack_is_not_confirmed(): void
+    {
+        $this->actingAsAdmin();
+        Carbon::setTestNow(Carbon::parse('2026-06-18 10:45:00', 'Europe/Rome'));
+        config()->set('services.whatsapp_puppeteer.base_url', 'http://whatsapp-connector.test');
+        SiteSetting::singleton()->forceFill([
+            'google_review_url' => 'https://g.page/r/remedic/review',
+        ])->save();
+
+        ExternalProviderAccount::query()->create([
+            'provider' => 'whatsapp',
+            'label' => 'WhatsApp Business',
+            'enabled' => true,
+            'login_status' => 'session_valid',
+            'config_json' => [
+                'review_template_name' => 'google_review_request',
+                'review_template_language' => 'it',
+            ],
+        ]);
+
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+        $patient = Patient::factory()->create([
+            'first_name' => 'Mario',
+            'last_name' => 'Rossi',
+            'full_name' => 'Mario Rossi',
+            'phone' => '+393331234567',
+            'contactable_whatsapp' => true,
+            'excluded_from_campaigns' => false,
+        ]);
+
+        $response = $this->postJson('/api/v1/performance-records', [
+            'performed_at' => '2026-06-15',
+            'visit_shift' => 'morning',
+            'professional_id' => $professional->id,
+            'service_id' => $service->id,
+            'patient_ids' => [$patient->id],
+            'quantity' => 1,
+            'unit_amount' => 100,
+            'payment_method' => 'card',
+            'payment_status' => 'da_pagare',
+            'calculation_mode' => 'percentage',
+            'percentage_value' => 70,
+            'is_black' => false,
+            'is_promo' => false,
+        ])->assertCreated();
+
+        $request = GoogleReviewRequest::query()
+            ->where('performance_record_id', (int) $response->json('id'))
+            ->firstOrFail();
+
+        $request->forceFill([
+            'scheduled_at' => now()->subMinutes(10),
+            'status' => 'pending',
+        ])->save();
+
+        Http::fake([
+            'http://whatsapp-connector.test/status' => Http::response([
+                'state' => 'connected',
+                'ready' => true,
+                'message' => 'WhatsApp Web collegato e pronto all invio.',
+                'qr_required' => false,
+                'qr_code_data_url' => null,
+                'queue_depth' => 0,
+                'phone_number' => '393331234567',
+                'push_name' => 'Remedic',
+                'last_connected_at' => now()->toIso8601String(),
+            ]),
+            'http://whatsapp-connector.test/send' => Http::response([
+                'delivery_status' => 'failed',
+                'provider_status' => 'send_not_confirmed',
+                'message_id' => 'wa-review-pending-ack',
+                'error_message' => 'WhatsApp non ha confermato l invio del messaggio.',
+                'response' => [
+                    'chat_id' => '198934312050832@lid',
+                    'ack' => 0,
+                    'initial_ack' => 0,
+                    'final_ack' => 0,
+                    'from_me' => true,
+                    'media_sent' => false,
+                ],
+            ]),
+        ]);
+
+        $this->artisan('google-reviews:send-pending')
+            ->expectsOutputToContain('Richieste recensione inviate: 0')
+            ->assertExitCode(0);
+
+        $request->refresh();
+
+        $this->assertSame('error', $request->status);
+        $this->assertNull($request->sent_at);
+        $this->assertSame('send_not_confirmed', $request->provider_status);
+        $this->assertSame('wa-review-pending-ack', $request->provider_message_id);
+        $this->assertSame('WhatsApp non ha confermato l\'invio del messaggio.', $request->error_message);
+        $this->assertSame(0, data_get($request->provider_response, 'ack'));
+
+        Carbon::setTestNow();
+    }
+
     private function actingAsAdmin(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));

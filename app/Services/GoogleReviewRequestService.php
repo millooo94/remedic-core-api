@@ -411,7 +411,10 @@ class GoogleReviewRequestService
         } else {
             $request->forceFill([
                 'status' => $result->deliveryStatus === 'excluded' ? self::STATUS_EXCLUDED : self::STATUS_ERROR,
-                'error_message' => $result->errorMessage,
+                'sent_at' => null,
+                'error_message' => in_array($result->providerStatus, ['pending_ack', 'send_not_confirmed'], true)
+                    ? 'WhatsApp non ha confermato l\'invio del messaggio.'
+                    : $result->errorMessage,
                 'provider_status' => $result->providerStatus,
                 'provider_message_id' => $result->messageId,
                 'provider_response' => $result->response,

@@ -30,6 +30,7 @@ const DISABLE_SANDBOX = toBoolean(process.env.WHATSAPP_PUPPETEER_DISABLE_SANDBOX
 const LAUNCH_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_LAUNCH_TIMEOUT_MS || 120000);
 const MESSAGE_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_MESSAGE_TIMEOUT_MS || 45000);
 const ACK_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_PUPPETEER_ACK_POLL_INTERVAL_MS || 500);
+const BROWSER_UI_SEND_TIMEOUT_MS = Number(process.env.WHATSAPP_PUPPETEER_BROWSER_UI_SEND_TIMEOUT_MS || 90000);
 const SEND_DELAY_MS = Number(process.env.WHATSAPP_PUPPETEER_SEND_DELAY_MS || 900);
 const MAX_SEND_RETRIES = Number(process.env.WHATSAPP_PUPPETEER_MAX_SEND_RETRIES || 2);
 const CONNECT_WAIT_MS = Number(process.env.WHATSAPP_PUPPETEER_CONNECT_WAIT_MS || 20000);
@@ -150,6 +151,471 @@ async function waitForAck(messageId, initialAck, minAck = 1, timeoutMs = MESSAGE
   }
 
   return normalizeAckValue(messageAckMap.get(messageId)) ?? normalizedInitialAck;
+}
+
+async function getLatestOutgoingMessageId(chatIds = []) {
+  if (!client?.pupPage) {
+    return null;
+  }
+
+  try {
+    return await client.pupPage.evaluate((targetChatIds) => {
+      const collections = window.require?.('WAWebCollections');
+      const msgCollection = collections?.Msg;
+      if (!msgCollection?.models) {
+        return null;
+      }
+
+      const normalizedChatIds = Array.isArray(targetChatIds)
+        ? targetChatIds.filter(Boolean)
+        : [targetChatIds].filter(Boolean);
+
+      const matchesChat = (msg) => {
+        const remote = msg?.id?.remote?._serialized || msg?.id?.remote || null;
+        const to = msg?.to?._serialized || msg?.to || null;
+        const chat = msg?.chatId?._serialized || msg?.chatId || null;
+
+        return normalizedChatIds.some((chatId) => [remote, to, chat].includes(chatId));
+      };
+
+      const candidates = msgCollection.models
+        .filter((msg) => msg?.id?.fromMe && matchesChat(msg))
+        .sort((left, right) => Number(right?.t || 0) - Number(left?.t || 0));
+
+      const latest = candidates[0]
+        || msgCollection.models
+          .filter((msg) => msg?.id?.fromMe)
+          .sort((left, right) => Number(right?.t || 0) - Number(left?.t || 0))[0];
+      return latest?.id?._serialized || null;
+    }, chatIds);
+  } catch (error) {
+    logConnector('browser ui latest outgoing lookup failed', {
+      chatIds,
+      message: String(error?.message || error),
+    });
+
+    return null;
+  }
+}
+
+async function getLatestOutgoingMessageIdByBody(messageText) {
+  if (!client?.pupPage) {
+    return null;
+  }
+
+  try {
+    return await client.pupPage.evaluate((targetBody) => {
+      const collections = window.require?.('WAWebCollections');
+      const msgCollection = collections?.Msg;
+      if (!msgCollection?.models) {
+        return null;
+      }
+
+      const normalizedTarget = String(targetBody || '').trim();
+      const candidates = msgCollection.models
+        .filter((msg) => {
+          if (!msg?.id?.fromMe) {
+            return false;
+          }
+
+          const body = String(msg?.body || msg?.caption || '').trim();
+          return normalizedTarget !== '' && body === normalizedTarget;
+        })
+        .sort((left, right) => Number(right?.t || 0) - Number(left?.t || 0));
+
+      return candidates[0]?.id?._serialized || null;
+    }, messageText);
+  } catch (error) {
+    logConnector('browser ui outgoing lookup by body failed', {
+      message: String(error?.message || error),
+    });
+
+    return null;
+  }
+}
+
+async function captureBrowserUiDiagnostics(step, selectors = []) {
+  if (!client?.pupPage) {
+    return null;
+  }
+
+  try {
+    const diagnostics = await client.pupPage.evaluate((selectorList) => {
+      const bodyText = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+      const selectorCounts = Object.fromEntries(
+        selectorList.map((selector) => [selector, document.querySelectorAll(selector).length])
+      );
+
+      return {
+        url: window.location.href,
+        title: document.title,
+        selector_counts: selectorCounts,
+        body_snippet: bodyText.slice(0, 1000),
+      };
+    }, selectors);
+
+    logConnector(`browser_ui_send:${step}`, diagnostics || {});
+    return diagnostics;
+  } catch (error) {
+    logConnector(`browser_ui_send:${step}:diagnostics_failed`, {
+      message: String(error?.message || error),
+    });
+
+    return null;
+  }
+}
+
+async function collectVisibleWhatsAppUiErrors() {
+  if (!client?.pupPage) {
+    return null;
+  }
+
+  try {
+    const texts = await client.pupPage.evaluate(() => {
+      const selectors = [
+        '[role="alert"]',
+        '[data-testid="alert"]',
+        '[data-testid="toast"]',
+        '[aria-live="polite"]',
+      ];
+
+      return selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .map((node) => node.textContent?.trim() || '')
+        .filter(Boolean)
+        .slice(0, 5);
+    });
+
+    return Array.isArray(texts) && texts.length > 0 ? texts.join(' | ') : null;
+  } catch (error) {
+    logConnector('browser ui visible error lookup failed', {
+      message: String(error?.message || error),
+    });
+
+    return null;
+  }
+}
+
+async function browserUiSend({ normalizedTarget, message, hasMedia }) {
+  if (hasMedia) {
+    throw new Error('browser_ui_send non supporta media attachments.');
+  }
+
+  if (!client?.pupPage) {
+    throw new Error('Pagina browser WhatsApp Web non disponibile.');
+  }
+
+  const page = client.pupPage;
+  const encodedMessage = encodeURIComponent(message);
+  const targetUrl = `https://web.whatsapp.com/send?phone=${encodeURIComponent(normalizedTarget)}&text=${encodedMessage}`;
+
+  await page.goto(targetUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: MESSAGE_TIMEOUT_MS,
+  });
+
+  await page.waitForFunction(() => {
+    const textbox = document.querySelector('footer [contenteditable="true"][role="textbox"]')
+      || document.querySelector('div[contenteditable="true"][role="textbox"]');
+    const invalidLabel = Array.from(document.querySelectorAll('div, span'))
+      .some((node) => {
+        const text = node.textContent?.trim().toLowerCase() || '';
+        return text.includes('numero di telefono condiviso tramite url non è valido')
+          || text.includes('phone number shared via url is invalid')
+          || text.includes('impossibile inviare')
+          || text.includes('couldn\'t send');
+      });
+
+    return Boolean(textbox) || invalidLabel;
+  }, { timeout: MESSAGE_TIMEOUT_MS });
+
+  const visibleError = await collectVisibleWhatsAppUiErrors();
+  if (visibleError && /numero di telefono|phone number|impossibile inviare|couldn't send/i.test(visibleError)) {
+    throw new Error(visibleError);
+  }
+
+  const textboxSelector = 'footer [contenteditable="true"][role="textbox"], div[contenteditable="true"][role="textbox"]';
+  const textbox = await page.$(textboxSelector);
+  if (!textbox) {
+    throw new Error('Textbox WhatsApp Web non trovata per browser_ui_send.');
+  }
+
+  await textbox.click({ clickCount: 1 });
+  await page.keyboard.press('Enter');
+  await wait(500);
+
+  const messageId = await getLatestOutgoingMessageId(`${normalizedTarget}@c.us`);
+  if (!messageId) {
+    throw new Error('Messaggio UI non rilevato dopo l invio da browser.');
+  }
+
+  const initialAck = normalizeAckValue(messageAckMap.get(messageId));
+  const finalAck = await waitForAck(messageId, initialAck, 1, MESSAGE_TIMEOUT_MS);
+
+  return {
+    messageId,
+    initialAck,
+    finalAck,
+    technicalMessage: visibleError,
+  };
+}
+
+async function browserUiSendRobust({ normalizedTarget, message, hasMedia }) {
+  if (hasMedia) {
+    throw new Error('browser_ui_send non supporta media attachments.');
+  }
+
+  if (!client?.pupPage) {
+    throw new Error('Pagina browser WhatsApp Web non disponibile.');
+  }
+
+  const page = client.pupPage;
+  const encodedMessage = encodeURIComponent(message);
+  const targetUrl = `https://web.whatsapp.com/send?phone=${encodeURIComponent(normalizedTarget)}&text=${encodedMessage}`;
+  const textboxSelectors = [
+    'footer [contenteditable="true"][role="textbox"]',
+    'footer div[contenteditable="true"]',
+    'div[contenteditable="true"][role="textbox"]',
+    'div[contenteditable="true"][data-tab]',
+    'div[contenteditable="true"][data-lexical-editor="true"]',
+    '[aria-label*="Scrivi"]',
+    '[aria-label*="messaggio"]',
+    '[aria-label*="Type a message"]',
+    '[aria-label*="Message"]',
+  ];
+  const shortOpenTimeoutMs = 6000;
+  const composeAfterClickTimeoutMs = 15000;
+  const chatHints = [
+    normalizedTarget,
+    normalizedTarget.slice(-10),
+    normalizedTarget.slice(-8),
+    message,
+  ].filter(Boolean);
+
+  const waitForComposeOrInvalid = async (timeoutMs) => {
+    try {
+      await page.waitForFunction((selectors) => {
+        const nodes = selectors
+          .map((selector) => document.querySelector(selector))
+          .filter(Boolean);
+
+        const invalidLabel = Array.from(document.querySelectorAll('div, span'))
+          .some((node) => {
+            const text = node.textContent?.trim().toLowerCase() || '';
+            return text.includes('numero di telefono condiviso tramite url non è valido')
+              || text.includes('numero di telefono condiviso tramite url non e valido')
+              || text.includes('phone number shared via url is invalid')
+              || text.includes('impossibile inviare')
+              || text.includes('couldn\'t send')
+              || text.includes('phone number is invalid');
+          });
+
+        const hasComposeBox = nodes.some((node) => {
+          const inFooter = Boolean(node.closest('footer'));
+          const ariaLabel = (node.getAttribute('aria-label') || '').toLowerCase();
+          return inFooter
+            || ariaLabel.includes('scrivi')
+            || ariaLabel.includes('messaggio')
+            || ariaLabel.includes('type a message')
+            || ariaLabel.includes('message');
+        });
+
+        return hasComposeBox || invalidLabel;
+      }, { timeout: timeoutMs }, textboxSelectors);
+
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const findComposeTextbox = async () => {
+    for (const selector of textboxSelectors) {
+      const candidate = await page.$(selector);
+      if (!candidate) {
+        continue;
+      }
+
+      const isComposeBox = await candidate.evaluate((node) => {
+        const inFooter = Boolean(node.closest('footer'));
+        const ariaLabel = (node.getAttribute('aria-label') || '').toLowerCase();
+        return inFooter
+          || ariaLabel.includes('scrivi')
+          || ariaLabel.includes('messaggio')
+          || ariaLabel.includes('type a message')
+          || ariaLabel.includes('message');
+      });
+
+      if (isComposeBox) {
+        return candidate;
+      }
+    }
+
+    return null;
+  };
+
+  const clickChatFromHome = async () => {
+    const chatRow = await page.evaluateHandle((hints) => {
+      const normalizedHints = hints
+        .map((hint) => String(hint || '').trim().toLowerCase())
+        .filter(Boolean);
+
+      const candidates = Array.from(document.querySelectorAll('div[role="listitem"], [data-testid="cell-frame-container"], [data-testid="chat-list-item"]'));
+      const matched = candidates.find((node) => {
+        const text = (node.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return normalizedHints.some((hint) => text.includes(hint));
+      });
+
+      return matched || null;
+    }, chatHints);
+
+    const element = chatRow.asElement();
+    if (!element) {
+      return false;
+    }
+
+    const rowText = await element.evaluate((node) => (node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300));
+    logConnector('browser_ui_send:chat_row_found', {
+      phone: normalizedTarget,
+      row_text: rowText,
+    });
+
+    await element.click();
+    logConnector('browser_ui_send:chat_row_clicked', {
+      phone: normalizedTarget,
+    });
+
+    return true;
+  };
+
+  logConnector('browser_ui_send:before_goto', {
+    phone: normalizedTarget,
+    message_length: message.length,
+    target_url: `https://web.whatsapp.com/send?phone=${encodeURIComponent(normalizedTarget)}&text=<${message.length}_chars>`,
+  });
+
+  await page.goto(targetUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: BROWSER_UI_SEND_TIMEOUT_MS,
+  });
+
+  await captureBrowserUiDiagnostics('after_goto', textboxSelectors);
+  const openedDirectly = await waitForComposeOrInvalid(shortOpenTimeoutMs);
+  let textbox = await findComposeTextbox();
+
+  if (!openedDirectly || !textbox) {
+    const diagnostics = await captureBrowserUiDiagnostics('redirected_home', textboxSelectors);
+    const redirectedHome = diagnostics?.url === 'https://web.whatsapp.com/' && (diagnostics?.body_snippet || '').length > 0;
+
+    if (redirectedHome) {
+      logConnector('browser_ui_send:redirected_home', {
+        phone: normalizedTarget,
+        url: diagnostics?.url,
+        title: diagnostics?.title,
+      });
+
+      const chatClicked = await clickChatFromHome();
+      if (!chatClicked) {
+        throw new Error(
+          `WhatsApp Web redirected to home and compose textbox was not available | url=${diagnostics?.url || 'n/a'} | title=${diagnostics?.title || 'n/a'} | selectors=${JSON.stringify(diagnostics?.selector_counts || {})} | body=${diagnostics?.body_snippet || 'n/a'}`
+        );
+      }
+
+      const composeAfterClick = await waitForComposeOrInvalid(composeAfterClickTimeoutMs);
+      if (!composeAfterClick) {
+        const afterClickDiagnostics = await captureBrowserUiDiagnostics('compose_not_found_after_click', textboxSelectors);
+        logConnector('browser_ui_send:compose_not_found_after_click', {
+          phone: normalizedTarget,
+          url: afterClickDiagnostics?.url,
+          title: afterClickDiagnostics?.title,
+        });
+        throw new Error(
+          `WhatsApp Web redirected to home and compose textbox was not available | url=${afterClickDiagnostics?.url || 'n/a'} | title=${afterClickDiagnostics?.title || 'n/a'} | selectors=${JSON.stringify(afterClickDiagnostics?.selector_counts || {})} | body=${afterClickDiagnostics?.body_snippet || 'n/a'}`
+        );
+      }
+
+      textbox = await findComposeTextbox();
+      if (textbox) {
+        logConnector('browser_ui_send:compose_found_after_click', {
+          phone: normalizedTarget,
+        });
+      }
+    } else {
+      const waitingDiagnostics = await captureBrowserUiDiagnostics('waiting_textbox_timeout', textboxSelectors);
+      throw new Error(
+        `Waiting failed: compose textbox not available | url=${waitingDiagnostics?.url || 'n/a'} | title=${waitingDiagnostics?.title || 'n/a'} | body=${waitingDiagnostics?.body_snippet || 'n/a'}`
+      );
+    }
+  }
+
+  await captureBrowserUiDiagnostics('waiting_textbox', textboxSelectors);
+
+  const visibleError = await collectVisibleWhatsAppUiErrors();
+  if (visibleError && /numero di telefono|phone number|impossibile inviare|couldn't send/i.test(visibleError)) {
+    throw new Error(visibleError);
+  }
+
+  if (!textbox) {
+    const diagnostics = await captureBrowserUiDiagnostics('textbox_not_found', textboxSelectors);
+    throw new Error(
+      `Textbox WhatsApp Web non trovata per browser_ui_send. url=${diagnostics?.url || 'n/a'} title=${diagnostics?.title || 'n/a'}`
+    );
+  }
+
+  logConnector('browser_ui_send:textbox_found', {
+    phone: normalizedTarget,
+  });
+
+  await textbox.click({ clickCount: 1 });
+
+  const textboxContent = await textbox.evaluate((node) => (node.innerText || node.textContent || '').trim());
+  if (textboxContent !== message) {
+    await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+    await page.keyboard.press('KeyA');
+    await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type(message, { delay: 20 });
+  }
+
+  logConnector('browser_ui_send:send_pressed', {
+    phone: normalizedTarget,
+  });
+
+  await page.keyboard.press('Enter');
+  await wait(750);
+
+  let messageId = await getLatestOutgoingMessageId([
+    `${normalizedTarget}@c.us`,
+    `${normalizedTarget}@s.whatsapp.net`,
+    `${normalizedTarget}@lid`,
+    status.phoneNumber ? `${status.phoneNumber}@c.us` : null,
+  ].filter(Boolean));
+
+  if (!messageId) {
+    messageId = await getLatestOutgoingMessageIdByBody(message);
+  }
+
+  if (!messageId) {
+    const diagnostics = await captureBrowserUiDiagnostics('message_id_not_found', textboxSelectors);
+    throw new Error(
+      `Messaggio UI non rilevato dopo l invio da browser. url=${diagnostics?.url || 'n/a'} title=${diagnostics?.title || 'n/a'}`
+    );
+  }
+
+  logConnector('browser_ui_send:message_id_found', {
+    phone: normalizedTarget,
+    messageId,
+  });
+
+  const initialAck = normalizeAckValue(messageAckMap.get(messageId));
+  const finalAck = await waitForAck(messageId, initialAck, 1, BROWSER_UI_SEND_TIMEOUT_MS);
+
+  return {
+    messageId,
+    initialAck,
+    finalAck,
+    technicalMessage: visibleError,
+  };
 }
 
 function resolveSessionPath(configuredPath, fallbackPath) {
@@ -1382,10 +1848,9 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
         await wait(SEND_DELAY_MS);
       }
 
-      let sentMessage = null;
       const lookupChatId = numberId._serialized;
       const sendChatId = `${normalizedTarget}@c.us`;
-      let usedSendChatId = sendChatId;
+      const attempts = [];
 
       const sendPayload = async (chatId) => {
         if (hasMedia && media) {
@@ -1405,70 +1870,269 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
         );
       };
 
-      try {
-        sentMessage = await sendPayload(sendChatId);
-      } catch (primarySendError) {
-        const primaryMessage = String(primarySendError?.message || primarySendError);
-        const fallbackAllowed = lookupChatId !== sendChatId;
+      const executeAttempt = async (attemptMethod, senderFactory) => {
+        const sentMessage = await senderFactory();
+        const messageId = extractMessageId(sentMessage);
+        const initialAck = normalizeAckValue(sentMessage?.ack);
+        const finalAck = await waitForAck(messageId, initialAck, 1, MESSAGE_TIMEOUT_MS);
 
+        const attemptResult = {
+          attempt_method: attemptMethod,
+          lookup_chat_id: lookupChatId,
+          send_chat_id: attemptMethod === 'direct_c_us' ? sendChatId : (sentMessage?.to || lookupChatId || sendChatId),
+          message_id: messageId,
+          initial_ack: initialAck,
+          final_ack: finalAck,
+        };
+
+        attempts.push(attemptResult);
+
+        logConnector('send success', {
+          targetTail: normalizedTarget.slice(-4),
+          hasMedia,
+          lookupChatId,
+          sendChatId: attemptResult.send_chat_id,
+          attemptMethod,
+          messageId,
+        });
+
+        return { sentMessage, ...attemptResult };
+      };
+
+      const tryResolveFallbackChat = async () => {
+        const fallbackResolvers = [
+          {
+            attemptMethod: 'chat_c_us',
+            resolve: async () => client.getChatById(sendChatId),
+          },
+          {
+            attemptMethod: 'chat_lookup_lid',
+            resolve: async () => client.getChatById(lookupChatId),
+          },
+          {
+            attemptMethod: 'contact_chat',
+            resolve: async () => {
+              try {
+                const contact = await client.getContactById(sendChatId);
+                if (contact) {
+                  return await contact.getChat();
+                }
+              } catch {}
+
+              const lookupContact = await client.getContactById(lookupChatId);
+              return lookupContact ? lookupContact.getChat() : null;
+            },
+          },
+        ];
+
+        for (const resolver of fallbackResolvers) {
+          try {
+            const chat = await withTimeout(
+              Promise.resolve(resolver.resolve()),
+              MESSAGE_TIMEOUT_MS,
+              'Resolve WhatsApp fallback chat timeout'
+            );
+
+            if (!chat || typeof chat.sendMessage !== 'function') {
+              continue;
+            }
+
+            return {
+              attemptMethod: resolver.attemptMethod,
+              chat,
+            };
+          } catch (error) {
+            logConnector('send fallback resolver failed', {
+              targetTail: normalizedTarget.slice(-4),
+              lookupChatId,
+              sendChatId,
+              attemptMethod: resolver.attemptMethod,
+              message: String(error?.message || error),
+            });
+          }
+        }
+
+        return null;
+      };
+
+      let directAttempt = null;
+      try {
+        directAttempt = await executeAttempt('direct_c_us', () => sendPayload(sendChatId));
+      } catch (primarySendError) {
         logConnector('send primary destination failed', {
           targetTail: normalizedTarget.slice(-4),
           lookupChatId,
           sendChatId,
-          fallbackAllowed,
-          message: primaryMessage,
+          fallbackAllowed: lookupChatId !== sendChatId,
+          message: String(primarySendError?.message || primarySendError),
         });
 
-        if (!fallbackAllowed) {
-          throw primarySendError;
-        }
-
-        usedSendChatId = lookupChatId;
-        sentMessage = await sendPayload(lookupChatId);
+        throw primarySendError;
       }
 
-      logConnector('send success', {
-        targetTail: normalizedTarget.slice(-4),
-        hasMedia,
-        lookupChatId,
-        sendChatId: usedSendChatId,
-        messageId: sentMessage?.id?._serialized || null,
+      const buildBaseResponse = (attemptResult) => ({
+        chat_id: attemptResult.send_chat_id,
+        lookup_chat_id: lookupChatId,
+        send_chat_id: attemptResult.send_chat_id,
+        ack: attemptResult.final_ack,
+        initial_ack: attemptResult.initial_ack,
+        final_ack: attemptResult.final_ack,
+        from_me: directAttempt?.sentMessage?.fromMe ?? true,
+        media_sent: hasMedia,
       });
 
-      const messageId = extractMessageId(sentMessage);
-      const initialAck = normalizeAckValue(sentMessage?.ack);
-      const finalAck = await waitForAck(messageId, initialAck, 1, MESSAGE_TIMEOUT_MS);
-      const baseResponse = {
-        chat_id: usedSendChatId,
-        lookup_chat_id: lookupChatId,
-        send_chat_id: usedSendChatId,
-        ack: finalAck,
-        initial_ack: initialAck,
-        final_ack: finalAck,
-        from_me: sentMessage?.fromMe ?? true,
-        media_sent: hasMedia,
-      };
-
-      if (finalAck !== null && finalAck >= 1) {
+      if (directAttempt.final_ack !== null && directAttempt.final_ack >= 1) {
         return {
           delivery_status: 'sent',
           provider_status: 'sent',
-          message_id: messageId,
+          message_id: directAttempt.message_id,
           error_message: null,
-          response: baseResponse,
+          response: {
+            ...buildBaseResponse(directAttempt),
+            attempts,
+            fallback_used: false,
+            attempt_method: 'direct_c_us',
+          },
           sent_at: isoNow(),
         };
       }
 
-      if (finalAck !== null && finalAck < 0) {
+      if (directAttempt.final_ack !== null && directAttempt.final_ack < 0) {
+        const fallbackResolution = await tryResolveFallbackChat();
+
+        if (fallbackResolution) {
+          const fallbackAttempt = await executeAttempt(
+            fallbackResolution.attemptMethod,
+            () => withTimeout(
+              hasMedia && media
+                ? fallbackResolution.chat.sendMessage(media, { caption: message })
+                : fallbackResolution.chat.sendMessage(message),
+              MESSAGE_TIMEOUT_MS,
+              'Send WhatsApp fallback timeout'
+            )
+          );
+
+          if (fallbackAttempt.final_ack !== null && fallbackAttempt.final_ack >= 1) {
+            return {
+              delivery_status: 'sent',
+              provider_status: 'sent',
+              message_id: fallbackAttempt.message_id,
+              error_message: null,
+              response: {
+                ...buildBaseResponse(fallbackAttempt),
+                attempts,
+                fallback_used: true,
+                attempt_method: fallbackAttempt.attempt_method,
+              },
+              sent_at: isoNow(),
+            };
+          }
+
+          if (fallbackAttempt.final_ack === null || fallbackAttempt.final_ack === 0) {
+            return {
+              delivery_status: 'failed',
+              provider_status: 'send_not_confirmed',
+              message_id: fallbackAttempt.message_id,
+              error_message: 'WhatsApp non ha confermato l invio del messaggio.',
+              response: {
+                ...buildBaseResponse(fallbackAttempt),
+                attempts,
+                fallback_used: true,
+                attempt_method: fallbackAttempt.attempt_method,
+              },
+              sent_at: null,
+            };
+          }
+        }
+
+        try {
+          const browserUiAttemptRaw = await browserUiSendRobust({
+            normalizedTarget,
+            message,
+            hasMedia,
+          });
+
+          const browserUiAttempt = {
+            attempt_method: 'browser_ui_send',
+            lookup_chat_id: lookupChatId,
+            send_chat_id: `${normalizedTarget}@c.us`,
+            message_id: browserUiAttemptRaw.messageId,
+            initial_ack: browserUiAttemptRaw.initialAck,
+            final_ack: browserUiAttemptRaw.finalAck,
+          };
+
+          attempts.push(browserUiAttempt);
+
+          if (browserUiAttempt.final_ack !== null && browserUiAttempt.final_ack >= 1) {
+            return {
+              delivery_status: 'sent',
+              provider_status: 'sent',
+              message_id: browserUiAttempt.message_id,
+              error_message: null,
+              response: {
+                ...buildBaseResponse(browserUiAttempt),
+                attempts,
+                fallback_used: true,
+                attempt_method: browserUiAttempt.attempt_method,
+              },
+              sent_at: isoNow(),
+            };
+          }
+
+          if (browserUiAttempt.final_ack === null || browserUiAttempt.final_ack === 0) {
+            return {
+              delivery_status: 'failed',
+              provider_status: 'send_not_confirmed',
+              message_id: browserUiAttempt.message_id,
+              error_message: 'WhatsApp non ha confermato l invio del messaggio.',
+              response: {
+                ...buildBaseResponse(browserUiAttempt),
+                attempts,
+                fallback_used: true,
+                attempt_method: browserUiAttempt.attempt_method,
+                technical_message: browserUiAttemptRaw.technicalMessage || null,
+              },
+              sent_at: null,
+            };
+          }
+
+          return {
+            delivery_status: 'failed',
+            provider_status: 'send_error',
+            message_id: browserUiAttempt.message_id,
+            error_message: 'WhatsApp ha restituito un errore durante l invio del messaggio.',
+            response: {
+              ...buildBaseResponse(browserUiAttempt),
+              attempts,
+              fallback_used: true,
+              attempt_method: browserUiAttempt.attempt_method,
+              technical_message: browserUiAttemptRaw.technicalMessage || null,
+            },
+            sent_at: null,
+          };
+        } catch (browserUiError) {
+          attempts.push({
+            attempt_method: 'browser_ui_send',
+            lookup_chat_id: lookupChatId,
+            send_chat_id: `${normalizedTarget}@c.us`,
+            message_id: null,
+            initial_ack: null,
+            final_ack: null,
+            technical_message: String(browserUiError?.message || browserUiError),
+          });
+        }
+
         return {
           delivery_status: 'failed',
           provider_status: 'send_error',
-          message_id: messageId,
+          message_id: directAttempt.message_id,
           error_message: 'WhatsApp ha restituito un errore durante l invio del messaggio.',
           response: {
-            ...baseResponse,
-            technical_message: 'WhatsApp ha marcato il messaggio con ack negativo.',
+            ...buildBaseResponse(directAttempt),
+            attempts,
+            fallback_used: true,
+            attempt_method: directAttempt.attempt_method,
+            technical_message: attempts[attempts.length - 1]?.technical_message || null,
           },
           sent_at: null,
         };
@@ -1477,9 +2141,14 @@ async function performSend({ target, message, mediaPath, mediaBase64, mediaMimeT
       return {
         delivery_status: 'failed',
         provider_status: 'send_not_confirmed',
-        message_id: messageId,
+        message_id: directAttempt.message_id,
         error_message: 'WhatsApp non ha confermato l invio del messaggio.',
-        response: baseResponse,
+        response: {
+          ...buildBaseResponse(directAttempt),
+          attempts,
+          fallback_used: false,
+          attempt_method: directAttempt.attempt_method,
+        },
         sent_at: null,
       };
     } catch (error) {
