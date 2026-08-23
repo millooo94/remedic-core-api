@@ -86,6 +86,19 @@ class Service extends Model
         return $this->hasMany(ProfessionalService::class);
     }
 
+    public function checkupItems(): HasMany
+    {
+        return $this->hasMany(CheckupService::class);
+    }
+
+    public function checkups(): BelongsToMany
+    {
+        return $this->belongsToMany(Checkup::class, 'checkup_services')
+            ->withPivot('sort_order')
+            ->orderByPivot('sort_order')
+            ->withTimestamps();
+    }
+
     public function specializations(): BelongsToMany
     {
         return $this->belongsToMany(Specialization::class, 'service_specialization')

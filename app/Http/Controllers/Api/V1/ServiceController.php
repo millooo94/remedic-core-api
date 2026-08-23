@@ -10,6 +10,7 @@ use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\Specialization;
 use App\Support\Filters\ServiceFilters;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -20,8 +21,7 @@ class ServiceController extends Controller
 {
     public function __construct(
         private readonly ServiceFilters $filters,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -35,7 +35,7 @@ class ServiceController extends Controller
 
     public function store(StoreServiceRequest $request): ServiceResource
     {
-        $service = DB::transaction(fn () => $this->persist(new Service(), $request->validated()));
+        $service = DB::transaction(fn () => $this->persist(new Service, $request->validated()));
 
         return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
     }
@@ -52,8 +52,14 @@ class ServiceController extends Controller
         return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
     }
 
-    public function destroy(Service $service): Response
+    public function destroy(Service $service): Response|JsonResponse
     {
+        if ($service->checkupItems()->exists()) {
+            return response()->json([
+                'message' => 'La prestazione non puo essere eliminata perche e inclusa in uno o piu Check-up. Disattivala oppure rimuovila prima dai Check-up.',
+            ], Response::HTTP_CONFLICT);
+        }
+
         $service->delete();
 
         return response()->noContent();

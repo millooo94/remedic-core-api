@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CashMovementController;
+use App\Http\Controllers\Api\V1\CheckupController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
@@ -89,6 +90,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('specializations/options', [SpecializationController::class, 'options']);
         Route::apiResource('specializations', SpecializationController::class);
         Route::apiResource('services', ServiceController::class);
+        Route::apiResource('checkups', CheckupController::class);
         Route::get('patients/options', [PatientController::class, 'options']);
         Route::post('patients/import', [PatientController::class, 'import']);
         Route::apiResource('patients', PatientController::class);
