@@ -28,7 +28,7 @@ class UpdateAdminWebServiceRequest extends FormRequest
             'duration_text' => ['nullable', 'string', 'max:255'],
             'price_text' => ['nullable', 'string', 'max:255'],
             'exam_report_time' => ['nullable', 'string', 'max:255'],
-            'featured_image_path' => ['nullable', 'string', 'max:255'],
+            'featured_image_path' => ['prohibited'],
             'social_image_path' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_web_active' => ['sometimes', 'boolean'],

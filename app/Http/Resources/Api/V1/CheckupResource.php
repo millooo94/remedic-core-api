@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -63,6 +64,10 @@ class CheckupResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'is_operationally_available' => (bool) $this->is_active && $inactiveItemsCount === 0,
             'organizational_notes' => $this->organizational_notes,
+            'featured_image_path' => $this->featured_image_path,
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
+            'icon_path' => $this->icon_path,
+            'icon_url' => PublicMediaUrl::fromPublicDisk($this->icon_path, $request),
             'items_count' => $items->count(),
             'items' => CheckupServiceResource::collection($this->whenLoaded('items')),
             'areas' => $areas->values()->all(),

@@ -19,6 +19,8 @@ class Checkup extends Model
         'indicative_duration_minutes',
         'is_active',
         'organizational_notes',
+        'featured_image_path',
+        'icon_path',
     ];
 
     protected function casts(): array

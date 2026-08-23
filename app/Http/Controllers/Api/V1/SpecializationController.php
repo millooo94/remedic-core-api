@@ -7,15 +7,18 @@ use App\Http\Requests\Api\V1\Specializations\StoreSpecializationRequest;
 use App\Http\Requests\Api\V1\Specializations\UpdateSpecializationRequest;
 use App\Http\Resources\Api\V1\SpecializationResource;
 use App\Models\Specialization;
+use App\Services\ManagedMediaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class SpecializationController extends Controller
 {
+    public function __construct(
+        private readonly ManagedMediaService $media,
+    ) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Specialization::query()->withCount(['professionals', 'services']);
@@ -60,10 +63,7 @@ class SpecializationController extends Controller
     public function store(StoreSpecializationRequest $request): SpecializationResource
     {
         $specialization = DB::transaction(function () use ($request): Specialization {
-            $specialization = Specialization::query()->create($this->validatedAttributes($request));
-            $this->syncIcon($request, $specialization);
-
-            return $specialization;
+            return Specialization::query()->create($request->validated());
         });
 
         return new SpecializationResource($specialization->loadCount(['professionals', 'services']));
@@ -79,7 +79,6 @@ class SpecializationController extends Controller
         $specialization = DB::transaction(function () use ($request, $specialization): Specialization {
             $specialization->fill($this->validatedAttributes($request));
             $specialization->save();
-            $this->syncIcon($request, $specialization);
 
             return $specialization;
         });
@@ -89,8 +88,14 @@ class SpecializationController extends Controller
 
     public function destroy(Specialization $specialization): Response
     {
-        $this->deleteIcon($specialization->icon_path);
+        $iconPath = $specialization->icon_path;
+        $imagePath = $specialization->featured_image_path;
         $specialization->delete();
+        $this->media->deleteManagedFile($iconPath, [
+            "specializations/{$specialization->id}/icons",
+            'specializations/icons',
+        ]);
+        $this->media->deleteManagedFile($imagePath, ["specializations/{$specialization->id}/images"]);
 
         return response()->noContent();
     }
@@ -101,42 +106,5 @@ class SpecializationController extends Controller
         unset($payload['icon_svg'], $payload['remove_icon']);
 
         return $payload;
-    }
-
-    private function syncIcon(StoreSpecializationRequest $request, Specialization $specialization): void
-    {
-        $iconPath = $specialization->icon_path;
-
-        if ($request->boolean('remove_icon')) {
-            $this->deleteIcon($iconPath);
-            $iconPath = null;
-        }
-
-        if ($request->hasFile('icon_svg')) {
-            $this->deleteIcon($iconPath);
-
-            $filename = Str::slug((string) $specialization->slug ?: (string) $specialization->name ?: 'specializzazione')
-                .'-'.Str::lower(Str::random(8)).'.svg';
-
-            $iconPath = $request->file('icon_svg')->storeAs(
-                'specializations/icons',
-                $filename,
-                'public',
-            );
-        }
-
-        if ($iconPath !== $specialization->icon_path) {
-            $specialization->icon_path = $iconPath;
-            $specialization->save();
-        }
-    }
-
-    private function deleteIcon(?string $path): void
-    {
-        if (! is_string($path) || trim($path) === '') {
-            return;
-        }
-
-        Storage::disk('public')->delete($path);
     }
 }

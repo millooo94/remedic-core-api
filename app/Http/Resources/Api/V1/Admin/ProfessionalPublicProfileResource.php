@@ -11,6 +11,7 @@ class ProfessionalPublicProfileResource extends JsonResource
     public function toArray(Request $request): array
     {
         $professional = $this->whenLoaded('professional');
+        $masterImagePath = $professional?->avatar_path ?: $this->profile_image_path;
 
         return [
             'id' => $this->id,
@@ -21,6 +22,8 @@ class ProfessionalPublicProfileResource extends JsonResource
                 'email' => $professional->email,
                 'subject_type' => $professional->subject_type?->value ?? $professional->subject_type,
                 'is_active' => (bool) $professional->is_active,
+                'avatar_path' => $professional->avatar_path,
+                'avatar_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request),
             ]),
             'slug' => $this->slug,
             'title_prefix' => $this->title_prefix,
@@ -28,7 +31,9 @@ class ProfessionalPublicProfileResource extends JsonResource
             'birth_date' => optional($this->birth_date)?->toDateString(),
             'birth_place' => $this->birth_place,
             'profile_image_path' => $this->profile_image_path,
-            'profile_image_url' => PublicMediaUrl::fromPublicDisk($this->profile_image_path, $request),
+            'profile_image_url' => PublicMediaUrl::fromPublicDisk($masterImagePath, $request),
+            'avatar_path' => $professional?->avatar_path,
+            'avatar_url' => PublicMediaUrl::fromPublicDisk($masterImagePath, $request),
             'short_bio' => $this->short_bio,
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,

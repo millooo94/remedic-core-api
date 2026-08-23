@@ -18,9 +18,11 @@ class UpdateSpecializationRequest extends StoreSpecializationRequest
             'professional_title_female' => ['nullable', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:190', Rule::unique('specializations', 'slug')->ignore($specialization?->id)],
             'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'icon_svg' => ['nullable', 'file', 'mimes:svg', 'max:1024'],
+            'icon_svg' => ['prohibited'],
             'is_active' => ['sometimes', 'boolean'],
-            'remove_icon' => ['sometimes', 'boolean'],
+            'remove_icon' => ['prohibited'],
+            'icon_path' => ['prohibited'],
+            'featured_image_path' => ['prohibited'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

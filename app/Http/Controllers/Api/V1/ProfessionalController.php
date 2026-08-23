@@ -11,15 +11,19 @@ use App\Http\Resources\Api\V1\ProfessionalResource;
 use App\Models\Professional;
 use App\Models\ServiceCategory;
 use App\Models\Specialization;
+use App\Services\ManagedMediaService;
 use App\Support\Professionals\IbanFormatter;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ProfessionalController extends Controller
 {
+    public function __construct(
+        private readonly ManagedMediaService $media,
+    ) {}
+
     public function index(): AnonymousResourceCollection
     {
         $professionals = Professional::query()
@@ -70,11 +74,12 @@ class ProfessionalController extends Controller
 
             $avatarPath = $this->storeAvatar($request, $professional->id);
             if ($avatarPath !== null) {
-                if ($professional->avatar_path) {
-                    Storage::disk('public')->delete($professional->avatar_path);
-                }
-
+                $oldAvatarPath = $professional->avatar_path;
                 $professional->forceFill(['avatar_path' => $avatarPath])->save();
+                $this->media->deleteManagedFile($oldAvatarPath, [
+                    "professionals/{$professional->id}",
+                    "professional-avatars/{$professional->id}",
+                ]);
             }
 
             $this->syncAreas($professional, $areaNames);
@@ -89,11 +94,12 @@ class ProfessionalController extends Controller
 
     public function destroy(Professional $professional): Response
     {
-        if ($professional->avatar_path) {
-            Storage::disk('public')->delete($professional->avatar_path);
-        }
-
+        $avatarPath = $professional->avatar_path;
         $professional->delete();
+        $this->media->deleteManagedFile($avatarPath, [
+            "professionals/{$professional->id}",
+            "professional-avatars/{$professional->id}",
+        ]);
 
         return response()->noContent();
     }

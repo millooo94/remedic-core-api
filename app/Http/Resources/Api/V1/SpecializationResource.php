@@ -19,6 +19,8 @@ class SpecializationResource extends JsonResource
             'color_hex' => $this->color_hex,
             'icon_path' => $this->icon_path,
             'icon_url' => PublicMediaUrl::fromPublicDisk($this->icon_path, $request),
+            'featured_image_path' => $this->featured_image_path,
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
             'is_active' => (bool) $this->is_active,
             'sort_order' => (int) ($this->sort_order ?? 0),
             'professionals_count' => $this->whenCounted('professionals'),

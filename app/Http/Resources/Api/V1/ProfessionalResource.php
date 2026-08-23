@@ -75,6 +75,7 @@ class ProfessionalResource extends JsonResource
             'title_prefix' => $this->whenLoaded('publicProfile', fn () => $this->publicProfile?->title_prefix),
             'iban' => $this->iban,
             'iban_display' => IbanFormatter::format($this->iban),
+            'avatar_path' => $this->avatar_path,
             'avatar_url' => PublicMediaUrl::fromPublicDisk($this->avatar_path, $request),
             'is_active' => (bool) $this->is_active,
             'notes' => $this->notes,

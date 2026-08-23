@@ -25,6 +25,8 @@ class StoreCheckupRequest extends FormRequest
             'indicative_duration_minutes' => ['required', 'integer', 'min:1', 'max:65535'],
             'is_active' => ['sometimes', 'boolean'],
             'organizational_notes' => ['nullable', 'string'],
+            'featured_image_path' => ['prohibited'],
+            'icon_path' => ['prohibited'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.service_id' => ['required', 'integer', 'distinct', 'exists:services,id'],
             'professional_id' => ['prohibited'],

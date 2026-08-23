@@ -21,8 +21,10 @@ class StoreSpecializationRequest extends FormRequest
             'professional_title_female' => ['nullable', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:190', Rule::unique('specializations', 'slug')],
             'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'icon_svg' => ['nullable', 'file', 'mimes:svg', 'max:1024'],
-            'remove_icon' => ['sometimes', 'boolean'],
+            'icon_svg' => ['prohibited'],
+            'remove_icon' => ['prohibited'],
+            'icon_path' => ['prohibited'],
+            'featured_image_path' => ['prohibited'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
@@ -39,7 +41,6 @@ class StoreSpecializationRequest extends FormRequest
             'professional_title_female' => $this->normalizeOptionalString($this->input('professional_title_female')),
             'slug' => Str::slug($slug !== '' ? $slug : $name),
             'color_hex' => $this->normalizeColorHex($this->input('color_hex')),
-            'remove_icon' => $this->boolean('remove_icon'),
             'sort_order' => $this->input('sort_order', 0),
         ]);
     }

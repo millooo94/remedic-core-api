@@ -14,6 +14,7 @@ use App\Models\Service;
 use App\Models\SiteSetting;
 use App\Models\Specialization;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Services\PrimarySpecializationResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -78,8 +79,8 @@ class SiteController extends Controller
 
         return response()->json([
             'data' => [
-                'specializations' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization))->values()->all(),
-                'services' => $services->map(fn (Service $service): array => $this->mapServiceListItem($service))->values()->all(),
+                'specializations' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization, $request))->values()->all(),
+                'services' => $services->map(fn (Service $service): array => $this->mapServiceListItem($service, $request))->values()->all(),
                 'professionals' => $professionals,
                 'blog_posts' => $blogPosts->map(fn (BlogPost $post): array => $this->mapBlogListItem($post))->values()->all(),
             ],
@@ -163,7 +164,7 @@ class SiteController extends Controller
             ->get();
 
         return response()->json([
-            'data' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization))->values()->all(),
+            'data' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization, $request))->values()->all(),
         ]);
     }
 
@@ -191,7 +192,7 @@ class SiteController extends Controller
         $services = $query->limit($limit)->get();
 
         return response()->json([
-            'data' => $services->map(fn (Service $service): array => $this->mapServiceListItem($service))->values()->all(),
+            'data' => $services->map(fn (Service $service): array => $this->mapServiceListItem($service, $request))->values()->all(),
         ]);
     }
 
@@ -569,7 +570,7 @@ class SiteController extends Controller
         ];
     }
 
-    private function mapSpecializationListItem(Specialization $specialization): array
+    private function mapSpecializationListItem(Specialization $specialization, Request $request): array
     {
         return [
             'slug' => $specialization->slug,
@@ -578,6 +579,8 @@ class SiteController extends Controller
             'short_description' => $specialization->short_description,
             'services_count' => $specialization->services_count ?? $specialization->services->count(),
             'professionals_count' => $specialization->professionals_count ?? $specialization->professionals->count(),
+            'icon_url' => PublicMediaUrl::fromPublicDisk($specialization->icon_path, $request),
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($specialization->featured_image_path, $request),
             'is_active' => (bool) $specialization->is_active,
         ];
     }
@@ -597,6 +600,8 @@ class SiteController extends Controller
             'name' => $specialization->name,
             'description' => $specialization->intro_text ?: $specialization->short_description ?: '',
             'short_description' => $specialization->short_description ?: '',
+            'icon_url' => PublicMediaUrl::fromPublicDisk($specialization->icon_path, $request),
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($specialization->featured_image_path, $request),
             'procedures' => $services->count(),
             'intro' => $introBlocks,
             'main_performance' => $mainService ? [
@@ -662,9 +667,9 @@ class SiteController extends Controller
         ];
     }
 
-    private function mapServiceListItem(Service $service): array
+    private function mapServiceListItem(Service $service, Request $request): array
     {
-        $primarySpecialization = $service->specializations->first();
+        $primarySpecialization = app(PrimarySpecializationResolver::class)->resolve($service);
 
         return [
             'slug' => $service->slug,
@@ -674,11 +679,14 @@ class SiteController extends Controller
             'short_description' => $service->short_description ?: $service->description ?: '',
             'description' => $service->description ?: $service->short_description ?: '',
             'featured' => (bool) $service->is_featured,
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
+            'icon_url' => PublicMediaUrl::fromPublicDisk($primarySpecialization?->icon_path, $request),
         ];
     }
 
     private function mapServiceDetail(Service $service, Request $request): array
     {
+        $primarySpecialization = app(PrimarySpecializationResolver::class)->resolve($service);
         $professionals = $service->professionalServices
             ->filter(fn ($link) => $link->professional !== null)
             ->values();
@@ -710,7 +718,9 @@ class SiteController extends Controller
             'slug' => $service->slug,
             'name' => $service->publicLabel(),
             'category' => $this->resolveServiceCategoryId($service),
-            'specialization' => $service->specializations->first()?->name ?: 'Prestazioni',
+            'specialization' => $primarySpecialization?->name ?: 'Prestazioni',
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
+            'icon_url' => PublicMediaUrl::fromPublicDisk($primarySpecialization?->icon_path, $request),
             'short_description' => $service->short_description ?: $service->description ?: '',
             'description' => $service->description ?: $service->short_description ?: '',
             'duration' => $service->duration_text ?: ($service->default_duration_minutes ? $service->default_duration_minutes.' min' : 'Da definire'),
@@ -1108,13 +1118,18 @@ class SiteController extends Controller
         ?ProfessionalPublicProfile $profile = null
     ): ?string {
         $profile ??= $professional->publicProfile;
+        $avatarPath = trim((string) ($professional->avatar_path ?? ''));
+        if ($avatarPath !== '') {
+            return PublicMediaUrl::fromPublicDisk($avatarPath, $request);
+        }
+
         $profileImagePath = trim((string) ($profile?->profile_image_path ?? ''));
 
         if ($profileImagePath !== '') {
             return PublicMediaUrl::fromPublicDisk($profileImagePath, $request);
         }
 
-        return PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request);
+        return null;
     }
 
     private function activeProfessionalProfilesExist(): bool
@@ -1148,7 +1163,7 @@ class SiteController extends Controller
     }
 
     /**
-     * @param iterable<int, Section> $sections
+     * @param  iterable<int, Section>  $sections
      */
     private function findSectionByKeys(iterable $sections, array $keys): ?Section
     {

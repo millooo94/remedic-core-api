@@ -26,6 +26,8 @@ class StoreServiceRequest extends FormRequest
             'default_duration_minutes' => ['nullable', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string'],
+            'featured_image_path' => ['prohibited'],
+            'icon_path' => ['prohibited'],
             'specialization_ids' => ['required', 'array', 'min:1'],
             'specialization_ids.*' => ['required', 'integer', 'distinct', 'exists:specializations,id'],
             'aliases' => ['sometimes', 'array'],
@@ -122,7 +124,7 @@ class StoreServiceRequest extends FormRequest
             if ($duplicateServiceQuery->exists()) {
                 $validator->errors()->add(
                     'display_name',
-                    "Esiste gia una prestazione con questo nome nella specializzazione selezionata. Modifica quella esistente per aggiungere altri professionisti.",
+                    'Esiste gia una prestazione con questo nome nella specializzazione selezionata. Modifica quella esistente per aggiungere altri professionisti.',
                 );
             }
         });

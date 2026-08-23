@@ -13,6 +13,10 @@ class PublicMediaUrl
             return null;
         }
 
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
         $url = Storage::disk('public')->url($path);
         $base = rtrim(self::requestBaseUrl($request), '/');
         if ($base === '') {

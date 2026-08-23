@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -26,6 +27,7 @@ class AdminWebServiceResource extends JsonResource
             'price_text' => $this->price_text,
             'exam_report_time' => $this->exam_report_time,
             'featured_image_path' => $this->featured_image_path,
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
             'social_image_path' => $this->social_image_path,
             'default_duration_minutes' => $this->default_duration_minutes,
             'importo_prestazione' => $this->importo_prestazione,

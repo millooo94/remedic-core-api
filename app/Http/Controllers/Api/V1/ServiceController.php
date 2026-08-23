@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\ServiceResource;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\Specialization;
+use App\Services\ManagedMediaService;
 use App\Support\Filters\ServiceFilters;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ class ServiceController extends Controller
 {
     public function __construct(
         private readonly ServiceFilters $filters,
+        private readonly ManagedMediaService $media,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -60,7 +62,9 @@ class ServiceController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
+        $imagePath = $service->featured_image_path;
         $service->delete();
+        $this->media->deleteManagedFile($imagePath, ["services/{$service->id}/images"]);
 
         return response()->noContent();
     }

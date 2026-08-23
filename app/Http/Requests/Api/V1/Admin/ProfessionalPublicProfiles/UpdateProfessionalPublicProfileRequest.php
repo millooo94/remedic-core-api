@@ -25,7 +25,7 @@ class UpdateProfessionalPublicProfileRequest extends FormRequest
             'registration_number' => ['nullable', 'string', 'max:255'],
             'birth_date' => ['nullable', 'date'],
             'birth_place' => ['nullable', 'string', 'max:255'],
-            'profile_image_path' => ['nullable', 'string', 'max:255'],
+            'profile_image_path' => ['prohibited'],
             'short_bio' => ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],

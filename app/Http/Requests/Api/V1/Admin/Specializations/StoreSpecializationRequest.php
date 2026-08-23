@@ -21,6 +21,8 @@ class StoreSpecializationRequest extends FormRequest
             'professional_title_female' => ['nullable', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:specializations,slug'],
             'color_hex' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'icon_path' => ['prohibited'],
+            'featured_image_path' => ['prohibited'],
             'short_description' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'local_intro_text' => ['nullable', 'string'],
