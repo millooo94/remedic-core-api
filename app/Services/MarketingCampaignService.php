@@ -16,6 +16,7 @@ use App\Services\Marketing\PatientSegmentQueryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class MarketingCampaignService
@@ -134,6 +135,8 @@ class MarketingCampaignService
 
     public function sendTest(MarketingCampaign $campaign, string $target, User $actor): MarketingCampaignDelivery
     {
+        $this->ensureSupportedCampaignChannel($campaign->channel);
+
         $resolvedChannelKey = $campaign->channel === 'all'
             ? 'sms'
             : $campaign->channel;
@@ -170,6 +173,8 @@ class MarketingCampaignService
 
     public function launch(MarketingCampaign $campaign, User $actor, ?string $scheduledAt = null): MarketingCampaign
     {
+        $this->ensureSupportedCampaignChannel($campaign->channel);
+
         return DB::transaction(function () use ($campaign, $actor, $scheduledAt): MarketingCampaign {
             $campaign = $campaign->refresh()->loadMissing('segment');
             $preview = $this->previewForSegment($campaign->segment, $campaign->channel);
@@ -198,6 +203,8 @@ class MarketingCampaignService
 
     public function processCampaign(MarketingCampaign $campaign): MarketingCampaign
     {
+        $this->ensureSupportedCampaignChannel($campaign->channel);
+
         return DB::transaction(function () use ($campaign): MarketingCampaign {
             $campaign = $campaign->refresh()->loadMissing('segment');
 
@@ -385,6 +392,7 @@ class MarketingCampaignService
     {
         $campaigns = MarketingCampaign::query()
             ->where('status', 'scheduled')
+            ->whereIn('channel', ['sms', 'email', 'all'])
             ->whereNotNull('scheduled_at')
             ->where('scheduled_at', '<=', now())
             ->get();
@@ -398,6 +406,17 @@ class MarketingCampaignService
         }
 
         return $campaigns->count();
+    }
+
+    private function ensureSupportedCampaignChannel(string $channel): void
+    {
+        if (in_array($channel, ['sms', 'email', 'all'], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'channel' => ['Il canale storico della campagna non è più supportato.'],
+        ]);
     }
 
     private function renderMessage(string $template, ?Patient $patient): string

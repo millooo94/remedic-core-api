@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Models\MarketingCampaign;
 use App\Models\MarketingSegment;
 use App\Models\Patient;
 use App\Models\User;
@@ -206,6 +207,48 @@ class MarketingCampaignApiTest extends TestCase
             ...$basePayload,
             'channel' => 'sms',
         ])->assertCreated()->assertJsonPath('channel', 'sms');
+    }
+
+    #[Test]
+    public function it_keeps_historical_whatsapp_campaigns_inert(): void
+    {
+        $this->actingAsAdmin();
+
+        $segment = MarketingSegment::query()->create([
+            'name' => 'Segmento storico',
+            'description' => null,
+            'segment_type' => 'filter_based',
+            'filters' => [],
+            'last_preview_count' => 0,
+            'is_active' => true,
+            'created_by' => 1,
+            'updated_by' => 1,
+        ]);
+
+        $campaign = MarketingCampaign::query()->create([
+            'name' => 'Campagna storica',
+            'marketing_segment_id' => $segment->id,
+            'channel' => 'whatsapp',
+            'message' => 'Messaggio storico',
+            'status' => 'scheduled',
+            'scheduled_at' => now()->subMinute(),
+            'created_by' => 1,
+            'updated_by' => 1,
+        ]);
+
+        $this->postJson("/api/v1/marketing-campaigns/{$campaign->id}/launch")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('channel');
+
+        $this->artisan('marketing:send-scheduled-campaigns')
+            ->expectsOutput('Campagne schedulate accodate: 0.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('marketing_campaigns', [
+            'id' => $campaign->id,
+            'channel' => 'whatsapp',
+            'status' => 'scheduled',
+        ]);
     }
 
     private function actingAsAdmin(): void
