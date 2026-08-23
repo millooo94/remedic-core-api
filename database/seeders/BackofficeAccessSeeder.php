@@ -62,6 +62,7 @@ class BackofficeAccessSeeder extends Seeder
             AdminPermission::MANAGE_DOCTORS->value,
             AdminPermission::MANAGE_BLOG_POSTS->value,
             AdminPermission::MANAGE_SETTINGS->value,
+            AdminPermission::MANAGE_CENTER_SETTINGS->value,
             AdminPermission::MANAGE_CONSENT_CONFIGURATION->value,
             AdminPermission::VIEW_CONSENT_RECORDS->value,
             AdminPermission::MANAGE_USERS->value,

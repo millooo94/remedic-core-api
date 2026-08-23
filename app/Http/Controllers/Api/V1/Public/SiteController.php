@@ -24,14 +24,14 @@ class SiteController extends Controller
 {
     public function settings(Request $request): JsonResponse
     {
-        $settings = SiteSetting::singleton();
+        $settings = SiteSetting::current();
         $specializations = $this->specializationsBaseQuery()
             ->limit(7)
             ->get();
 
         return response()->json([
             'data' => [
-                'settings' => $this->mapSiteSettings($settings),
+                'settings' => $this->mapSiteSettings($settings, $request),
                 'navigation' => [
                     ['label' => 'Chi siamo', 'href' => '/chi-siamo'],
                     ['label' => 'Specializzazioni', 'href' => '/specializzazioni'],
@@ -465,29 +465,96 @@ class SiteController extends Controller
             ->orderBy('title');
     }
 
-    private function mapSiteSettings(SiteSetting $settings): array
+    private function mapSiteSettings(SiteSetting $settings, Request $request): array
     {
+        $clinicName = $settings->clinic_name ?: $settings->brand_name ?: $settings->site_name ?: 'Remedic';
+        $mapsUrl = $settings->google_maps_url ?: $settings->maps_url;
+        $logoUrl = $this->resolveMediaPathOrUrl($settings->logo_path, $request);
+        $openingHours = is_array($settings->opening_hours) ? $settings->opening_hours : [];
+
         return [
-            'site_name' => $settings->site_name ?: $settings->brand_name ?: 'Remedic',
-            'brand_name' => $settings->brand_name ?: $settings->site_name ?: 'Remedic',
+            'identity' => [
+                'clinic_name' => $clinicName,
+                'legal_company_name' => $settings->legal_company_name,
+                'business_type' => $settings->business_type,
+                'vat_number' => $settings->vat_number,
+                'logo_url' => $logoUrl,
+            ],
+            'contacts' => [
+                'phone' => $settings->clinic_phone,
+                'whatsapp_number' => $settings->whatsapp_number,
+                'email' => $settings->clinic_email,
+                'privacy_email' => $settings->privacy_email,
+            ],
+            'address' => [
+                'formatted_address' => $settings->clinic_address,
+                'street_name' => $settings->clinic_street_name,
+                'street_number' => $settings->clinic_street_number,
+                'postal_code' => $settings->clinic_postal_code,
+                'city' => $settings->clinic_city,
+                'province' => $settings->clinic_province,
+                'region' => $settings->clinic_region,
+                'country' => $settings->clinic_country_name,
+                'country_code' => $settings->clinic_country,
+                'latitude' => $settings->latitude === null ? null : (float) $settings->latitude,
+                'longitude' => $settings->longitude === null ? null : (float) $settings->longitude,
+                'google_maps_url' => $mapsUrl,
+            ],
+            'opening_hours' => $openingHours,
+            'social' => [
+                'facebook_url' => $settings->facebook_url,
+                'instagram_url' => $settings->instagram_url,
+                'linkedin_url' => $settings->linkedin_url,
+            ],
+            'territory' => [
+                'primary_city' => $settings->primary_city,
+                'primary_area' => $settings->primary_area,
+                'served_areas' => is_array($settings->served_areas) ? $settings->served_areas : [],
+                'served_territory' => $settings->served_territory ?: $settings->province_or_area_served,
+                'area_served_text' => $settings->area_served_text,
+            ],
+            'seo_defaults' => [
+                'site_url' => $settings->site_url,
+                'title' => $settings->default_meta_title,
+                'description' => $settings->default_meta_description,
+                'locality_phrase' => $settings->default_locality_phrase,
+            ],
+            'consent' => [
+                'enabled' => (bool) $settings->cmp_enabled,
+                'banner_enabled' => (bool) $settings->cmp_banner_enabled,
+                'cookie_name' => $settings->cmp_consent_cookie_name,
+                'cookie_ttl_days' => $settings->cmp_consent_cookie_ttl_days,
+                'show_reject_all_button' => (bool) $settings->cmp_show_reject_all_button,
+                'show_accept_all_button' => (bool) $settings->cmp_show_accept_all_button,
+                'show_manage_preferences_button' => (bool) $settings->cmp_show_manage_preferences_button,
+                'default_locale' => $settings->cmp_default_locale,
+            ],
+            // Deprecated flat aliases retained for existing website consumers.
+            'site_name' => $clinicName,
+            'brand_name' => $clinicName,
             'site_url' => $settings->site_url,
             'default_meta_title' => $settings->default_meta_title,
             'default_meta_description' => $settings->default_meta_description,
-            'clinic_name' => $settings->clinic_name,
+            'clinic_name' => $clinicName,
             'clinic_phone' => $settings->clinic_phone,
             'clinic_email' => $settings->clinic_email,
             'clinic_address' => $settings->clinic_address,
             'clinic_city' => $settings->clinic_city,
             'clinic_postal_code' => $settings->clinic_postal_code,
             'clinic_country' => $settings->clinic_country,
-            'maps_url' => $settings->maps_url ?: $settings->google_maps_url,
+            'clinic_province' => $settings->clinic_province,
+            'clinic_region' => $settings->clinic_region,
+            'clinic_country_name' => $settings->clinic_country_name,
+            'maps_url' => $mapsUrl,
+            'google_maps_url' => $mapsUrl,
             'latitude' => $settings->latitude,
             'longitude' => $settings->longitude,
             'facebook_url' => $settings->facebook_url,
             'instagram_url' => $settings->instagram_url,
             'linkedin_url' => $settings->linkedin_url,
             'whatsapp_number' => $settings->whatsapp_number,
-            'opening_hours' => is_array($settings->opening_hours) ? $settings->opening_hours : [],
+            'opening_hours_flat' => $openingHours,
+            'logo_url' => $logoUrl,
             'vat_number' => $settings->vat_number,
             'legal_company_name' => $settings->legal_company_name,
             'privacy_email' => $settings->privacy_email,
@@ -860,7 +927,7 @@ class SiteController extends Controller
 
     private function mapPageDetail(Page $page): array
     {
-        $defaultOgImagePath = SiteSetting::singleton()->default_og_image_path;
+        $defaultOgImagePath = SiteSetting::current()->default_og_image_path;
 
         return [
             'internal_key' => $page->internal_key,

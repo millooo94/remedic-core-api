@@ -11,12 +11,12 @@ class SiteSettingController extends Controller
 {
     public function show(): SiteSettingResource
     {
-        return new SiteSettingResource(SiteSetting::singleton());
+        return new SiteSettingResource(SiteSetting::current());
     }
 
     public function update(UpdateSiteSettingRequest $request): SiteSettingResource
     {
-        $settings = SiteSetting::singleton();
+        $settings = SiteSetting::ensureSingleton();
         $settings->fill($request->validated());
         $settings->save();
 

@@ -2,10 +2,13 @@
 
 namespace App\Services\Marketing;
 
+use App\Services\CenterCoordinatesProvider;
 use Illuminate\Support\Facades\Http;
 
 class PatientGeocodingService
 {
+    public function __construct(private readonly CenterCoordinatesProvider $centerCoordinates) {}
+
     public function geocode(?string $address, ?string $city, ?string $zip): array
     {
         $query = $this->normalizeAddress($address, $city, $zip);
@@ -65,10 +68,7 @@ class PatientGeocodingService
 
     public function remedicCoordinates(): array
     {
-        return [
-            'lat' => $this->toFloat(config('services.geocoding.remedic_lat')),
-            'lng' => $this->toFloat(config('services.geocoding.remedic_lng')),
-        ];
+        return $this->centerCoordinates->coordinates();
     }
 
     private function normalizeAddress(?string $address, ?string $city, ?string $zip): ?string
@@ -103,4 +103,3 @@ class PatientGeocodingService
         return (float) $value;
     }
 }
-

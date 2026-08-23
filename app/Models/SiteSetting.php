@@ -58,6 +58,15 @@ class SiteSetting extends Model
         'cmp_auto_reprompt_on_policy_change',
         'cmp_default_locale',
         'privacy_email',
+        'tax_code',
+        'pec_email',
+        'clinic_street_name',
+        'clinic_street_number',
+        'clinic_province',
+        'clinic_country_name',
+        'google_place_id',
+        'timezone',
+        'served_territory',
     ];
 
     protected function casts(): array
@@ -80,11 +89,36 @@ class SiteSetting extends Model
         ];
     }
 
+    /** Read the singleton without creating it as a side effect. */
+    public static function current(): self
+    {
+        return static::query()->find(1) ?? new static([
+            'clinic_country' => 'IT',
+            'timezone' => 'Europe/Rome',
+        ]);
+    }
+
+    /** Explicit bootstrap/write operation for callers that need persistence. */
+    public static function ensureSingleton(): self
+    {
+        $current = static::query()->find(1);
+        if ($current instanceof self) {
+            return $current;
+        }
+
+        $settings = new static;
+        $settings->forceFill([
+            'id' => 1,
+            'clinic_country' => 'IT',
+            'timezone' => 'Europe/Rome',
+        ])->save();
+
+        return $settings;
+    }
+
+    /** @deprecated Use current() for reads or ensureSingleton() for writes. */
     public static function singleton(): self
     {
-        return static::query()->firstOrCreate(
-            ['id' => 1],
-            ['clinic_country' => 'IT'],
-        );
+        return static::current();
     }
 }

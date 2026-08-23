@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseRecordController;
 use App\Http\Controllers\Api\V1\ExpenseTemplateController;
+use App\Http\Controllers\Api\V1\Management\CenterSettingController as ManagementCenterSettingController;
 use App\Http\Controllers\Api\V1\MarketingCampaignController;
 use App\Http\Controllers\Api\V1\MarketingSegmentController;
 use App\Http\Controllers\Api\V1\PatientController;
@@ -135,6 +136,15 @@ Route::prefix('v1')->group(function (): void {
 
         Route::get('settings', [SettingsController::class, 'show']);
         Route::put('settings', [SettingsController::class, 'update']);
+
+        Route::prefix('management/settings/center')
+            ->middleware('permission:'.AdminPermission::MANAGE_CENTER_SETTINGS->value)
+            ->group(function (): void {
+                Route::get('/', [ManagementCenterSettingController::class, 'show']);
+                Route::put('/', [ManagementCenterSettingController::class, 'update']);
+                Route::post('logo', [ManagementCenterSettingController::class, 'uploadLogo']);
+                Route::delete('logo', [ManagementCenterSettingController::class, 'deleteLogo']);
+            });
 
         Route::prefix('admin')
             ->middleware('permission:'.AdminPermission::VIEW_BACKOFFICE->value)

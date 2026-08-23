@@ -4,15 +4,11 @@ namespace Tests\Feature;
 
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
-use App\Models\BlogPost;
-use App\Models\ConsentCategory;
 use App\Models\ConsentPolicyVersion;
 use App\Models\ConsentPreferenceChange;
 use App\Models\ConsentRecord;
-use App\Models\ConsentService;
 use App\Models\Page;
 use App\Models\Professional;
-use App\Models\ProfessionalPublicProfile;
 use App\Models\Redirect;
 use App\Models\Service;
 use App\Models\SiteSetting;
@@ -255,28 +251,29 @@ class AdminBackofficeApiTest extends TestCase
         ]);
         $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
 
-        $settings = SiteSetting::singleton();
+        $settings = SiteSetting::ensureSingleton();
         $settings->update([
-            'site_name' => 'Remedic',
+            'clinic_name' => 'Remedic',
         ]);
 
         Sanctum::actingAs($user);
 
         $this->getJson('/api/v1/admin/site-settings')
             ->assertOk()
-            ->assertJsonPath('site_name', 'Remedic');
+            ->assertJsonPath('center.clinic_name', 'Remedic');
 
         $this->putJson('/api/v1/admin/site-settings', [
-            'site_name' => 'Remedic Web',
-            'brand_name' => 'Remedic',
-            'cmp_enabled' => true,
-            'cmp_banner_enabled' => true,
+            'site_url' => 'https://remedic.it',
+            'default_meta_title' => 'Remedic Web',
+            'clinic_name' => 'Tentativo non autorizzato',
         ])->assertOk()
-            ->assertJsonPath('site_name', 'Remedic Web');
+            ->assertJsonPath('default_meta_title', 'Remedic Web')
+            ->assertJsonPath('center.clinic_name', 'Remedic');
 
         $this->assertDatabaseHas('site_settings', [
             'id' => $settings->id,
-            'site_name' => 'Remedic Web',
+            'clinic_name' => 'Remedic',
+            'default_meta_title' => 'Remedic Web',
         ]);
     }
 
@@ -486,7 +483,7 @@ class AdminBackofficeApiTest extends TestCase
 
         Sanctum::actingAs($user);
 
-        $specializationId = (int) \App\Models\Specialization::query()->create([
+        $specializationId = (int) Specialization::query()->create([
             'name' => 'Cardiologia master test',
             'slug' => 'cardiologia-master-test',
             'robots' => 'index,follow',
@@ -539,7 +536,7 @@ class AdminBackofficeApiTest extends TestCase
 
         Sanctum::actingAs($user);
 
-        $serviceId = (int) \App\Models\Service::query()->create([
+        $serviceId = (int) Service::query()->create([
             'canonical_name' => 'Ecografia addome',
             'display_name' => 'Ecografia Addome Completo',
             'slug' => 'ecografia-addome-completo',
