@@ -12,21 +12,17 @@ class ProfessionalAvailabilityException extends Model
 
     protected $fillable = [
         'professional_id',
-        'source',
         'date',
         'type',
         'start_time',
         'end_time',
         'reason',
-        'external_hash',
-        'last_synced_at',
     ];
 
     protected function casts(): array
     {
         return [
             'date' => 'date',
-            'last_synced_at' => 'datetime',
         ];
     }
 

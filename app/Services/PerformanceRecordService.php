@@ -15,9 +15,9 @@ use App\Models\PerformanceRecord;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
 use App\Models\Service;
-use App\Support\Numbers\ScaledNumber;
 use App\Models\User;
 use App\Support\Filters\PerformanceRecordFilters;
+use App\Support\Numbers\ScaledNumber;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +29,6 @@ class PerformanceRecordService
         private readonly PerformanceCalculationService $calculationService,
         private readonly PerformanceRecordFilters $filters,
         private readonly PerformanceExpenseSyncService $performanceExpenseSyncService,
-        private readonly GoogleReviewRequestService $googleReviewRequestService,
     ) {}
 
     public function baseQuery(array $filters = []): Builder
@@ -52,8 +51,8 @@ class PerformanceRecordService
         $records = $query->get();
 
         return [
-            'center_share' => round((float) $records->sum(fn(PerformanceRecord $record) => $this->recognizedCenterShareForList($record)), 2),
-            'professional_share' => round((float) $records->sum(fn(PerformanceRecord $record) => $this->payableProfessionalShareForList($record)), 2),
+            'center_share' => round((float) $records->sum(fn (PerformanceRecord $record) => $this->recognizedCenterShareForList($record)), 2),
+            'professional_share' => round((float) $records->sum(fn (PerformanceRecord $record) => $this->payableProfessionalShareForList($record)), 2),
         ];
     }
 
@@ -66,9 +65,6 @@ class PerformanceRecordService
             $this->syncSplits($record, $state['splits']);
             $record->refresh();
             $this->performanceExpenseSyncService->syncFromPerformanceRecord($record);
-            $this->googleReviewRequestService->syncForPerformanceRecord(
-                $record->load(['patient', 'professional.publicProfile', 'professional.specializations', 'service.category'])
-            );
             $this->audit($actor, 'performance_record', $record->id, 'created', null, $this->snapshotForAudit($record));
 
             return $record->load(['patient', 'patients', 'professional', 'service.category', 'splits.professional']);
@@ -97,7 +93,6 @@ class PerformanceRecordService
         DB::transaction(function () use ($performanceRecord, $actor): void {
             $before = $this->snapshotForAudit($performanceRecord);
             $this->performanceExpenseSyncService->deleteForPerformanceRecord($performanceRecord);
-            $this->googleReviewRequestService->cancelForPerformanceRecord($performanceRecord);
             $performanceRecord->delete();
             $this->audit($actor, 'performance_record', $performanceRecord->id, 'deleted', $before, null);
         });
@@ -317,9 +312,9 @@ class PerformanceRecordService
         }
 
         $professionalIds = collect($payloadSplits)
-            ->filter(fn(array $split) => ($split['subject_type'] ?? null) === PerformanceSplitSubjectType::Professional->value)
-            ->map(fn(array $split) => (int) ($split['professional_id'] ?? 0))
-            ->filter(fn(int $id) => $id > 0)
+            ->filter(fn (array $split) => ($split['subject_type'] ?? null) === PerformanceSplitSubjectType::Professional->value)
+            ->map(fn (array $split) => (int) ($split['professional_id'] ?? 0))
+            ->filter(fn (int $id) => $id > 0)
             ->unique()
             ->values();
 
@@ -429,8 +424,8 @@ class PerformanceRecordService
         }
 
         return array_values(array_unique(array_map(
-            static fn(mixed $value): int => (int) $value,
-            array_filter($rawPatientIds, static fn(mixed $value): bool => is_numeric($value) && (int) $value > 0),
+            static fn (mixed $value): int => (int) $value,
+            array_filter($rawPatientIds, static fn (mixed $value): bool => is_numeric($value) && (int) $value > 0),
         )));
     }
 

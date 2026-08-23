@@ -2,7 +2,6 @@
 
 namespace App\Http\Resources\Api\V1;
 
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,10 +17,6 @@ class MarketingCampaignResource extends JsonResource
             'template_key' => $this->template_key,
             'subject' => $this->subject,
             'message' => $this->message,
-            'whatsapp_image_url' => $this->whatsapp_image_path ? Storage::disk('public')->url($this->whatsapp_image_path) : null,
-            'whatsapp_image_name' => $this->whatsapp_image_original_name,
-            'whatsapp_image_mime_type' => $this->whatsapp_image_mime_type,
-            'whatsapp_image_size' => $this->whatsapp_image_size,
             'status' => $this->status,
             'scheduled_at' => optional($this->scheduled_at)->toIso8601String(),
             'dispatched_at' => optional($this->dispatched_at)->toIso8601String(),

@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\OldCoreImportMapping;
-use App\Models\Patient;
 use App\Models\ExpenseRecord;
 use App\Models\ExpenseRecordCompetence;
+use App\Models\OldCoreImportMapping;
+use App\Models\Patient;
 use App\Services\OldCoreDataImportService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,9 +61,7 @@ class OldCoreImportCommandTest extends TestCase
             $table->decimal('residence_longitude', 10, 7)->nullable();
             $table->string('geocoding_status', 20)->nullable();
             $table->timestamp('geocoded_at')->nullable();
-            $table->string('whatsapp_phone')->nullable();
             $table->boolean('contactable_sms')->default(true);
-            $table->boolean('contactable_whatsapp')->default(true);
             $table->boolean('contactable_email')->default(true);
             $table->boolean('excluded_from_campaigns')->default(false);
             $table->text('notes')->nullable();
@@ -89,9 +87,7 @@ class OldCoreImportCommandTest extends TestCase
             'residence_longitude' => null,
             'geocoding_status' => null,
             'geocoded_at' => null,
-            'whatsapp_phone' => '+39 333 111 2222',
             'contactable_sms' => true,
-            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
             'notes' => 'Import test',
@@ -154,9 +150,7 @@ class OldCoreImportCommandTest extends TestCase
             $table->decimal('residence_longitude', 10, 7)->nullable();
             $table->string('geocoding_status', 20)->nullable();
             $table->timestamp('geocoded_at')->nullable();
-            $table->string('whatsapp_phone')->nullable();
             $table->boolean('contactable_sms')->default(true);
-            $table->boolean('contactable_whatsapp')->default(true);
             $table->boolean('contactable_email')->default(true);
             $table->boolean('excluded_from_campaigns')->default(false);
             $table->text('notes')->nullable();

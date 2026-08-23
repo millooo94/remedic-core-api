@@ -14,8 +14,7 @@ class ProfessionalAvailabilityRuleController extends Controller
 {
     public function __construct(
         private readonly ProfessionalAvailabilityService $availabilityService,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -75,11 +74,6 @@ class ProfessionalAvailabilityRuleController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        return [
-            ...$validated,
-            'source' => 'manual',
-            'external_hash' => null,
-            'last_synced_at' => null,
-        ];
+        return $validated;
     }
 }

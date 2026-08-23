@@ -9,18 +9,13 @@ use App\Models\MarketingSegment;
 use App\Models\MarketingSegmentManualRecipient;
 use App\Models\Patient;
 use App\Models\User;
-use App\Services\Marketing\MarketingChannelManager;
-use App\Services\Marketing\PatientSegmentQueryService;
 use App\Services\Marketing\Channels\MarketingChannel;
 use App\Services\Marketing\Channels\MarketingChannelSendResult;
-use App\Services\Marketing\WhatsAppPuppeteerService;
+use App\Services\Marketing\MarketingChannelManager;
+use App\Services\Marketing\PatientSegmentQueryService;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class MarketingCampaignService
@@ -28,9 +23,7 @@ class MarketingCampaignService
     public function __construct(
         private readonly MarketingChannelManager $channelManager,
         private readonly PatientSegmentQueryService $segmentQueryService,
-        private readonly WhatsAppPuppeteerService $whatsAppPuppeteerService,
-    ) {
-    }
+    ) {}
 
     public function baseQuery(array $filters = []): Builder
     {
@@ -71,8 +64,6 @@ class MarketingCampaignService
                 'updated_by' => $actor->id,
             ]);
 
-            $this->syncWhatsAppImage($campaign, $payload);
-
             return $campaign->load(['segment', 'creator', 'launcher']);
         });
     }
@@ -105,7 +96,6 @@ class MarketingCampaignService
             }
 
             $campaign->save();
-            $this->syncWhatsAppImage($campaign, $payload);
 
             return $campaign->refresh()->load(['segment', 'creator', 'launcher']);
         });
@@ -113,7 +103,6 @@ class MarketingCampaignService
 
     public function delete(MarketingCampaign $campaign): void
     {
-        $this->deleteCampaignImage($campaign);
         $campaign->delete();
     }
 
@@ -145,10 +134,8 @@ class MarketingCampaignService
 
     public function sendTest(MarketingCampaign $campaign, string $target, User $actor): MarketingCampaignDelivery
     {
-        $this->ensureWhatsAppReadyForInteractiveAction($campaign->channel);
-
         $resolvedChannelKey = $campaign->channel === 'all'
-            ? ($campaign->whatsapp_image_path ? 'whatsapp' : 'sms')
+            ? 'sms'
             : $campaign->channel;
         $channel = $this->channelManager->for($resolvedChannelKey);
 
@@ -156,7 +143,7 @@ class MarketingCampaignService
             target: $target,
             message: $campaign->message,
             subject: $campaign->subject ?: $campaign->name,
-            context: $this->channelContext($campaign, $resolvedChannelKey),
+            context: [],
         );
 
         $delivery = $campaign->deliveries()->create([
@@ -183,8 +170,6 @@ class MarketingCampaignService
 
     public function launch(MarketingCampaign $campaign, User $actor, ?string $scheduledAt = null): MarketingCampaign
     {
-        $this->ensureWhatsAppReadyForInteractiveAction($campaign->channel);
-
         return DB::transaction(function () use ($campaign, $actor, $scheduledAt): MarketingCampaign {
             $campaign = $campaign->refresh()->loadMissing('segment');
             $preview = $this->previewForSegment($campaign->segment, $campaign->channel);
@@ -250,6 +235,7 @@ class MarketingCampaignService
                                 'error_message' => $availability['reason'],
                             ]);
                             $excluded++;
+
                             continue;
                         }
 
@@ -258,7 +244,7 @@ class MarketingCampaignService
                                 target: (string) $availability['target'],
                                 message: $this->renderMessage($campaign->message, $recipient->patient),
                                 subject: $this->renderMessage($campaign->subject ?: $campaign->name, $recipient->patient),
-                                context: $this->channelContext($campaign, $channelItem->key()),
+                                context: [],
                             );
                         } catch (\Throwable $exception) {
                             $result = MarketingChannelSendResult::failed(
@@ -332,6 +318,7 @@ class MarketingCampaignService
                                 'error_message' => 'Canale non disponibile o contatto mancante.',
                             ]);
                             $excluded++;
+
                             continue;
                         }
 
@@ -341,7 +328,7 @@ class MarketingCampaignService
                                 target: (string) $target,
                                 message: $this->renderMessage($campaign->message, $patient),
                                 subject: $this->renderMessage($campaign->subject ?: $campaign->name, $patient),
-                                context: $this->channelContext($campaign, $channelItem->key()),
+                                context: [],
                             );
                         } catch (\Throwable $exception) {
                             $target = $channelItem->resolveTarget($patient);
@@ -432,7 +419,6 @@ class MarketingCampaignService
         if ($channel === 'all') {
             return [
                 $this->channelManager->for('sms'),
-                $this->channelManager->for('whatsapp'),
                 $this->channelManager->for('email'),
             ];
         }
@@ -460,109 +446,10 @@ class MarketingCampaignService
         return $normalized !== '' ? $normalized : null;
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function syncWhatsAppImage(MarketingCampaign $campaign, array $payload): void
-    {
-        $channelIncludesWhatsApp = in_array((string) ($campaign->channel ?? ''), ['whatsapp', 'all'], true);
-        $removeRequested = (bool) ($payload['remove_whatsapp_image'] ?? false);
-        /** @var UploadedFile|null $uploadedImage */
-        $uploadedImage = $payload['whatsapp_image'] ?? null;
-
-        if (! $channelIncludesWhatsApp) {
-            $this->clearCampaignImage($campaign);
-
-            return;
-        }
-
-        if ($removeRequested) {
-            $this->clearCampaignImage($campaign);
-        }
-
-        if (! $uploadedImage instanceof UploadedFile) {
-            return;
-        }
-
-        $this->deleteCampaignImage($campaign);
-        $storedPath = $uploadedImage->store('marketing-campaigns', 'public');
-
-        $campaign->forceFill([
-            'whatsapp_image_path' => $storedPath,
-            'whatsapp_image_original_name' => $uploadedImage->getClientOriginalName(),
-            'whatsapp_image_mime_type' => $uploadedImage->getMimeType(),
-            'whatsapp_image_size' => $uploadedImage->getSize(),
-        ])->save();
-    }
-
-    private function clearCampaignImage(MarketingCampaign $campaign): void
-    {
-        $this->deleteCampaignImage($campaign);
-
-        $campaign->forceFill([
-            'whatsapp_image_path' => null,
-            'whatsapp_image_original_name' => null,
-            'whatsapp_image_mime_type' => null,
-            'whatsapp_image_size' => null,
-        ])->save();
-    }
-
-    private function deleteCampaignImage(MarketingCampaign $campaign): void
-    {
-        $path = $campaign->whatsapp_image_path;
-        if (! $path) {
-            return;
-        }
-
-        Storage::disk('public')->delete($path);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function channelContext(MarketingCampaign $campaign, string $channelKey): array
-    {
-        if ($channelKey !== 'whatsapp' || ! $campaign->whatsapp_image_path) {
-            return [];
-        }
-
-        $absolutePath = Storage::disk('public')->path($campaign->whatsapp_image_path);
-        $mediaBase64 = null;
-
-        if (Storage::disk('public')->exists($campaign->whatsapp_image_path)) {
-            $mediaBase64 = base64_encode((string) Storage::disk('public')->get($campaign->whatsapp_image_path));
-        }
-
-        return [
-            'media_path' => $absolutePath,
-            'media_base64' => $mediaBase64,
-            'media_name' => $campaign->whatsapp_image_original_name,
-            'media_mime_type' => $campaign->whatsapp_image_mime_type,
-        ];
-    }
-
-    private function ensureWhatsAppReadyForInteractiveAction(string $channel): void
-    {
-        if (! in_array($channel, ['whatsapp', 'all'], true)) {
-            return;
-        }
-
-        $status = $this->whatsAppPuppeteerService->status(false);
-        if ($this->whatsAppPuppeteerService->isOperational($status)) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'channel' => [
-                (string) ($status['message'] ?? 'WhatsApp non pronto all\'invio.'),
-            ],
-        ]);
-    }
-
     private function manualRecipientEligibleForChannel(MarketingSegmentManualRecipient $recipient, string $channel): bool
     {
         if ($channel === 'all') {
-            return collect(['sms', 'whatsapp', 'email'])
+            return collect(['sms', 'email'])
                 ->contains(fn (string $channelKey) => $this->manualRecipientEligibleForChannel($recipient, $channelKey));
         }
 
@@ -615,18 +502,12 @@ class MarketingCampaignService
             ];
         }
 
-        if ($patient) {
-            $isContactable = $channelKey === 'sms'
-                ? (bool) $patient->contactable_sms
-                : (bool) $patient->contactable_whatsapp;
-
-            if (! $isContactable) {
-                return [
-                    'can_contact' => false,
-                    'target' => $target,
-                    'reason' => 'Canale non disponibile o contatto mancante.',
-                ];
-            }
+        if ($patient && ! $patient->contactable_sms) {
+            return [
+                'can_contact' => false,
+                'target' => $target,
+                'reason' => 'Canale non disponibile o contatto mancante.',
+            ];
         }
 
         return [

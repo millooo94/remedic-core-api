@@ -5,7 +5,6 @@ namespace App\Services\Marketing;
 use App\Services\Marketing\Channels\EmailChannel;
 use App\Services\Marketing\Channels\MarketingChannel;
 use App\Services\Marketing\Channels\SmsChannel;
-use App\Services\Marketing\Channels\WhatsAppChannel;
 use InvalidArgumentException;
 
 class MarketingChannelManager
@@ -17,12 +16,10 @@ class MarketingChannelManager
 
     public function __construct(
         SmsChannel $smsChannel,
-        WhatsAppChannel $whatsAppChannel,
         EmailChannel $emailChannel,
     ) {
         $this->channels = [
             $smsChannel->key() => $smsChannel,
-            $whatsAppChannel->key() => $whatsAppChannel,
             $emailChannel->key() => $emailChannel,
         ];
     }

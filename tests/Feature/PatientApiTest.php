@@ -28,9 +28,7 @@ class PatientApiTest extends TestCase
             'year_of_birth' => 1978,
             'phone' => '3331234567',
             'email' => 'mario.rossi@example.test',
-            'whatsapp_phone' => null,
             'contactable_sms' => true,
-            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
             'notes' => 'Paziente marketing',
@@ -43,7 +41,6 @@ class PatientApiTest extends TestCase
             ->assertJsonPath('full_name', 'Mario Rossi')
             ->assertJsonPath('sex', 'male')
             ->assertJsonPath('available_channels.sms', true)
-            ->assertJsonPath('available_channels.whatsapp', true)
             ->assertJsonPath('available_channels.email', true)
             ->assertJsonPath('performances_count', 0)
             ->assertJsonPath('last_visit_at', null);
@@ -79,7 +76,6 @@ class PatientApiTest extends TestCase
             'residence_city' => null,
             'residence_zip' => null,
             'contactable_sms' => true,
-            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
             'notes' => null,
@@ -103,7 +99,6 @@ class PatientApiTest extends TestCase
             'last_name' => 'Bianchi',
             'full_name' => 'Bianchi Lucia',
             'contactable_sms' => true,
-            'contactable_whatsapp' => false,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
         ]);

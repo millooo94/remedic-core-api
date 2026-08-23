@@ -27,7 +27,6 @@ class PatientFactory extends Factory
             'phone' => $phone,
             'email' => fake()->safeEmail(),
             'contactable_sms' => true,
-            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
             'notes' => null,

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Marketing\ItalianTaxCodeService;
 use App\Services\Marketing\PatientGeocodingService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -16,8 +17,7 @@ class PatientImportService
     public function __construct(
         private readonly ItalianTaxCodeService $taxCodeService,
         private readonly PatientGeocodingService $patientGeocodingService,
-    ) {
-    }
+    ) {}
 
     public function import(UploadedFile $file, User $actor, bool $updateExisting = true): array
     {
@@ -62,7 +62,6 @@ class PatientImportService
                     'residence_city' => ['nullable', 'string', 'max:120'],
                     'residence_zip' => ['nullable', 'string', 'max:10', 'regex:/^\d{5}$/'],
                     'contactable_sms' => ['nullable', 'boolean'],
-                    'contactable_whatsapp' => ['nullable', 'boolean'],
                     'contactable_email' => ['nullable', 'boolean'],
                     'excluded_from_campaigns' => ['nullable', 'boolean'],
                     'notes' => ['nullable', 'string'],
@@ -101,7 +100,6 @@ class PatientImportService
                 $payload['geocoded_at'] = $geocoding['status'] === 'ok' ? now() : null;
                 $payload['notes'] = $this->nullableTrimmedString($payload['notes'] ?? null);
                 $payload['contactable_sms'] = (bool) ($payload['contactable_sms'] ?? true);
-                $payload['contactable_whatsapp'] = (bool) ($payload['contactable_whatsapp'] ?? true);
                 $payload['contactable_email'] = (bool) ($payload['contactable_email'] ?? true);
                 $payload['excluded_from_campaigns'] = (bool) ($payload['excluded_from_campaigns'] ?? false);
 
@@ -164,13 +162,12 @@ class PatientImportService
             'indirizzo_residenza',
             'cap',
             'contattabile_sms',
-            'contattabile_whatsapp',
             'contattabile_email',
             'escluso_campagne',
             'note',
         ];
 
-        $rows = [ $fieldOrder ];
+        $rows = [$fieldOrder];
         foreach ($xml->children() as $patientNode) {
             $row = [];
             foreach ($fieldOrder as $field) {
@@ -225,7 +222,6 @@ class PatientImportService
             'residence_city' => $residenceCity,
             'residence_zip' => $residenceZip,
             'contactable_sms' => $this->normalizeBoolean($mapped['contactable_sms'] ?? $mapped['contattabile_sms'] ?? null),
-            'contactable_whatsapp' => $this->normalizeBoolean($mapped['contactable_whatsapp'] ?? $mapped['contattabile_whatsapp'] ?? null),
             'contactable_email' => $this->normalizeBoolean($mapped['contactable_email'] ?? $mapped['contattabile_email'] ?? null),
             'excluded_from_campaigns' => $this->normalizeBoolean($mapped['excluded_from_campaigns'] ?? $mapped['escluso_campagne'] ?? null),
             'notes' => $notes,
@@ -327,7 +323,7 @@ class PatientImportService
     {
         if ($birthDate) {
             try {
-                return \Illuminate\Support\Carbon::parse((string) $birthDate)->toDateString();
+                return Carbon::parse((string) $birthDate)->toDateString();
             } catch (\Throwable) {
                 return null;
             }
@@ -349,7 +345,7 @@ class PatientImportService
     {
         if ($birthDate) {
             try {
-                return (int) \Illuminate\Support\Carbon::parse((string) $birthDate)->year;
+                return (int) Carbon::parse((string) $birthDate)->year;
             } catch (\Throwable) {
                 return null;
             }

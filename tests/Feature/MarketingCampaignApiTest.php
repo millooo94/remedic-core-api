@@ -3,15 +3,10 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
-use App\Models\MarketingCampaign;
 use App\Models\MarketingSegment;
-use App\Models\ExternalProviderAccount;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\UploadedFile;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -58,7 +53,6 @@ class MarketingCampaignApiTest extends TestCase
         $patient = Patient::factory()->create([
             'phone' => '+393331234567',
             'contactable_sms' => true,
-            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'email' => 'patient@example.test',
         ]);
@@ -177,116 +171,14 @@ class MarketingCampaignApiTest extends TestCase
     }
 
     #[Test]
-    public function it_exposes_the_whatsapp_connector_status(): void
+    public function it_accepts_only_current_campaign_channels_and_requires_an_email_subject(): void
     {
-        $this->actingAsAdmin();
-        config()->set('services.whatsapp_puppeteer.base_url', 'http://whatsapp-connector.test');
-        ExternalProviderAccount::query()->create([
-            'provider' => 'whatsapp',
-            'label' => 'WhatsApp',
-            'enabled' => true,
-            'login_status' => 'session_valid',
-        ]);
-
-        Http::fake([
-            'http://whatsapp-connector.test/status' => Http::response([
-                'state' => 'connected',
-                'ready' => true,
-                'message' => 'WhatsApp Web collegato e pronto all\'invio.',
-                'qr_required' => false,
-                'qr_code_data_url' => null,
-                'web_state' => 'CONNECTED',
-                'queue_depth' => 0,
-                'phone_number' => '393331234567',
-                'push_name' => 'Remedic',
-                'last_error_code' => null,
-                'last_error_message' => null,
-                'last_event_at' => now()->toIso8601String(),
-                'last_connected_at' => now()->toIso8601String(),
-            ]),
-        ]);
-
-        $this->getJson('/api/v1/marketing-whatsapp/status')
-            ->assertOk()
-            ->assertJsonPath('connected', true)
-            ->assertJsonPath('login_status', 'session_valid')
-            ->assertJsonPath('integration.connector_state', 'connected')
-            ->assertJsonPath('integration.connector_ready', true)
-            ->assertJsonPath('integration.phone_number', '393331234567');
-    }
-
-    #[Test]
-    public function it_blocks_whatsapp_campaign_launch_when_the_connector_is_not_ready(): void
-    {
-        $this->actingAsAdmin();
-        config()->set('services.whatsapp_puppeteer.base_url', 'http://whatsapp-connector.test');
-
-        Http::fake([
-            'http://whatsapp-connector.test/status' => Http::response([
-                'state' => 'qr_required',
-                'ready' => false,
-                'message' => 'WhatsApp non collegato: apri il QR code e completa l\'accesso prima di inviare.',
-                'qr_required' => true,
-                'qr_code_data_url' => 'data:image/png;base64,test',
-                'queue_depth' => 0,
-            ]),
-        ]);
-
-        $campaign = $this->createCampaign('whatsapp');
-
-        $this->postJson("/api/v1/marketing-campaigns/{$campaign->id}/launch", [
-            'scheduled_at' => null,
-        ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['channel']);
-    }
-
-    #[Test]
-    public function it_records_structured_whatsapp_test_failures_without_throwing_raw_errors(): void
-    {
-        $this->actingAsAdmin();
-        config()->set('services.whatsapp_puppeteer.base_url', 'http://whatsapp-connector.test');
-
-        Http::fake([
-            'http://whatsapp-connector.test/status' => Http::response([
-                'state' => 'connected',
-                'ready' => true,
-                'message' => 'WhatsApp Web collegato e pronto all\'invio.',
-                'qr_required' => false,
-                'qr_code_data_url' => null,
-                'queue_depth' => 0,
-            ]),
-            'http://whatsapp-connector.test/send' => Http::response([
-                'delivery_status' => 'excluded',
-                'provider_status' => 'no_whatsapp',
-                'message_id' => null,
-                'error_message' => 'Numero non disponibile su WhatsApp.',
-                'response' => [
-                    'normalized_target' => '393331234567',
-                ],
-            ]),
-        ]);
-
-        $campaign = $this->createCampaign('whatsapp');
-
-        $this->postJson("/api/v1/marketing-campaigns/{$campaign->id}/send-test", [
-            'target' => '+393331234567',
-        ])
-            ->assertCreated()
-            ->assertJsonPath('delivery_status', 'excluded')
-            ->assertJsonPath('provider_status', 'no_whatsapp')
-            ->assertJsonPath('error_message', 'Numero non disponibile su WhatsApp.');
-    }
-
-    #[Test]
-    public function it_stores_a_whatsapp_image_only_for_channels_that_include_whatsapp(): void
-    {
-        Storage::fake('public');
         $this->actingAsAdmin();
 
         $segment = MarketingSegment::query()->create([
-            'name' => 'Segmento test',
-            'description' => 'Segmento per test marketing.',
+            'name' => 'Segmento campagne',
+            'description' => null,
+            'segment_type' => 'filter_based',
             'filters' => [],
             'last_preview_count' => 0,
             'is_active' => true,
@@ -294,137 +186,30 @@ class MarketingCampaignApiTest extends TestCase
             'updated_by' => 1,
         ]);
 
-        $response = $this->post('/api/v1/marketing-campaigns', [
-            'name' => 'Campagna con immagine',
+        $basePayload = [
+            'name' => 'Campagna test',
             'marketing_segment_id' => $segment->id,
+            'message' => 'Messaggio di prova',
+        ];
+
+        $this->postJson('/api/v1/marketing-campaigns', [
+            ...$basePayload,
             'channel' => 'whatsapp',
-            'template_key' => null,
-            'subject' => null,
-            'message' => 'Messaggio con immagine',
-            'scheduled_at' => null,
-            'whatsapp_image' => UploadedFile::fake()->image('promo-whatsapp.png', 1200, 1200)->size(256),
-        ], [
-            'Accept' => 'application/json',
-        ]);
+        ])->assertUnprocessable()->assertJsonValidationErrors('channel');
 
-        $response
-            ->assertSuccessful()
-            ->assertJsonPath('channel', 'whatsapp')
-            ->assertJsonPath('whatsapp_image_name', 'promo-whatsapp.png');
+        $this->postJson('/api/v1/marketing-campaigns', [
+            ...$basePayload,
+            'channel' => 'email',
+        ])->assertUnprocessable()->assertJsonValidationErrors('subject');
 
-        /** @var MarketingCampaign $campaign */
-        $campaign = MarketingCampaign::query()->latest('id')->firstOrFail();
-
-        $this->assertNotNull($campaign->whatsapp_image_path);
-        $this->assertSame('promo-whatsapp.png', $campaign->whatsapp_image_original_name);
-        Storage::disk('public')->assertExists($campaign->whatsapp_image_path);
-
-        $this->post('/api/v1/marketing-campaigns', [
-            'name' => 'Campagna SMS con immagine',
-            'marketing_segment_id' => $segment->id,
+        $this->postJson('/api/v1/marketing-campaigns', [
+            ...$basePayload,
             'channel' => 'sms',
-            'template_key' => null,
-            'subject' => null,
-            'message' => 'Messaggio SMS',
-            'scheduled_at' => null,
-            'whatsapp_image' => UploadedFile::fake()->image('non-consentita.png'),
-        ], [
-            'Accept' => 'application/json',
-        ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['whatsapp_image']);
-    }
-
-    #[Test]
-    public function it_forwards_whatsapp_image_metadata_to_the_connector_during_test_send(): void
-    {
-        Storage::fake('public');
-        $this->actingAsAdmin();
-        config()->set('services.whatsapp_puppeteer.base_url', 'http://whatsapp-connector.test');
-
-        $storedPath = UploadedFile::fake()
-            ->image('promo-test.png', 600, 600)
-            ->store('marketing-campaigns', 'public');
-
-        Http::fake([
-            'http://whatsapp-connector.test/status' => Http::response([
-                'state' => 'connected',
-                'ready' => true,
-                'message' => 'WhatsApp Web collegato e pronto all\'invio.',
-                'qr_required' => false,
-                'qr_code_data_url' => null,
-                'queue_depth' => 0,
-            ]),
-            'http://whatsapp-connector.test/send' => Http::response([
-                'delivery_status' => 'sent',
-                'provider_status' => 'sent',
-                'message_id' => 'wa-test-001',
-                'response' => [
-                    'media_sent' => true,
-                ],
-            ]),
-        ]);
-
-        $campaign = $this->createCampaign('whatsapp');
-        $campaign->forceFill([
-            'whatsapp_image_path' => $storedPath,
-            'whatsapp_image_original_name' => 'promo-test.png',
-            'whatsapp_image_mime_type' => 'image/png',
-            'whatsapp_image_size' => 12345,
-        ])->save();
-
-        $this->postJson("/api/v1/marketing-campaigns/{$campaign->id}/send-test", [
-            'target' => '+393331234567',
-        ])
-            ->assertCreated()
-            ->assertJsonPath('delivery_status', 'sent');
-
-        Http::assertSent(function ($request) use ($campaign): bool {
-            if ($request->url() !== 'http://whatsapp-connector.test/send') {
-                return false;
-            }
-
-            $data = $request->data();
-
-            return ($data['target'] ?? null) === '+393331234567'
-                && ($data['media_name'] ?? null) === 'promo-test.png'
-                && ($data['media_mime_type'] ?? null) === 'image/png'
-                && filled($data['media_base64'] ?? null)
-                && ($data['media_path'] ?? null) === Storage::disk('public')->path($campaign->whatsapp_image_path);
-        });
+        ])->assertCreated()->assertJsonPath('channel', 'sms');
     }
 
     private function actingAsAdmin(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
-    }
-
-    private function createCampaign(string $channel): MarketingCampaign
-    {
-        $segment = MarketingSegment::query()->create([
-            'name' => 'Segmento test',
-            'description' => 'Segmento per test marketing.',
-            'filters' => [],
-            'last_preview_count' => 0,
-            'is_active' => true,
-            'created_by' => 1,
-            'updated_by' => 1,
-        ]);
-
-        return MarketingCampaign::query()->create([
-            'name' => 'Campagna test',
-            'marketing_segment_id' => $segment->id,
-            'channel' => $channel,
-            'template_key' => null,
-            'subject' => 'Oggetto test',
-            'message' => 'Messaggio test',
-            'status' => 'draft',
-            'recipients_count' => 0,
-            'sent_count' => 0,
-            'failed_count' => 0,
-            'excluded_count' => 0,
-            'created_by' => 1,
-            'updated_by' => 1,
-        ]);
     }
 }

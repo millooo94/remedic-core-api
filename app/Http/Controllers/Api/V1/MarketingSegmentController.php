@@ -16,8 +16,7 @@ class MarketingSegmentController extends Controller
     public function __construct(
         private readonly MarketingSegmentService $service,
         private readonly MarketingCampaignService $campaignService,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -83,7 +82,7 @@ class MarketingSegmentController extends Controller
     public function campaignPreview(Request $request, MarketingSegment $marketingSegment): array
     {
         $payload = $request->validate([
-            'channel' => ['required', 'in:sms,whatsapp,email,all'],
+            'channel' => ['required', 'in:sms,email,all'],
         ]);
 
         return $this->campaignService->previewForSegment($marketingSegment, $payload['channel']);

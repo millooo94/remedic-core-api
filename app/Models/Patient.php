@@ -30,7 +30,6 @@ class Patient extends Model
         'geocoding_status',
         'geocoded_at',
         'contactable_sms',
-        'contactable_whatsapp',
         'contactable_email',
         'excluded_from_campaigns',
         'notes',
@@ -47,7 +46,6 @@ class Patient extends Model
             'residence_longitude' => 'float',
             'geocoded_at' => 'datetime',
             'contactable_sms' => 'boolean',
-            'contactable_whatsapp' => 'boolean',
             'contactable_email' => 'boolean',
             'excluded_from_campaigns' => 'boolean',
         ];
@@ -64,11 +62,6 @@ class Patient extends Model
     public function marketingDeliveries(): HasMany
     {
         return $this->hasMany(MarketingCampaignDelivery::class)->orderByDesc('id');
-    }
-
-    public function googleReviewRequests(): HasMany
-    {
-        return $this->hasMany(GoogleReviewRequest::class)->orderByDesc('id');
     }
 
     public function creator(): BelongsTo

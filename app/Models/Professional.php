@@ -78,12 +78,6 @@ class Professional extends Model
         return $this->hasMany(PerformanceRecordSplit::class);
     }
 
-    public function googleReviewRequests(): HasMany
-    {
-        return $this->hasMany(GoogleReviewRequest::class)
-            ->orderByDesc('id');
-    }
-
     public function degrees(): HasMany
     {
         return $this->hasMany(ProfessionalDegree::class)->orderBy('sort_order')->orderBy('id');
@@ -112,10 +106,5 @@ class Professional extends Model
     public function availabilityExceptions(): HasMany
     {
         return $this->hasMany(ProfessionalAvailabilityException::class);
-    }
-
-    public function externalProviderProfiles(): HasMany
-    {
-        return $this->hasMany(ExternalProviderProfessional::class);
     }
 }

@@ -7,8 +7,8 @@ use App\Models\User;
 use App\Services\Marketing\ItalianTaxCodeService;
 use App\Services\Marketing\PatientGeocodingService;
 use App\Services\Marketing\PatientSegmentQueryService;
-use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -18,8 +18,7 @@ class PatientService
         private readonly PatientSegmentQueryService $segmentQueryService,
         private readonly ItalianTaxCodeService $taxCodeService,
         private readonly PatientGeocodingService $patientGeocodingService,
-    ) {
-    }
+    ) {}
 
     public function baseQuery(array $filters = []): Builder
     {
@@ -61,7 +60,6 @@ class PatientService
             })
             ->when(array_key_exists('excluded_from_campaigns', $filters) && $filters['excluded_from_campaigns'] !== null, fn (Builder $builder) => $builder->where('excluded_from_campaigns', (bool) $filters['excluded_from_campaigns']))
             ->when(array_key_exists('contactable_sms', $filters) && $filters['contactable_sms'] !== null, fn (Builder $builder) => $builder->where('contactable_sms', (bool) $filters['contactable_sms']))
-            ->when(array_key_exists('contactable_whatsapp', $filters) && $filters['contactable_whatsapp'] !== null, fn (Builder $builder) => $builder->where('contactable_whatsapp', (bool) $filters['contactable_whatsapp']))
             ->when(array_key_exists('contactable_email', $filters) && $filters['contactable_email'] !== null, fn (Builder $builder) => $builder->where('contactable_email', (bool) $filters['contactable_email']))
             ->when($filters['area_name'] ?? null, fn (Builder $builder, string $areaName) => $builder->whereHas('performanceRecords', fn (Builder $nested) => $nested->where('category_name_snapshot', $areaName)))
             ->when($filters['only_without_history'] ?? null, fn (Builder $builder) => $builder->doesntHave('performanceRecords'));
@@ -188,7 +186,6 @@ class PatientService
             'geocoding_status' => $geocoding['status'],
             'geocoded_at' => $geocodedAt,
             'contactable_sms' => (bool) ($payload['contactable_sms'] ?? false),
-            'contactable_whatsapp' => (bool) ($payload['contactable_whatsapp'] ?? false),
             'contactable_email' => (bool) ($payload['contactable_email'] ?? false),
             'excluded_from_campaigns' => (bool) ($payload['excluded_from_campaigns'] ?? false),
             'notes' => $this->nullableTrimmedString($payload['notes'] ?? null),

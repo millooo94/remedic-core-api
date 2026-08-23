@@ -12,22 +12,12 @@ class ProfessionalAvailabilityService
 {
     public function manualRulesQuery(): Builder
     {
-        return ProfessionalAvailabilityRule::query()
-            ->where(function (Builder $query): void {
-                $query
-                    ->whereNull('source')
-                    ->orWhere('source', 'manual');
-            });
+        return ProfessionalAvailabilityRule::query();
     }
 
     public function manualExceptionsQuery(): Builder
     {
-        return ProfessionalAvailabilityException::query()
-            ->where(function (Builder $query): void {
-                $query
-                    ->whereNull('source')
-                    ->orWhere('source', 'manual');
-            });
+        return ProfessionalAvailabilityException::query();
     }
 
     public function assertRuleDoesNotOverlap(array $payload, ?int $ignoreId = null): void

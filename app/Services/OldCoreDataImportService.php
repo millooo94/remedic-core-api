@@ -27,11 +27,10 @@ use App\Models\Specialization;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Arr;
+use Illuminate\Database\Eloquent\Model as EloquentModel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
-use Illuminate\Database\Eloquent\Model as EloquentModel;
 
 class OldCoreDataImportService
 {
@@ -101,7 +100,6 @@ class OldCoreDataImportService
         'marketing_campaigns',
         'marketing_segment_manual_recipients',
         'marketing_segments',
-        'google_review_requests',
         'cash_movements',
         'expense_record_competences',
         'expense_records',
@@ -133,8 +131,7 @@ class OldCoreDataImportService
 
     public function __construct(
         protected OldCoreDumpAnalyzer $dumpAnalyzer,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  list<string>  $groups
@@ -708,9 +705,7 @@ class OldCoreDataImportService
                 'residence_longitude' => $row['residence_longitude'] ?? null,
                 'geocoding_status' => $this->nullableString($row['geocoding_status'] ?? null),
                 'geocoded_at' => $row['geocoded_at'] ?? null,
-                'whatsapp_phone' => $this->nullableString($row['whatsapp_phone'] ?? null),
                 'contactable_sms' => (bool) ($row['contactable_sms'] ?? true),
-                'contactable_whatsapp' => (bool) ($row['contactable_whatsapp'] ?? true),
                 'contactable_email' => (bool) ($row['contactable_email'] ?? true),
                 'excluded_from_campaigns' => (bool) ($row['excluded_from_campaigns'] ?? false),
                 'notes' => $this->nullableString($row['notes'] ?? null),
@@ -1416,6 +1411,12 @@ class OldCoreDataImportService
         }
 
         foreach ($campaignRows as $row) {
+            if (! in_array(($row['channel'] ?? null), ['sms', 'email', 'all'], true)) {
+                $item['skipped']++;
+
+                continue;
+            }
+
             $segmentId = $this->mappedTargetId('marketing_segment', 'marketing_segments', (int) $row['marketing_segment_id']);
 
             if ($segmentId === null) {
@@ -1451,10 +1452,6 @@ class OldCoreDataImportService
                     'template_key' => $this->nullableString($row['template_key'] ?? null),
                     'subject' => $this->nullableString($row['subject'] ?? null),
                     'message' => $this->safeString($row['message'] ?? null),
-                    'whatsapp_image_path' => $this->nullableString($row['whatsapp_image_path'] ?? null),
-                    'whatsapp_image_original_name' => $this->nullableString($row['whatsapp_image_original_name'] ?? null),
-                    'whatsapp_image_mime_type' => $this->nullableString($row['whatsapp_image_mime_type'] ?? null),
-                    'whatsapp_image_size' => $row['whatsapp_image_size'] ?? null,
                     'status' => $row['status'],
                     'scheduled_at' => $row['scheduled_at'] ?? null,
                     'dispatched_at' => $row['dispatched_at'] ?? null,
@@ -1474,6 +1471,12 @@ class OldCoreDataImportService
         }
 
         foreach ($deliveryRows as $row) {
+            if (! in_array(($row['channel'] ?? null), ['sms', 'email'], true)) {
+                $item['skipped']++;
+
+                continue;
+            }
+
             $campaignId = $this->mappedTargetId('marketing_campaign', 'marketing_campaigns', (int) $row['marketing_campaign_id']);
 
             if ($campaignId === null) {
@@ -1537,7 +1540,7 @@ class OldCoreDataImportService
 
         if ($settingsRows !== []) {
             $row = $settingsRows[0];
-            $settings = ApplicationSetting::query()->first() ?? new ApplicationSetting();
+            $settings = ApplicationSetting::query()->first() ?? new ApplicationSetting;
             $generalPreferences = is_array($settings->general_preferences) ? $settings->general_preferences : [];
 
             $payload = [
@@ -1830,7 +1833,7 @@ class OldCoreDataImportService
         }
 
         if ($this->disableNaturalMatching) {
-            return [new $modelClass(), true];
+            return [new $modelClass, true];
         }
 
         $resolved = $naturalResolver();
@@ -1839,7 +1842,7 @@ class OldCoreDataImportService
             return [$resolved, false];
         }
 
-        return [new $modelClass(), true];
+        return [new $modelClass, true];
     }
 
     /**
@@ -1862,7 +1865,7 @@ class OldCoreDataImportService
         }
 
         if ($this->disableNaturalMatching) {
-            return [new Patient(), true, false];
+            return [new Patient, true, false];
         }
 
         $taxCode = $this->normalizeTaxCode($row['tax_code'] ?? null);
@@ -1874,7 +1877,7 @@ class OldCoreDataImportService
             }
 
             if ($matches->count() > 1) {
-                return [new Patient(), false, true];
+                return [new Patient, false, true];
             }
         }
 
@@ -1887,7 +1890,7 @@ class OldCoreDataImportService
             }
 
             if ($matches->count() > 1) {
-                return [new Patient(), false, true];
+                return [new Patient, false, true];
             }
         }
 
@@ -1905,7 +1908,7 @@ class OldCoreDataImportService
             }
 
             if ($matches->count() > 1) {
-                return [new Patient(), false, true];
+                return [new Patient, false, true];
             }
         }
 
@@ -1921,11 +1924,11 @@ class OldCoreDataImportService
             }
 
             if ($matches->count() > 1) {
-                return [new Patient(), false, true];
+                return [new Patient, false, true];
             }
         }
 
-        return [new Patient(), true, false];
+        return [new Patient, true, false];
     }
 
     protected function matchProfessional(array $row): ?Professional

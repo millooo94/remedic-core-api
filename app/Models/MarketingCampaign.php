@@ -18,10 +18,6 @@ class MarketingCampaign extends Model
         'template_key',
         'subject',
         'message',
-        'whatsapp_image_path',
-        'whatsapp_image_original_name',
-        'whatsapp_image_mime_type',
-        'whatsapp_image_size',
         'status',
         'scheduled_at',
         'dispatched_at',
@@ -47,7 +43,6 @@ class MarketingCampaign extends Model
             'sent_count' => 'integer',
             'failed_count' => 'integer',
             'excluded_count' => 'integer',
-            'whatsapp_image_size' => 'integer',
         ];
     }
 

@@ -12,7 +12,6 @@ class ProfessionalAvailabilityRule extends Model
 
     protected $fillable = [
         'professional_id',
-        'source',
         'weekday',
         'start_time',
         'end_time',
@@ -20,8 +19,6 @@ class ProfessionalAvailabilityRule extends Model
         'valid_until',
         'is_active',
         'notes',
-        'external_hash',
-        'last_synced_at',
     ];
 
     protected function casts(): array
@@ -31,7 +28,6 @@ class ProfessionalAvailabilityRule extends Model
             'valid_from' => 'date',
             'valid_until' => 'date',
             'is_active' => 'boolean',
-            'last_synced_at' => 'datetime',
         ];
     }
 

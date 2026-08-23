@@ -15,8 +15,7 @@ class ProfessionalAvailabilityExceptionController extends Controller
 {
     public function __construct(
         private readonly ProfessionalAvailabilityService $availabilityService,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -77,11 +76,6 @@ class ProfessionalAvailabilityExceptionController extends Controller
             'reason' => ['nullable', 'string', 'max:190'],
         ]);
 
-        return [
-            ...$validated,
-            'source' => 'manual',
-            'external_hash' => null,
-            'last_synced_at' => null,
-        ];
+        return $validated;
     }
 }

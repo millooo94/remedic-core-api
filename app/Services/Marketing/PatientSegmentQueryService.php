@@ -4,16 +4,15 @@ namespace App\Services\Marketing;
 
 use App\Models\Patient;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PatientSegmentQueryService
 {
     public function __construct(
         private readonly PatientGeocodingService $patientGeocodingService,
-    ) {
-    }
+    ) {}
 
     public function decorateWithMarketingMetrics(Builder $query): Builder
     {
@@ -90,7 +89,6 @@ class PatientSegmentQueryService
                 'has_phone' => $this->applyPresenceRule($query, 'phone', $operator),
                 'has_email' => $this->applyPresenceRule($query, 'email', $operator),
                 'contactable_sms' => $this->applyBooleanRule($query, 'contactable_sms', $operator),
-                'contactable_whatsapp' => $this->applyBooleanRule($query, 'contactable_whatsapp', $operator),
                 'contactable_email' => $this->applyBooleanRule($query, 'contactable_email', $operator),
                 'excluded_from_campaigns' => $this->applyBooleanRule($query, 'excluded_from_campaigns', $operator),
                 'last_visit_date' => $this->applyLastVisitRule($query, $operator, $value),
@@ -116,10 +114,6 @@ class PatientSegmentQueryService
                 ->where('contactable_sms', true)
                 ->whereNotNull('phone')
                 ->where('phone', '<>', ''),
-            'whatsapp' => $query
-                ->where('contactable_whatsapp', true)
-                ->whereNotNull('phone')
-                ->where('phone', '<>', ''),
             'email' => $query
                 ->where('contactable_email', true)
                 ->whereNotNull('email')
@@ -128,9 +122,6 @@ class PatientSegmentQueryService
                 $builder
                     ->where(function (Builder $nested): void {
                         $nested->where('contactable_sms', true)->whereNotNull('phone')->where('phone', '<>', '');
-                    })
-                    ->orWhere(function (Builder $nested): void {
-                        $nested->where('contactable_whatsapp', true)->whereNotNull('phone')->where('phone', '<>', '');
                     })
                     ->orWhere(function (Builder $nested): void {
                         $nested->where('contactable_email', true)->whereNotNull('email')->where('email', '<>', '');
@@ -147,7 +138,6 @@ class PatientSegmentQueryService
 
         return [
             'sms' => $patient->contactable_sms && $phone !== '',
-            'whatsapp' => $patient->contactable_whatsapp && $phone !== '',
             'email' => $patient->contactable_email && $email !== '',
         ];
     }

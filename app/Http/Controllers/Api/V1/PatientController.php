@@ -18,15 +18,13 @@ class PatientController extends Controller
         private readonly PatientService $service,
         private readonly PatientImportService $importService,
         private readonly ItalianTaxCodeService $taxCodeService,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->normalizeBooleanQuery($request, [
             'excluded_from_campaigns',
             'contactable_sms',
-            'contactable_whatsapp',
             'contactable_email',
             'only_without_history',
         ]);
@@ -35,7 +33,6 @@ class PatientController extends Controller
             'q' => ['nullable', 'string', 'max:190'],
             'excluded_from_campaigns' => ['nullable', 'boolean'],
             'contactable_sms' => ['nullable', 'boolean'],
-            'contactable_whatsapp' => ['nullable', 'boolean'],
             'contactable_email' => ['nullable', 'boolean'],
             'area_name' => ['nullable', 'string', 'max:120'],
             'only_without_history' => ['nullable', 'boolean'],
@@ -142,7 +139,6 @@ class PatientController extends Controller
             'residence_city' => ['nullable', 'string', 'max:120'],
             'residence_zip' => ['nullable', 'string', 'max:10', 'regex:/^\d{5}$/'],
             'contactable_sms' => ['required', 'boolean'],
-            'contactable_whatsapp' => ['required', 'boolean'],
             'contactable_email' => ['required', 'boolean'],
             'excluded_from_campaigns' => ['required', 'boolean'],
             'notes' => ['nullable', 'string', 'max:5000'],

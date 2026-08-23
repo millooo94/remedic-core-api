@@ -8,17 +8,15 @@ use App\Http\Resources\Api\V1\MarketingCampaignResource;
 use App\Models\MarketingCampaign;
 use App\Services\MarketingCampaignService;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
-use Illuminate\Validation\Validator;
+use Illuminate\Validation\Rule;
 
 class MarketingCampaignController extends Controller
 {
     public function __construct(
         private readonly MarketingCampaignService $service,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -26,7 +24,7 @@ class MarketingCampaignController extends Controller
 
         $filters = $request->validate([
             'q' => ['nullable', 'string', 'max:190'],
-            'channel' => ['nullable', 'in:sms,whatsapp,email,all'],
+            'channel' => ['nullable', 'in:sms,email,all'],
             'status' => ['nullable', 'in:draft,scheduled,queued,sending,sent,partial_failed,failed'],
             'history_only' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'between:1,100'],
@@ -94,33 +92,17 @@ class MarketingCampaignController extends Controller
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:190'],
             'marketing_segment_id' => ['required', 'integer', 'exists:marketing_segments,id'],
-            'channel' => ['required', 'in:sms,whatsapp,email,all'],
+            'channel' => ['required', 'in:sms,email,all'],
             'template_key' => ['nullable', 'string', 'max:80'],
-            'subject' => ['nullable', 'string', 'max:190'],
+            'subject' => [
+                'nullable',
+                'string',
+                'max:190',
+                Rule::requiredIf(fn (): bool => in_array($request->input('channel'), ['email', 'all'], true)),
+            ],
             'message' => ['required', 'string', 'max:5000'],
             'scheduled_at' => ['nullable', 'date'],
-            'remove_whatsapp_image' => ['nullable', 'boolean'],
-            'whatsapp_image' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
-
-        if ($request->hasFile('whatsapp_image')) {
-            /** @var UploadedFile $uploadedFile */
-            $uploadedFile = $request->file('whatsapp_image');
-            $payload['whatsapp_image'] = $uploadedFile;
-        }
-
-        /** @var Validator $validator */
-        $validator = validator($payload, []);
-        $validator->after(function (Validator $validator) use ($payload): void {
-            if (in_array(($payload['channel'] ?? null), ['email', 'all'], true) && blank($payload['subject'] ?? null)) {
-                $validator->errors()->add('subject', 'Per campagne email o tutti i canali l\'oggetto e obbligatorio.');
-            }
-
-            if (! in_array(($payload['channel'] ?? null), ['whatsapp', 'all'], true) && array_key_exists('whatsapp_image', $payload)) {
-                $validator->errors()->add('whatsapp_image', 'L\'immagine WhatsApp puo essere caricata solo se il canale include WhatsApp.');
-            }
-        });
-        $validator->validate();
 
         return $payload;
     }
