@@ -8,7 +8,6 @@ use App\Http\Requests\Api\V1\Services\UpdateServiceRequest;
 use App\Http\Resources\Api\V1\ServiceResource;
 use App\Models\Redirect;
 use App\Models\Service;
-use App\Models\ServiceCategory;
 use App\Models\Specialization;
 use App\Support\Filters\ServiceFilters;
 use Illuminate\Http\JsonResponse;
@@ -109,12 +108,13 @@ class ServiceController extends Controller
         }
 
         $baseSlug = Str::slug($displayName ?: $canonicalName);
-        $resolvedCategory = $this->resolveLegacyCategory($primarySpecialization, $payload);
-        $resolvedCategoryId = $resolvedCategory?->id;
-        $categoryPrefix = $primarySpecialization?->slug ?: ($resolvedCategory?->slug ?: 'servizio');
+        $categoryPrefix = $primarySpecialization?->slug ?: 'servizio';
 
         $service->fill([
-            'category_id' => $resolvedCategoryId,
+            // ServiceCategory is a legacy compatibility reference. Modern writes
+            // derive classification from the primary specialization and preserve
+            // an existing category_id without creating or synchronizing one.
+            'category_id' => $service->exists ? $service->category_id : null,
             'canonical_name' => $canonicalName,
             'display_name' => $displayName,
             'importo_prestazione' => array_key_exists('importo_prestazione', $payload)
@@ -203,39 +203,6 @@ class ServiceController extends Controller
         return Specialization::query()
             ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($categoryName)])
             ->first();
-    }
-
-    private function resolveLegacyCategory(?Specialization $specialization, array $payload): ?ServiceCategory
-    {
-        if ($specialization !== null) {
-            return ServiceCategory::query()->firstOrCreate(
-                ['slug' => $specialization->slug],
-                [
-                    'name' => $specialization->name,
-                    'is_active' => $specialization->is_active,
-                ],
-            );
-        }
-
-        if (! empty($payload['category_id'])) {
-            $existing = ServiceCategory::query()->find($payload['category_id']);
-            if ($existing) {
-                return $existing;
-            }
-        }
-
-        $categoryName = trim((string) ($payload['category_name'] ?? ''));
-        if ($categoryName === '') {
-            return null;
-        }
-
-        return ServiceCategory::query()->firstOrCreate(
-            ['slug' => Str::slug($categoryName)],
-            [
-                'name' => $categoryName,
-                'is_active' => true,
-            ],
-        );
     }
 
     private function buildUniqueSlug(Service $service, string $categoryPrefix, string $baseSlug): string

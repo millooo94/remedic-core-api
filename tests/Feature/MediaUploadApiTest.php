@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AdminPermission;
 use App\Enums\UserRole;
 use App\Models\Professional;
 use App\Models\Specialization;
 use App\Models\User;
+use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -16,6 +18,12 @@ use Tests\TestCase;
 class MediaUploadApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(BackofficeAccessSeeder::class);
+    }
 
     private function createSpecialization(string $name, string $slug): Specialization
     {
@@ -72,6 +80,7 @@ class MediaUploadApiTest extends TestCase
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
+        $admin->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
 
         Sanctum::actingAs($admin);
         $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
@@ -116,6 +125,7 @@ class MediaUploadApiTest extends TestCase
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
+        $admin->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
 
         Sanctum::actingAs($admin);
         $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
@@ -167,6 +177,7 @@ class MediaUploadApiTest extends TestCase
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
+        $admin->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
 
         Sanctum::actingAs($admin);
         $specialization = $this->createSpecialization('Dermatologia', 'dermatologia');
@@ -220,6 +231,7 @@ class MediaUploadApiTest extends TestCase
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
+        $admin->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
 
         Sanctum::actingAs($admin);
         $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
@@ -282,6 +294,7 @@ class MediaUploadApiTest extends TestCase
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
+        $admin->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
 
         Sanctum::actingAs($admin);
         $specialization = $this->createSpecialization('Dermatologia', 'dermatologia');

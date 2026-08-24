@@ -145,10 +145,9 @@ class StoreServiceRequest extends FormRequest
                     fn ($query) => $query->whereKeyNot($existingServiceId),
                 )
                 ->whereRaw('LOWER(TRIM(display_name)) = ?', [mb_strtolower($displayName)])
-                ->whereHas(
-                    'category',
-                    fn ($categoryQuery) => $categoryQuery->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedCategoryName]),
-                );
+                ->whereHas('specializations', fn ($specializationQuery) => $specializationQuery
+                    ->where('specializations.id', $specializationIds->first())
+                    ->where('service_specialization.is_primary', true));
 
             if ($duplicateServiceQuery->exists()) {
                 $validator->errors()->add(

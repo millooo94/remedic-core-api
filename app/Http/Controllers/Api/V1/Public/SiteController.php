@@ -210,6 +210,7 @@ class SiteController extends Controller
 
     public function services(Request $request): JsonResponse
     {
+        // Legacy compatibility adapter. New consumers must use /prestazioni.
         $limit = $this->resolveLimit($request, 100);
         $query = $this->servicesBaseQuery();
 
@@ -386,6 +387,7 @@ class SiteController extends Controller
                     ->orderByDesc('professional_specialization.is_primary')
                     ->orderBy('professional_specialization.sort_order')
                     ->orderBy('specializations.id'),
+                'professional.specializations.webProfile',
                 'professional.professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
@@ -415,6 +417,8 @@ class SiteController extends Controller
             ->with([
                 'sections' => fn ($query) => $query->active()->ordered(),
                 'faqs' => fn ($query) => $query->active()->ordered(),
+                'relatedServices.webProfile',
+                'relatedArticles',
             ])
             ->active()
             ->published()
@@ -651,6 +655,7 @@ class SiteController extends Controller
         $primary = $professional->specializations
             ->sortBy(fn ($item) => [($item->pivot?->is_primary ?? false) ? 0 : 1, $item->pivot?->sort_order ?? PHP_INT_MAX, $item->id])
             ->first();
+        $primaryWebProfile = $primary?->webProfile;
         $services = $professional->professionalServices
             ->filter(fn ($link) => $link->is_active
                 && $link->is_visible_public
@@ -667,7 +672,12 @@ class SiteController extends Controller
                 'avatar_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
                 'honorific_prefix' => $professional->honorific_prefix,
                 'name' => $professional->full_name,
-                'primary_specialization' => $primary ? ['id' => $primary->id, 'name' => $primary->name, 'slug' => $primary->slug] : null,
+                'primary_specialization' => $primary ? [
+                    'id' => $primary->id,
+                    'name' => $primary->name,
+                    'public_slug' => $primaryWebProfile?->public_slug,
+                    'href' => $primaryWebProfile?->is_web_enabled ? '/aree-mediche/'.$primaryWebProfile->public_slug : null,
+                ] : null,
                 'short_bio' => $profile->short_bio,
                 'competencies' => $profile->heroCompetencies->map(fn ($item) => [
                     'id' => $item->id,
@@ -750,6 +760,7 @@ class SiteController extends Controller
     {
         return [
             'slug' => $post->slug,
+            'href' => '/blog/'.$post->slug,
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label ?: 'Blog',
@@ -764,41 +775,25 @@ class SiteController extends Controller
 
     private function mapBlogDetail(BlogPost $post): array
     {
-        $relatedArticles = [];
-        if (is_array($post->related_article_slugs)) {
-            $requestedSlugs = collect($post->related_article_slugs)
-                ->filter(fn ($slug) => is_string($slug) && trim($slug) !== '')
-                ->values();
-            $publishedSlugs = $this->blogPostsBaseQuery()
-                ->whereIn('slug', $requestedSlugs)
-                ->pluck('slug')
-                ->flip();
-            $relatedArticles = $requestedSlugs
-                ->filter(fn (string $slug) => $publishedSlugs->has($slug))
-                ->values()
-                ->all();
-        }
+        $relatedArticles = $post->relatedArticles
+            ->filter(fn (BlogPost $article) => $article->id !== $post->id && $article->isPubliclyAvailable())
+            ->pluck('slug')
+            ->values()
+            ->all();
 
-        $relatedServices = [];
-        if (is_array($post->related_service_slugs)) {
-            $relatedServices = Service::query()
-                ->effectivelyVisible()
-                ->with('webProfile')
-                ->where(fn (Builder $query) => $query
-                    ->whereIn('slug', $post->related_service_slugs)
-                    ->orWhereHas('webProfile', fn (Builder $profile) => $profile->whereIn('public_slug', $post->related_service_slugs)))
-                ->orderBy('display_name')
-                ->get()
-                ->map(fn (Service $service): array => [
-                    'name' => $service->publicLabel(),
-                    'slug' => $service->webProfile->public_slug,
-                ])
-                ->values()
-                ->all();
-        }
+        $relatedServices = $post->relatedServices
+            ->filter(fn (Service $service) => $service->isEffectivelyVisible() && $service->webProfile !== null)
+            ->map(fn (Service $service): array => [
+                'name' => $service->publicLabel(),
+                'slug' => $service->webProfile->public_slug,
+                'href' => '/prestazioni/'.$service->webProfile->public_slug,
+            ])
+            ->values()
+            ->all();
 
         return [
             'slug' => $post->slug,
+            'href' => '/blog/'.$post->slug,
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label ?: 'Blog',
@@ -996,16 +991,9 @@ class SiteController extends Controller
         Request $request,
         ?ProfessionalPublicProfile $profile = null
     ): ?string {
-        $profile ??= $professional->publicProfile;
         $avatarPath = trim((string) ($professional->avatar_path ?? ''));
         if ($avatarPath !== '') {
             return PublicMediaUrl::fromPublicDisk($avatarPath, $request);
-        }
-
-        $profileImagePath = trim((string) ($profile?->profile_image_path ?? ''));
-
-        if ($profileImagePath !== '') {
-            return PublicMediaUrl::fromPublicDisk($profileImagePath, $request);
         }
 
         return null;

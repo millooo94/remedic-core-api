@@ -45,6 +45,7 @@ class ServiceApiTest extends TestCase
             ['slug' => 'cardiologia'],
             ['name' => 'Cardiologia', 'is_active' => true, 'sort_order' => 1],
         );
+        $categoryCountBefore = ServiceCategory::query()->count();
         $specialization = $this->createSpecialization('Cardiologia', 'cardiologia');
 
         $cardioProfessional = Professional::factory()->create([
@@ -63,9 +64,12 @@ class ServiceApiTest extends TestCase
                 ],
             ],
         ])->assertCreated()
-            ->assertJsonPath('category.name', 'Cardiologia')
+            ->assertJsonPath('category_id', null)
+            ->assertJsonPath('category', null)
             ->assertJsonPath('professional_services.0.professional_id', $cardioProfessional->id)
             ->assertJsonPath('importo_prestazione', '125.00');
+
+        $this->assertSame($categoryCountBefore, ServiceCategory::query()->count());
     }
 
     #[Test]

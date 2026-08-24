@@ -96,9 +96,14 @@ Route::prefix('v1')->group(function (): void {
         Route::put('profile', [ProfileController::class, 'update']);
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar']);
         Route::put('profile/password', [ProfileController::class, 'updatePassword']);
-        Route::post('professionals/{professional}/image', [EntityMediaController::class, 'uploadProfessionalImage']);
-        Route::delete('professionals/{professional}/image', [EntityMediaController::class, 'deleteProfessionalImage']);
-        Route::apiResource('professionals', ProfessionalController::class);
+        Route::prefix('professionals')
+            ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value)
+            ->group(function (): void {
+                Route::post('{professional}/image', [EntityMediaController::class, 'uploadProfessionalImage']);
+                Route::delete('{professional}/image', [EntityMediaController::class, 'deleteProfessionalImage']);
+            });
+        Route::apiResource('professionals', ProfessionalController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
         Route::prefix('specializations')
             ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value)
             ->group(function (): void {
@@ -137,13 +142,16 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('appointments', AppointmentController::class);
         Route::apiResource('professional-availabilities', ProfessionalAvailabilityRuleController::class)
             ->parameters(['professional-availabilities' => 'professionalAvailabilityRule'])
-            ->except(['show']);
+            ->except(['show'])
+            ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
         Route::apiResource('professional-availability-exceptions', ProfessionalAvailabilityExceptionController::class)
             ->parameters(['professional-availability-exceptions' => 'availabilityException'])
-            ->except(['show']);
+            ->except(['show'])
+            ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
         Route::apiResource('professional-time-blocks', ProfessionalTimeBlockController::class)
             ->parameters(['professional-time-blocks' => 'professionalTimeBlock'])
-            ->except(['show']);
+            ->except(['show'])
+            ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
         Route::post('marketing-segments/preview', [MarketingSegmentController::class, 'preview']);
         Route::get('marketing-segments/{marketingSegment}/campaign-preview', [MarketingSegmentController::class, 'campaignPreview']);
         Route::apiResource('marketing-segments', MarketingSegmentController::class);
@@ -171,9 +179,13 @@ Route::prefix('v1')->group(function (): void {
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
         Route::get('dashboard/monthly-trends', [DashboardController::class, 'monthlyTrends']);
 
-        Route::get('professional-statements/{professional}', [ProfessionalStatementController::class, 'show']);
-        Route::get('professional-statements/{professional}/pdf', [ProfessionalStatementController::class, 'pdf']);
-        Route::get('professional-statements/{professional}/xlsx', [ProfessionalStatementController::class, 'excel']);
+        Route::prefix('professional-statements')
+            ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value)
+            ->group(function (): void {
+                Route::get('{professional}', [ProfessionalStatementController::class, 'show']);
+                Route::get('{professional}/pdf', [ProfessionalStatementController::class, 'pdf']);
+                Route::get('{professional}/xlsx', [ProfessionalStatementController::class, 'excel']);
+            });
 
         Route::get('settings', [SettingsController::class, 'show']);
         Route::put('settings', [SettingsController::class, 'update']);

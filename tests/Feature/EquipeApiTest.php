@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AdminPermission;
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use App\Models\Professional;
@@ -38,7 +39,9 @@ class EquipeApiTest extends TestCase
     #[Test]
     public function professional_is_the_master_for_identity_credentials_and_career(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
+        Sanctum::actingAs($user);
         $specialization = Specialization::query()->firstOrCreate(
             ['slug' => 'cardiologia'],
             ['name' => 'Cardiologia', 'is_active' => true, 'is_web_active' => true]

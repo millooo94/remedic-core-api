@@ -73,6 +73,10 @@ class PageController extends Controller
 
     public function update(UpdatePageRequest $request, Page $page): PageResource
     {
+        if ($page->isLegacyCheckupPage()) {
+            abort(Response::HTTP_CONFLICT, 'La pagina Check-up legacy è protetta e non può essere modificata.');
+        }
+
         $page = DB::transaction(fn () => $this->persist($page, $request->validated()));
 
         return new PageResource($page->load(['sections', 'faqs']));

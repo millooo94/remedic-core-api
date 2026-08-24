@@ -18,6 +18,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Support\Filters\PerformanceRecordFilters;
 use App\Support\Numbers\ScaledNumber;
+use App\Support\Services\PrimarySpecializationResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -102,7 +103,9 @@ class PerformanceRecordService
     {
         $patientIds = $this->resolvePatientIds($payload);
         $professional = Professional::query()->findOrFail($payload['professional_id']);
-        $service = isset($payload['service_id']) ? Service::query()->with('category')->findOrFail($payload['service_id']) : null;
+        $service = isset($payload['service_id'])
+            ? Service::query()->with(['category', 'specializations'])->findOrFail($payload['service_id'])
+            : null;
         $patientsById = Patient::query()
             ->whereIn('id', $patientIds)
             ->get()
@@ -237,6 +240,10 @@ class PerformanceRecordService
             [$professionalAmount, $centerAmount] = [$centerAmount, $professionalAmount];
         }
 
+        $primarySpecialization = $service === null
+            ? null
+            : app(PrimarySpecializationResolver::class)->resolve($service);
+
         return [
             'attributes' => [
                 'performed_at' => $performedAt->toDateString(),
@@ -244,7 +251,9 @@ class PerformanceRecordService
                 'patient_id' => $patientIds[0] ?? null,
                 'professional_id' => $professional->id,
                 'professional_name_snapshot' => $professional->full_name,
-                'category_name_snapshot' => $service?->category?->name ?: ($manualArea !== '' ? $manualArea : $professional->area_name),
+                'category_name_snapshot' => $primarySpecialization?->name
+                    ?: $service?->category?->name
+                    ?: ($manualArea !== '' ? $manualArea : $professional->area_name),
                 'service_id' => $service?->id,
                 'service_name_snapshot' => $serviceName,
                 'quantity' => $baseAmounts['quantity'],

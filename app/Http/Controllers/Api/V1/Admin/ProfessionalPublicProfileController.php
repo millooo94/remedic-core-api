@@ -70,9 +70,7 @@ class ProfessionalPublicProfileController extends Controller
         $profile = DB::transaction(function () use ($request): ProfessionalPublicProfile {
             $payload = $request->validated();
             $contentPayload = $this->extractContentPayload($payload);
-            $profile = ProfessionalPublicProfile::query()->create($payload + [
-                'is_active' => (bool) ($payload['is_web_enabled'] ?? false),
-            ]);
+            $profile = ProfessionalPublicProfile::query()->create($payload);
             $this->content->initializeSections($profile);
             $this->content->syncTypedContent($profile, $contentPayload);
 
@@ -99,7 +97,6 @@ class ProfessionalPublicProfileController extends Controller
             $payload = $request->validated();
             $contentPayload = $this->extractContentPayload($payload);
             $professionalPublicProfile->fill($payload);
-            $professionalPublicProfile->is_active = (bool) ($professionalPublicProfile->is_web_enabled ?? false);
             $professionalPublicProfile->save();
             $this->content->initializeSections($professionalPublicProfile);
             $this->content->syncTypedContent($professionalPublicProfile, $contentPayload);

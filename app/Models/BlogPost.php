@@ -8,6 +8,7 @@ use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class BlogPost extends Model
 {
@@ -18,8 +19,13 @@ class BlogPost extends Model
         'legacy_backend_id',
         'title',
         'slug',
+        'subtitle',
+        'category_label',
         'excerpt',
+        'intro_text',
         'cover_image',
+        'author_name',
+        'reviewer_name',
         'seo_title',
         'seo_description',
         'seo_h1',
@@ -27,7 +33,6 @@ class BlogPost extends Model
         'robots',
         'og_title',
         'og_description',
-        'related_article_slugs',
         'is_active',
         'published_at',
     ];
@@ -38,7 +43,6 @@ class BlogPost extends Model
             'legacy_backend_id' => 'integer',
             'robots' => RobotsValue::class,
             'is_active' => 'boolean',
-            'related_article_slugs' => 'array',
             'published_at' => 'datetime',
         ];
     }
@@ -75,6 +79,22 @@ class BlogPost extends Model
     public function isPubliclyAvailable(): bool
     {
         return (bool) $this->is_active && $this->isPublished();
+    }
+
+    public function relatedServices(): BelongsToMany
+    {
+        return $this->belongsToMany(Service::class, 'blog_post_services')
+            ->withPivot('sort_order')
+            ->orderByPivot('sort_order')
+            ->orderBy('services.id');
+    }
+
+    public function relatedArticles(): BelongsToMany
+    {
+        return $this->belongsToMany(self::class, 'blog_post_related_posts', 'blog_post_id', 'related_blog_post_id')
+            ->withPivot('sort_order')
+            ->orderByPivot('sort_order')
+            ->orderBy('blog_posts.id');
     }
 
     public function publicationState(): PublicationState

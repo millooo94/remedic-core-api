@@ -8,9 +8,7 @@ use App\Models\BlogPost;
 use App\Models\Page;
 use App\Models\User;
 use Database\Seeders\BackofficeAccessSeeder;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\Models\Role;
@@ -128,21 +126,17 @@ class StateNormalizationApiTest extends TestCase
     #[Test]
     public function related_blog_articles_include_only_effectively_published_posts(): void
     {
-        Schema::table('blog_posts', function (Blueprint $table): void {
-            $table->json('related_article_slugs')->nullable();
-        });
-
         $published = $this->blogPost('related-published', true, now()->subDay());
         $this->blogPost('related-draft', true, null);
         $this->blogPost('related-scheduled', true, now()->addDay());
         $this->blogPost('related-suspended', false, now()->subDay());
         $source = $this->blogPost('source-post', true, now()->subDay());
-        $source->update(['related_article_slugs' => [
-            $published->slug,
-            'related-draft',
-            'related-scheduled',
-            'related-suspended',
-        ]]);
+        $source->relatedArticles()->attach([
+            $published->id => ['sort_order' => 0],
+            BlogPost::query()->where('slug', 'related-draft')->value('id') => ['sort_order' => 1],
+            BlogPost::query()->where('slug', 'related-scheduled')->value('id') => ['sort_order' => 2],
+            BlogPost::query()->where('slug', 'related-suspended')->value('id') => ['sort_order' => 3],
+        ]);
 
         $this->getJson('/api/v1/public/blog-posts/source-post')
             ->assertOk()

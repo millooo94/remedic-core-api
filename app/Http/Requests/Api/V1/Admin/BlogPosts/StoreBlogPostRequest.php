@@ -18,8 +18,13 @@ class StoreBlogPostRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:blog_posts,slug'],
+            'subtitle' => ['nullable', 'string', 'max:255'],
+            'category_label' => ['nullable', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string'],
+            'intro_text' => ['nullable', 'string'],
             'cover_image' => ['nullable', 'string', 'max:255'],
+            'author_name' => ['nullable', 'string', 'max:255'],
+            'reviewer_name' => ['nullable', 'string', 'max:255'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string'],
             'seo_h1' => ['nullable', 'string', 'max:255'],
@@ -43,6 +48,10 @@ class StoreBlogPostRequest extends FormRequest
             'faqs.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'faqs.*.is_active' => ['sometimes', 'boolean'],
             'faqs.*.is_structured_data' => ['sometimes', 'boolean'],
+            'related_service_ids' => ['sometimes', 'array'],
+            'related_service_ids.*' => ['required', 'integer', 'distinct', 'exists:services,id'],
+            'related_article_ids' => ['sometimes', 'array'],
+            'related_article_ids.*' => ['required', 'integer', 'distinct', 'exists:blog_posts,id'],
         ];
     }
 }

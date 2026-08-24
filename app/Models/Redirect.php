@@ -21,6 +21,8 @@ class Redirect extends Model
 
     public const SOURCE_TYPE_CHECKUP_WEB_PROFILE = 'checkup_web_profile';
 
+    public const SOURCE_TYPE_BLOG_POST = 'blog_post';
+
     protected $fillable = [
         'legacy_backend_id',
         'from_path',

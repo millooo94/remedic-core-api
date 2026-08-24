@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AdminPermission;
 use App\Enums\UserRole;
 use App\Models\Specialization;
 use App\Models\User;
+use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
@@ -13,6 +15,12 @@ use Tests\TestCase;
 class ProfessionalValidationApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(BackofficeAccessSeeder::class);
+    }
 
     private function specializationPayload(): array
     {
@@ -36,6 +44,7 @@ class ProfessionalValidationApiTest extends TestCase
     public function it_rejects_iban_values_that_become_invalid_after_normalization(): void
     {
         $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
         Sanctum::actingAs($user);
 
         $this->postJson('/api/v1/professionals', [
@@ -53,6 +62,7 @@ class ProfessionalValidationApiTest extends TestCase
     public function it_requires_company_name_when_subject_type_is_company(): void
     {
         $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
         Sanctum::actingAs($user);
 
         $this->postJson('/api/v1/professionals', [
@@ -67,6 +77,7 @@ class ProfessionalValidationApiTest extends TestCase
     public function it_rejects_company_name_when_subject_type_is_individual(): void
     {
         $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->givePermissionTo(AdminPermission::MANAGE_DOCTORS->value);
         Sanctum::actingAs($user);
 
         $this->postJson('/api/v1/professionals', [
