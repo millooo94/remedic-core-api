@@ -11,6 +11,7 @@ final class EquipeSectionDefinition
         'competencies' => 'Competenze cliniche',
         'career' => 'Percorso professionale',
         'scientific_activity' => 'Attività scientifica',
+        'services' => 'Prestazioni',
     ];
 
     public static function keys(): array

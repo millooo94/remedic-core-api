@@ -7,6 +7,17 @@ use Illuminate\Validation\Rule;
 
 class UpdateSpecializationRequest extends StoreSpecializationRequest
 {
+    protected function prepareForValidation(): void
+    {
+        parent::prepareForValidation();
+
+        /** @var Specialization|null $specialization */
+        $specialization = $this->route('specialization');
+        if ($specialization !== null) {
+            $this->merge(['slug' => $specialization->slug]);
+        }
+    }
+
     public function rules(): array
     {
         /** @var Specialization|null $specialization */

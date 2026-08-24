@@ -33,7 +33,11 @@ class ProfessionalPublicProfileResource extends JsonResource
             'primary_specialization' => $primary ? $this->specialization($primary) : null,
             'specializations' => $specializations->map(fn ($item) => $this->specialization($item))->all(),
             'services' => $professional->professionalServices
-                ->filter(fn ($link) => $link->is_active && $link->service !== null)
+                ->filter(fn ($link) => $link->is_active
+                    && $link->is_visible_public
+                    && $link->service !== null
+                    && $link->service->is_active
+                    && $link->service->is_web_active)
                 ->map(fn ($link) => [
                     'id' => $link->service->id,
                     'name' => $link->service->publicLabel(),
@@ -90,6 +94,8 @@ class ProfessionalPublicProfileResource extends JsonResource
                     'label' => EquipeSectionDefinition::DEFINITIONS[$section->key],
                     'sort_order' => (int) $section->sort_order,
                     'is_active' => (bool) $section->is_active,
+                    'title' => $section->key === 'services' ? $section->title : null,
+                    'intro' => $section->key === 'services' ? $section->content : null,
                 ])->values()->all(),
             'approach_principles' => $this->approachPrinciples->map(fn ($item) => [
                 'id' => $item->id,

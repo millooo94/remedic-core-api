@@ -14,6 +14,7 @@ use App\Models\Service;
 use App\Models\SiteSetting;
 use App\Models\Specialization;
 use App\Models\User;
+use App\Support\MedicalAreas\MedicalAreaSectionDefinition;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -497,22 +498,21 @@ class AdminBackofficeApiTest extends TestCase
         ])->assertMethodNotAllowed();
 
         $this->putJson("/api/v1/admin/specializations/{$specializationId}", [
-            'name' => 'Cardiologia clinica',
-            'slug' => 'cardiologia-master-test',
+            'slug' => 'cardiologia-pubblica-test',
             'short_description' => 'Descrizione aggiornata',
-            'intro_text' => '<p>Intro aggiornata</p>',
-            'local_intro_text' => '<p>Local intro aggiornata</p>',
-            'local_area_notes' => 'Area note aggiornate',
             'is_local_seo_enabled' => false,
-            'is_web_active' => false,
-            'sort_order' => 5,
-            'sections' => [],
+            'is_web_enabled' => false,
+            'list_sort_order' => 5,
+            'sections' => collect(MedicalAreaSectionDefinition::DEFINITIONS)
+                ->map(fn (string $label, string $key) => [
+                    'key' => $key, 'title' => $label, 'intro' => null, 'is_active' => true, 'data' => [],
+                ])->values()->all(),
             'faqs' => [],
         ])->assertOk()
-            ->assertJsonPath('name', 'Cardiologia master test')
-            ->assertJsonPath('is_local_seo_enabled', false)
-            ->assertJsonPath('is_active', true)
-            ->assertJsonPath('is_web_active', false);
+            ->assertJsonPath('master.name', 'Cardiologia master test')
+            ->assertJsonPath('web_profile.is_local_seo_enabled', false)
+            ->assertJsonPath('master.is_active', true)
+            ->assertJsonPath('web_profile.is_web_enabled', false);
 
         $this->deleteJson("/api/v1/admin/specializations/{$specializationId}")
             ->assertMethodNotAllowed();
@@ -521,7 +521,7 @@ class AdminBackofficeApiTest extends TestCase
             'id' => $specializationId,
             'name' => 'Cardiologia master test',
             'is_active' => true,
-            'is_web_active' => false,
+            'sort_order' => 3,
         ]);
     }
 

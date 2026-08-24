@@ -15,6 +15,8 @@ class Redirect extends Model
 
     public const SOURCE_TYPE_EQUIPE_PROFILE = 'equipe_profile';
 
+    public const SOURCE_TYPE_MEDICAL_AREA = 'medical_area';
+
     protected $fillable = [
         'legacy_backend_id',
         'from_path',

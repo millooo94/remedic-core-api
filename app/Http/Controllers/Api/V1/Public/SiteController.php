@@ -12,7 +12,8 @@ use App\Models\Redirect;
 use App\Models\Section;
 use App\Models\Service;
 use App\Models\SiteSetting;
-use App\Models\Specialization;
+use App\Models\SpecializationWebProfile;
+use App\Services\MedicalAreaPublicService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Services\PrimarySpecializationResolver;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,10 +23,12 @@ use Illuminate\Support\Facades\Schema;
 
 class SiteController extends Controller
 {
+    public function __construct(private readonly MedicalAreaPublicService $medicalAreaContent) {}
+
     public function settings(Request $request): JsonResponse
     {
         $settings = SiteSetting::current();
-        $specializations = $this->specializationsBaseQuery()
+        $specializations = $this->medicalAreaContent->query()
             ->limit(7)
             ->get();
 
@@ -34,23 +37,23 @@ class SiteController extends Controller
                 'settings' => $this->mapSiteSettings($settings, $request),
                 'navigation' => [
                     ['label' => 'Chi siamo', 'href' => '/chi-siamo'],
-                    ['label' => 'Specializzazioni', 'href' => '/specializzazioni'],
+                    ['label' => 'Aree mediche', 'href' => '/aree-mediche'],
                     ['label' => 'Equipe', 'href' => '/equipe'],
                     ['label' => 'Blog', 'href' => '/blog'],
                     ['label' => 'Contatti', 'href' => '/contatti'],
                 ],
                 'footer_navigation' => [
                     ['label' => 'Chi siamo', 'href' => '/chi-siamo'],
-                    ['label' => 'Specializzazioni', 'href' => '/specializzazioni'],
+                    ['label' => 'Aree mediche', 'href' => '/aree-mediche'],
                     ['label' => 'Prestazioni', 'href' => '/prestazioni'],
                     ['label' => 'Equipe', 'href' => '/equipe'],
                     ['label' => 'Medicina estetica', 'href' => '/medicina-estetica'],
                     ['label' => 'Blog', 'href' => '/blog'],
                     ['label' => 'Contatti', 'href' => '/contatti'],
                 ],
-                'footer_specializations' => $specializations->map(fn (Specialization $specialization): array => [
-                    'label' => $specialization->name,
-                    'href' => '/specializzazioni/'.$specialization->slug,
+                'footer_specializations' => $specializations->map(fn (SpecializationWebProfile $profile): array => [
+                    'label' => $profile->specialization->name,
+                    'href' => '/aree-mediche/'.$profile->slug,
                 ])->values()->all(),
             ],
         ]);
@@ -58,7 +61,7 @@ class SiteController extends Controller
 
     public function home(Request $request): JsonResponse
     {
-        $specializations = $this->specializationsBaseQuery()->limit(8)->get();
+        $specializations = $this->medicalAreaContent->query()->limit(8)->get();
         $servicesQuery = $this->servicesBaseQuery();
 
         if ($this->servicesHaveFeaturedFlag()) {
@@ -78,7 +81,7 @@ class SiteController extends Controller
 
         return response()->json([
             'data' => [
-                'specializations' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization, $request))->values()->all(),
+                'specializations' => $specializations->map(fn (SpecializationWebProfile $profile): array => $this->medicalAreaContent->listItem($profile, $request))->values()->all(),
                 'services' => $services->map(fn (Service $service): array => $this->mapServiceListItem($service, $request))->values()->all(),
                 'professionals' => $professionals,
                 'blog_posts' => $blogPosts->map(fn (BlogPost $post): array => $this->mapBlogListItem($post))->values()->all(),
@@ -94,15 +97,15 @@ class SiteController extends Controller
             return response()->json(['data' => ['results' => []]]);
         }
 
-        $specializations = $this->specializationsBaseQuery()
-            ->where('name', 'like', "%{$query}%")
+        $specializations = $this->medicalAreaContent->query()
+            ->whereHas('specialization', fn (Builder $master) => $master->where('name', 'like', "%{$query}%"))
             ->limit(6)
             ->get()
-            ->map(fn (Specialization $specialization): array => [
-                'type' => 'specialization',
-                'title' => $specialization->name,
+            ->map(fn (SpecializationWebProfile $profile): array => [
+                'type' => 'medical_area',
+                'title' => $profile->specialization->name,
                 'subtitle' => null,
-                'href' => '/specializzazioni/'.$specialization->slug,
+                'href' => '/aree-mediche/'.$profile->slug,
             ]);
 
         $services = $this->servicesBaseQuery()
@@ -158,36 +161,40 @@ class SiteController extends Controller
     {
         $limit = $this->resolveLimit($request, 50);
 
-        $specializations = $this->specializationsBaseQuery()
-            ->withCount([
-                'services',
-                'professionals as professionals_count' => fn (Builder $query) => $query
-                    ->where('professionals.is_active', true)
-                    ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true)),
-            ])
-            ->limit($limit)
-            ->get();
+        $profiles = $this->medicalAreaContent->query()->limit($limit)->get();
 
         return response()->json([
-            'data' => $specializations->map(fn (Specialization $specialization): array => $this->mapSpecializationListItem($specialization, $request))->values()->all(),
+            'data' => $profiles->map(fn (SpecializationWebProfile $profile): array => $this->medicalAreaContent->listItem($profile, $request))->values()->all(),
         ]);
     }
 
     public function specialization(Request $request, string $slug): JsonResponse
     {
-        $specialization = $this->specializationsBaseQuery()
-            ->withCount([
-                'services',
-                'professionals as professionals_count' => fn (Builder $query) => $query
-                    ->where('professionals.is_active', true)
-                    ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true)),
-            ])
+        $profile = $this->medicalAreaContent->query()
             ->where('slug', $slug)
             ->firstOrFail();
 
         return response()->json([
-            'data' => $this->mapSpecializationDetail($specialization, $request),
+            'data' => $this->legacyMedicalAreaDetail($profile, $request),
         ]);
+    }
+
+    public function medicalAreas(Request $request): JsonResponse
+    {
+        $profiles = $this->medicalAreaContent->query()
+            ->limit($this->resolveLimit($request, 50))
+            ->get();
+
+        return response()->json([
+            'data' => $profiles->map(fn (SpecializationWebProfile $profile): array => $this->medicalAreaContent->listItem($profile, $request))->values()->all(),
+        ]);
+    }
+
+    public function medicalArea(Request $request, string $slug): JsonResponse
+    {
+        $profile = $this->medicalAreaContent->query()->where('slug', $slug)->firstOrFail();
+
+        return response()->json(['data' => $this->medicalAreaContent->detail($profile, $request)]);
     }
 
     public function services(Request $request): JsonResponse
@@ -311,36 +318,6 @@ class SiteController extends Controller
         return max(1, min(100, $request->integer('limit', $default)));
     }
 
-    private function specializationsBaseQuery(): Builder
-    {
-        return Specialization::query()
-            ->with([
-                'sections' => fn ($query) => $query->active()->ordered(),
-                'faqs' => fn ($query) => $query->active()->ordered(),
-                'services' => fn ($query) => $query
-                    ->where('services.is_active', true)
-                    ->where('services.is_web_active', true)
-                    ->orderBy('service_specialization.sort_order')
-                    ->orderBy('display_name'),
-                'services.specializations' => fn ($query) => $query
-                    ->where('specializations.is_active', true)
-                    ->where('specializations.is_web_active', true)
-                    ->orderBy('sort_order')
-                    ->orderBy('name'),
-                'professionals' => fn ($query) => $query
-                    ->where('professionals.is_active', true)
-                    ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true))
-                    ->orderBy('professional_specialization.sort_order')
-                    ->orderBy('full_name'),
-                'professionals.publicProfile' => fn ($query) => $query->where('is_web_enabled', true),
-                'professionals.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('sort_order')->orderBy('name'),
-            ])
-            ->where('is_active', true)
-            ->where('is_web_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('name');
-    }
-
     private function servicesBaseQuery(): Builder
     {
         $query = Service::query()
@@ -350,7 +327,7 @@ class SiteController extends Controller
                 'faqs' => fn ($query) => $query->active()->ordered(),
                 'specializations' => fn ($query) => $query
                     ->where('specializations.is_active', true)
-                    ->where('specializations.is_web_active', true)
+                    ->whereHas('webProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true))
                     ->orderBy('service_specialization.sort_order')
                     ->orderBy('name'),
                 'professionalServices' => fn ($query) => $query
@@ -365,7 +342,7 @@ class SiteController extends Controller
                 'professionalServices.professional.publicProfile' => fn ($query) => $query->where('is_web_enabled', true),
                 'professionalServices.professional.specializations' => fn ($query) => $query
                     ->where('specializations.is_active', true)
-                    ->where('specializations.is_web_active', true)
+                    ->whereHas('webProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true))
                     ->orderBy('sort_order')
                     ->orderBy('name'),
             ])
@@ -389,7 +366,7 @@ class SiteController extends Controller
                 'professional' => fn ($query) => $query->where('is_active', true),
                 'professional.specializations' => fn ($query) => $query
                     ->where('specializations.is_active', true)
-                    ->where('specializations.is_web_active', true)
+                    ->whereHas('webProfile', fn (Builder $area) => $area->where('is_web_enabled', true))
                     ->orderByDesc('professional_specialization.is_primary')
                     ->orderBy('professional_specialization.sort_order')
                     ->orderBy('specializations.id'),
@@ -554,100 +531,40 @@ class SiteController extends Controller
         ];
     }
 
-    private function mapSpecializationListItem(Specialization $specialization, Request $request): array
+    private function legacyMedicalAreaDetail(SpecializationWebProfile $profile, Request $request): array
     {
-        return [
-            'slug' => $specialization->slug,
-            'name' => $specialization->name,
-            'description' => $specialization->short_description ?: $specialization->intro_text ?: '',
-            'short_description' => $specialization->short_description,
-            'services_count' => $specialization->services_count ?? $specialization->services->count(),
-            'professionals_count' => $specialization->professionals_count ?? $specialization->professionals->count(),
-            'icon_url' => PublicMediaUrl::fromPublicDisk($specialization->icon_path, $request),
-            'featured_image_url' => PublicMediaUrl::fromPublicDisk($specialization->featured_image_path, $request),
-            'is_active' => (bool) $specialization->is_active,
-        ];
-    }
-
-    private function mapSpecializationDetail(Specialization $specialization, Request $request): array
-    {
-        $services = $specialization->services
-            ->filter(fn (Service $service) => (bool) $service->is_active && (bool) $service->is_web_active)
-            ->values();
-        $professionals = $specialization->professionals->values();
-
-        $introBlocks = $this->buildSpecializationIntroBlocks($specialization);
-        $mainService = $services->first();
+        $canonical = $this->medicalAreaContent->detail($profile, $request);
+        $sections = collect($canonical['sections'])->keyBy('key');
+        $services = collect($sections->get('services')['data']['items'] ?? []);
+        $professionals = collect($sections->get('equipe')['data']['items'] ?? []);
 
         return [
-            'slug' => $specialization->slug,
-            'name' => $specialization->name,
-            'description' => $specialization->intro_text ?: $specialization->short_description ?: '',
-            'short_description' => $specialization->short_description ?: '',
-            'icon_url' => PublicMediaUrl::fromPublicDisk($specialization->icon_path, $request),
-            'featured_image_url' => PublicMediaUrl::fromPublicDisk($specialization->featured_image_path, $request),
+            'slug' => $canonical['slug'],
+            'name' => $canonical['name'],
+            'description' => $canonical['short_description'],
+            'short_description' => $canonical['short_description'],
+            'icon_url' => $canonical['icon_url'],
+            'featured_image_url' => $canonical['featured_image_url'],
             'procedures' => $services->count(),
-            'intro' => $introBlocks,
-            'main_performance' => $mainService ? [
-                'slug' => $mainService->slug,
-                'name' => $mainService->publicLabel(),
-                'description' => $mainService->short_description ?: $mainService->description ?: '',
-            ] : null,
-            'other_performances' => $services->skip(1)->map(fn (Service $service): array => [
-                'slug' => $service->slug,
-                'name' => $service->publicLabel(),
-                'description' => $service->short_description ?: $service->description ?: '',
-            ])->values()->all(),
-            'doctors' => $professionals->map(function (Professional $professional) use ($request): array {
-                return [
-                    'slug' => $this->resolveProfessionalSlug($professional),
-                    'name' => $this->resolveProfessionalDisplayName($professional),
-                    'specialization' => $this->resolveProfessionalSpecialization($professional),
-                    'description' => $this->resolveProfessionalShortBio($professional),
-                    'image_url' => $this->resolveProfessionalImageUrl($professional, $request),
-                    'main_procedures' => $professional->professionalServices
-                        ->filter(fn ($link) => $link->service !== null && $link->service->is_active && $link->service->is_web_active)
-                        ->take(3)
-                        ->map(fn ($link) => $link->service->publicLabel())
-                        ->values()
-                        ->all(),
-                ];
-            })->values()->all(),
-            'faq' => $specialization->faqs->map(fn (FaqItem $faq): array => [
-                'question' => $faq->question,
-                'answer' => $faq->answer,
-            ])->values()->all(),
-            'seo' => [
-                'title' => $specialization->seo_title,
-                'description' => $specialization->seo_description,
-                'h1' => $specialization->seo_h1,
-                'canonical_url' => $specialization->canonical_url,
-                'robots' => $specialization->robots?->value ?? $specialization->robots,
-                'og_title' => $specialization->og_title,
-                'og_description' => $specialization->og_description,
+            'intro' => [
+                'what_is' => [
+                    'title' => $sections->get('scope')['data']['title'] ?? 'Di cosa si occupa '.$canonical['name'],
+                    'content' => $sections->get('scope')['data']['intro'] ?? '',
+                ],
+                'when' => [
+                    'title' => $sections->get('when_useful')['data']['title'] ?? 'Quando può essere utile',
+                    'content' => $sections->get('when_useful')['data']['intro'] ?? '',
+                ],
             ],
-        ];
-    }
-
-    private function buildSpecializationIntroBlocks(Specialization $specialization): array
-    {
-        $whatIs = $this->findSectionByKeys($specialization->sections, ['what_is', 'whatis', 'overview', 'cosa_fa']);
-        $when = $this->findSectionByKeys($specialization->sections, ['when', 'when_to_book', 'quando_prenotare']);
-        $remedy = $this->findSectionByKeys($specialization->sections, ['remedy', 'why_remedic', 'come_ti_accompagna_remedic']);
-
-        return [
-            'what_is' => [
-                'title' => $whatIs?->title ?: 'Di cosa si occupa '.$specialization->name,
-                'content' => $whatIs?->content ?: ($specialization->intro_text ?: $specialization->short_description ?: ''),
-            ],
-            'when' => [
-                'title' => $when?->title ?: 'Quando può essere utile',
-                'content' => $when?->content ?: ($specialization->local_intro_text ?: $specialization->short_description ?: ''),
-            ],
-            'remedy' => [
-                'title' => $remedy?->title ?: 'Come ti accompagna Remedic',
-                'content' => $remedy?->content ?: ($specialization->local_area_notes ?: $specialization->short_description ?: ''),
-            ],
+            'main_performance' => $services->first(),
+            'other_performances' => $services->skip(1)->values()->all(),
+            'doctors' => $professionals->all(),
+            'faq' => collect($sections->get('faqs')['data']['items'] ?? [])->map(fn ($faq) => [
+                'question' => $faq['question'],
+                'answer' => $faq['answer'],
+            ])->all(),
+            'sections' => $canonical['sections'],
+            'seo' => $canonical['seo'],
         ];
     }
 
@@ -761,7 +678,7 @@ class SiteController extends Controller
         $sections = $profile?->sections ?? collect();
 
         $services = $professional->professionalServices
-            ->filter(fn ($link) => $link->service !== null && $link->service->is_active && $link->service->is_web_active)
+            ->filter(fn ($link) => $link->is_active && $link->is_visible_public && $link->service !== null && $link->service->is_active && $link->service->is_web_active)
             ->map(fn ($link): array => [
                 'name' => $link->service->publicLabel(),
                 'description' => $link->service->short_description ?: $link->service->description ?: '',
@@ -812,6 +729,17 @@ class SiteController extends Controller
         $primary = $professional->specializations
             ->sortBy(fn ($item) => [($item->pivot?->is_primary ?? false) ? 0 : 1, $item->pivot?->sort_order ?? PHP_INT_MAX, $item->id])
             ->first();
+        $services = $professional->professionalServices
+            ->filter(fn ($link) => $link->is_active
+                && $link->is_visible_public
+                && $link->service !== null
+                && $link->service->is_active
+                && $link->service->is_web_active)
+            ->map(fn ($link) => [
+                'slug' => $link->service->slug,
+                'name' => $link->service->publicLabel(),
+                'short_description' => $link->service->short_description ?: $link->service->description ?: '',
+            ])->values();
 
         $payloads = [
             'hero' => [
@@ -866,6 +794,9 @@ class SiteController extends Controller
                     'url' => $item->url,
                 ])->values()->all(),
             ],
+            'services' => [
+                'items' => $services->all(),
+            ],
         ];
 
         $renderable = [
@@ -875,6 +806,7 @@ class SiteController extends Controller
             'competencies' => $profile->competencies->isNotEmpty(),
             'career' => $professional->careerExperiences->isNotEmpty(),
             'scientific_activity' => $profile->scientificActivities->isNotEmpty(),
+            'services' => $services->isNotEmpty(),
         ];
 
         return $profile->sections
@@ -883,7 +815,13 @@ class SiteController extends Controller
             ->map(fn ($section) => [
                 'key' => $section->key,
                 'order' => (int) $section->sort_order,
-                'data' => $payloads[$section->key],
+                'data' => $section->key === 'services'
+                    ? [
+                        'title' => $section->title ?: 'Prestazioni',
+                        'intro' => $section->content,
+                        ...$payloads[$section->key],
+                    ]
+                    : $payloads[$section->key],
             ])->values()->all();
     }
 

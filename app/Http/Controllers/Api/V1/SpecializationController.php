@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\Specializations\UpdateSpecializationRequest;
 use App\Http\Resources\Api\V1\SpecializationResource;
 use App\Models\Specialization;
 use App\Services\ManagedMediaService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -86,8 +87,20 @@ class SpecializationController extends Controller
         return new SpecializationResource($specialization->loadCount(['professionals', 'services']));
     }
 
-    public function destroy(Specialization $specialization): Response
+    public function destroy(Specialization $specialization): Response|JsonResponse
     {
+        $specialization->loadCount(['professionals', 'services'])->load('webProfile');
+        if ($specialization->professionals_count > 0 || $specialization->services_count > 0 || $specialization->webProfile !== null) {
+            return response()->json([
+                'message' => 'La specializzazione è referenziata e non può essere eliminata.',
+                'dependencies' => [
+                    'professionals' => (int) $specialization->professionals_count,
+                    'services' => (int) $specialization->services_count,
+                    'web_profile' => $specialization->webProfile !== null,
+                ],
+            ], 409);
+        }
+
         $iconPath = $specialization->icon_path;
         $imagePath = $specialization->featured_image_path;
         $specialization->delete();

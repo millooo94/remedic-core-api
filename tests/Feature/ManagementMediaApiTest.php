@@ -9,7 +9,9 @@ use App\Models\Professional;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\Service;
 use App\Models\Specialization;
+use App\Models\SpecializationWebProfile;
 use App\Models\User;
+use App\Services\MedicalAreaContentService;
 use App\Services\ProfessionalAvatarBackfill;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -308,6 +310,12 @@ class ManagementMediaApiTest extends TestCase
             'featured_image_path' => 'specializations/20/images/area.jpg',
             'is_web_active' => true,
         ])->save();
+        $areaProfile = SpecializationWebProfile::query()->create([
+            'specialization_id' => $specialization->id,
+            'slug' => $specialization->slug,
+            'is_web_enabled' => true,
+        ]);
+        app(MedicalAreaContentService::class)->initializeSections($areaProfile);
         $service = $this->atomicService('Prestazione pubblica', [
             'featured_image_path' => 'services/30/images/service.jpg',
             'is_web_active' => true,
@@ -332,7 +340,10 @@ class ManagementMediaApiTest extends TestCase
 
     private function actingAsManager(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        $this->seed(BackofficeAccessSeeder::class);
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+        Sanctum::actingAs($user);
     }
 
     private function specialization(string $name, ?string $iconPath = null): Specialization

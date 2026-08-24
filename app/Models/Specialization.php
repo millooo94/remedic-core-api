@@ -7,6 +7,7 @@ use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Specialization extends Model
 {
@@ -73,5 +74,10 @@ class Specialization extends Model
         return $this->belongsToMany(Service::class, 'service_specialization')
             ->withPivot(['is_primary', 'sort_order'])
             ->withTimestamps();
+    }
+
+    public function webProfile(): HasOne
+    {
+        return $this->hasOne(SpecializationWebProfile::class);
     }
 }

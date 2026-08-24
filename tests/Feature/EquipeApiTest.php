@@ -11,8 +11,10 @@ use App\Models\Section;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\Specialization;
+use App\Models\SpecializationWebProfile;
 use App\Models\User;
 use App\Services\EquipeContentService;
+use App\Services\MedicalAreaContentService;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,12 +108,12 @@ class EquipeApiTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('professional.honorific_prefix', 'Dott.')
             ->assertJsonPath('professional.avatar_path', 'professionals/master.jpg')
-            ->assertJsonCount(6, 'sections')
+            ->assertJsonCount(7, 'sections')
             ->assertJsonMissingPath('professional.email');
 
         $profileId = (int) $created->json('id');
         app(EquipeContentService::class)->initializeSections(ProfessionalPublicProfile::findOrFail($profileId));
-        $this->assertSame(6, Section::query()
+        $this->assertSame(7, Section::query()
             ->where('sectionable_type', ProfessionalPublicProfile::class)
             ->where('sectionable_id', $profileId)
             ->count());
@@ -145,6 +147,12 @@ class EquipeApiTest extends TestCase
             ['name' => 'Cardiologia', 'is_active' => true, 'is_web_active' => true]
         );
         $specialization->update(['is_active' => true, 'is_web_active' => true]);
+        $areaProfile = SpecializationWebProfile::query()->create([
+            'specialization_id' => $specialization->id,
+            'slug' => 'cardiologia-area',
+            'is_web_enabled' => true,
+        ]);
+        app(MedicalAreaContentService::class)->initializeSections($areaProfile);
         $professional = Professional::factory()->create([
             'honorific_prefix' => 'Dott.ssa', 'email' => 'internal@example.com', 'iban' => 'IT60X0542811101000000123456',
             'notes' => 'Riservato', 'birth_date' => '1980-01-01', 'birth_place' => 'Roma', 'avatar_path' => 'professionals/master.jpg',
@@ -177,7 +185,7 @@ class EquipeApiTest extends TestCase
             'key' => $section['key'], 'is_active' => $section['key'] !== 'biography',
         ])->all();
         $this->patchJson("/api/v1/admin/equipe/{$profileId}/sections", ['sections' => $sections])
-            ->assertOk()->assertJsonPath('sections.0.key', 'scientific_activity');
+            ->assertOk()->assertJsonPath('sections.0.key', 'services');
 
         $public = $this->getJson('/api/v1/public/equipe/giulia-ferri-nuovo')->assertOk()
             ->assertJsonPath('data.title', 'Dott.ssa')
@@ -231,6 +239,61 @@ class EquipeApiTest extends TestCase
     }
 
     #[Test]
+    public function equipe_services_are_derived_read_only_editable_as_section_metadata_and_omitted_when_empty(): void
+    {
+        $this->actingAsWebAdmin();
+        $professional = Professional::factory()->create(['is_active' => true]);
+        $profileId = (int) $this->postJson('/api/v1/admin/equipe', [
+            'professional_id' => $professional->id,
+            'slug' => 'medico-prestazioni',
+            'is_web_enabled' => true,
+        ])->assertCreated()
+            ->assertJsonFragment(['key' => 'services', 'label' => 'Prestazioni'])
+            ->assertJsonMissingPath('faqs')
+            ->json('id');
+
+        $this->getJson('/api/v1/public/equipe/medico-prestazioni')->assertOk()
+            ->assertJsonMissing(['key' => 'services']);
+
+        $service = Service::factory()->create([
+            'category_id' => ServiceCategory::query()->value('id'),
+            'display_name' => 'Visita specialistica',
+            'is_active' => true,
+            'is_web_active' => true,
+        ]);
+        $professional->professionalServices()->create([
+            'service_id' => $service->id,
+            'is_active' => true,
+            'is_visible_public' => true,
+            'public_sort_order' => 0,
+        ]);
+
+        $profile = $this->getJson("/api/v1/admin/equipe/{$profileId}")->assertOk()->json();
+        $sections = collect($profile['sections'])->map(fn ($section) => [
+            'key' => $section['key'],
+            'is_active' => $section['is_active'],
+            'title' => $section['key'] === 'services' ? 'Le mie prestazioni' : null,
+            'intro' => $section['key'] === 'services' ? 'Prestazioni disponibili.' : null,
+        ])->all();
+        $this->patchJson("/api/v1/admin/equipe/{$profileId}/sections", [
+            'sections' => $sections,
+            'service_ids' => [$service->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['service_ids']);
+        $this->patchJson("/api/v1/admin/equipe/{$profileId}/sections", ['sections' => $sections])
+            ->assertOk()->assertJsonFragment(['key' => 'services', 'title' => 'Le mie prestazioni', 'intro' => 'Prestazioni disponibili.']);
+
+        $public = $this->getJson('/api/v1/public/equipe/medico-prestazioni')->assertOk()
+            ->assertJsonFragment(['key' => 'services'])
+            ->assertJsonFragment(['name' => 'Visita specialistica'])
+            ->assertJsonFragment(['title' => 'Le mie prestazioni']);
+        $this->assertFalse(collect($public->json('data.sections'))->pluck('key')->contains('faqs'));
+
+        $service->update(['is_active' => false]);
+        $this->getJson('/api/v1/public/equipe/medico-prestazioni')->assertOk()
+            ->assertJsonMissing(['key' => 'services']);
+    }
+
+    #[Test]
     public function hidden_professionals_are_not_exposed_through_specializations_or_services(): void
     {
         $specialization = Specialization::query()->firstOrCreate(
@@ -238,6 +301,12 @@ class EquipeApiTest extends TestCase
             ['name' => 'Neurologia', 'is_active' => true, 'is_web_active' => true]
         );
         $specialization->update(['is_active' => true, 'is_web_active' => true]);
+        $areaProfile = SpecializationWebProfile::query()->create([
+            'specialization_id' => $specialization->id,
+            'slug' => 'neurologia',
+            'is_web_enabled' => true,
+        ]);
+        app(MedicalAreaContentService::class)->initializeSections($areaProfile);
         $service = Service::factory()->create([
             'category_id' => ServiceCategory::query()->value('id'),
             'is_active' => true,

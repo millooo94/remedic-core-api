@@ -8,11 +8,11 @@ use App\Http\Controllers\Api\V1\Admin\ConsentPolicyVersionController as AdminCon
 use App\Http\Controllers\Api\V1\Admin\ConsentPreferenceChangeController as AdminConsentPreferenceChangeController;
 use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
 use App\Http\Controllers\Api\V1\Admin\ConsentServiceController as AdminConsentServiceController;
+use App\Http\Controllers\Api\V1\Admin\MedicalAreaController as AdminMedicalAreaController;
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
-use App\Http\Controllers\Api\V1\Admin\SpecializationController as AdminSpecializationController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -50,6 +50,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('search', [PublicSiteController::class, 'search']);
         Route::get('specializations', [PublicSiteController::class, 'specializations']);
         Route::get('specializations/{slug}', [PublicSiteController::class, 'specialization']);
+        Route::get('aree-mediche', [PublicSiteController::class, 'medicalAreas']);
+        Route::get('aree-mediche/{slug}', [PublicSiteController::class, 'medicalArea']);
         Route::get('services', [PublicSiteController::class, 'services']);
         Route::get('services/{slug}', [PublicSiteController::class, 'service']);
         Route::get('professionals', [PublicSiteController::class, 'professionals']);
@@ -92,12 +94,17 @@ Route::prefix('v1')->group(function (): void {
         Route::post('professionals/{professional}/image', [EntityMediaController::class, 'uploadProfessionalImage']);
         Route::delete('professionals/{professional}/image', [EntityMediaController::class, 'deleteProfessionalImage']);
         Route::apiResource('professionals', ProfessionalController::class);
-        Route::get('specializations/options', [SpecializationController::class, 'options']);
-        Route::post('specializations/{specialization}/image', [EntityMediaController::class, 'uploadSpecializationImage']);
-        Route::delete('specializations/{specialization}/image', [EntityMediaController::class, 'deleteSpecializationImage']);
-        Route::post('specializations/{specialization}/icon', [EntityMediaController::class, 'uploadSpecializationIcon']);
-        Route::delete('specializations/{specialization}/icon', [EntityMediaController::class, 'deleteSpecializationIcon']);
-        Route::apiResource('specializations', SpecializationController::class);
+        Route::prefix('specializations')
+            ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value)
+            ->group(function (): void {
+                Route::get('options', [SpecializationController::class, 'options']);
+                Route::post('{specialization}/image', [EntityMediaController::class, 'uploadSpecializationImage']);
+                Route::delete('{specialization}/image', [EntityMediaController::class, 'deleteSpecializationImage']);
+                Route::post('{specialization}/icon', [EntityMediaController::class, 'uploadSpecializationIcon']);
+                Route::delete('{specialization}/icon', [EntityMediaController::class, 'deleteSpecializationIcon']);
+            });
+        Route::apiResource('specializations', SpecializationController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
         Route::post('services/{service}/image', [EntityMediaController::class, 'uploadServiceImage']);
         Route::delete('services/{service}/image', [EntityMediaController::class, 'deleteServiceImage']);
         Route::apiResource('services', ServiceController::class);
@@ -176,8 +183,17 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::apiResource('redirects', AdminRedirectController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_REDIRECTS->value);
-                Route::apiResource('specializations', AdminSpecializationController::class)
-                    ->only(['index', 'show', 'update'])
+                Route::get('aree-mediche', [AdminMedicalAreaController::class, 'index'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::get('aree-mediche/{specialization}', [AdminMedicalAreaController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::match(['put', 'patch'], 'aree-mediche/{specialization}', [AdminMedicalAreaController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::get('specializations', [AdminMedicalAreaController::class, 'index'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::get('specializations/{specialization}', [AdminMedicalAreaController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::match(['put', 'patch'], 'specializations/{specialization}', [AdminMedicalAreaController::class, 'update'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::apiResource('services', AdminWebServiceController::class)
                     ->only(['index', 'show', 'update'])

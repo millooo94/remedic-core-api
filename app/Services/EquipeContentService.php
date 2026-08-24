@@ -30,12 +30,17 @@ class EquipeContentService
             $this->initializeSections($profile);
 
             foreach ($sections as $index => $section) {
+                $updates = [
+                    'sort_order' => $index,
+                    'is_active' => (bool) $section['is_active'],
+                ];
+                if ($section['key'] === 'services') {
+                    $updates['title'] = $section['title'] ?? EquipeSectionDefinition::DEFINITIONS['services'];
+                    $updates['content'] = $section['intro'] ?? null;
+                }
                 $profile->sections()
                     ->where('key', $section['key'])
-                    ->update([
-                        'sort_order' => $index,
-                        'is_active' => (bool) $section['is_active'],
-                    ]);
+                    ->update($updates);
             }
         });
     }
