@@ -2,93 +2,96 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\Http\Controllers\Api\V1\Admin\Concerns\PersistsSectionsAndFaqs;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
-use App\Http\Requests\Api\V1\Admin\Services\StoreAdminWebServiceRequest;
-use App\Http\Requests\Api\V1\Admin\Services\UpdateAdminWebServiceRequest;
-use App\Http\Resources\Api\V1\Admin\AdminWebServiceResource;
+use App\Http\Requests\Api\V1\Admin\Services\UpsertServiceWebProfileRequest;
+use App\Http\Resources\Api\V1\Admin\ServiceWebProfileResource;
+use App\Models\Redirect;
 use App\Models\Service;
+use App\Services\AutomaticSlugRedirectService;
+use App\Services\ServiceWebContentService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\DB;
 
 class AdminWebServiceController extends Controller
 {
-    use PersistsSectionsAndFaqs;
+    public function __construct(
+        private readonly ServiceWebContentService $content,
+        private readonly AutomaticSlugRedirectService $redirects,
+    ) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
-        $query = Service::query()->with(['sections', 'faqs', 'category']);
+        $query = Service::query()->with($this->relations());
 
         if ($search = $request->search()) {
-            $query->where(function ($builder) use ($search): void {
-                $builder
-                    ->where('display_name', 'like', "%{$search}%")
-                    ->orWhere('canonical_name', 'like', "%{$search}%")
-                    ->orWhere('slug', 'like', "%{$search}%")
-                    ->orWhere('seo_title', 'like', "%{$search}%");
-            });
+            $query->where(fn ($builder) => $builder
+                ->where('display_name', 'like', "%{$search}%")
+                ->orWhere('canonical_name', 'like', "%{$search}%")
+                ->orWhere('slug', 'like', "%{$search}%")
+                ->orWhereHas('webProfile', fn ($profile) => $profile
+                    ->where('public_slug', 'like', "%{$search}%")
+                    ->orWhere('seo_title', 'like', "%{$search}%")));
         }
 
-        if ($request->has('is_web_active')) {
-            $query->where('is_web_active', (bool) $request->boolean('is_web_active'));
+        $enabledFilter = $request->has('is_web_enabled')
+            ? 'is_web_enabled'
+            : ($request->has('is_web_active') ? 'is_web_active' : null);
+        if ($enabledFilter !== null) {
+            $enabled = $request->boolean($enabledFilter);
+            $enabled
+                ? $query->whereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', true))
+                : $query->where(fn ($nested) => $nested
+                    ->whereDoesntHave('webProfile')
+                    ->orWhereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', false)));
         }
 
-        $sort = $request->sort();
-        $direction = $request->direction();
-
-        match ($sort) {
-            'canonical_name' => $query->orderBy('canonical_name', $direction),
-            'slug' => $query->orderBy('slug', $direction),
-            'sort_order' => $query->orderBy('sort_order', $direction),
-            'updated_at' => $query->orderBy('updated_at', $direction),
-            default => $query->orderBy('display_name', $direction),
+        match ($request->sort()) {
+            'canonical_name' => $query->orderBy('canonical_name', $request->direction()),
+            'updated_at' => $query->orderBy('updated_at', $request->direction()),
+            default => $query->orderBy('display_name', $request->direction()),
         };
 
-        return AdminWebServiceResource::collection($query->paginate($request->perPage()));
+        return ServiceWebProfileResource::collection($query->paginate($request->perPage()));
     }
 
-    public function store(StoreAdminWebServiceRequest $request): AdminWebServiceResource
+    public function show(Service $service): ServiceWebProfileResource
     {
-        $service = DB::transaction(fn () => $this->persist(new Service(), $request->validated()));
+        if ($service->webProfile !== null) {
+            $this->content->initializeSections($service->webProfile);
+        }
 
-        return new AdminWebServiceResource($service->load(['sections', 'faqs', 'category']));
+        return new ServiceWebProfileResource($this->load($service));
     }
 
-    public function show(Service $service): AdminWebServiceResource
+    public function update(UpsertServiceWebProfileRequest $request, Service $service): ServiceWebProfileResource
     {
-        return new AdminWebServiceResource($service->load(['sections', 'faqs', 'category']));
+        $previousSlug = $service->webProfile?->public_slug;
+        $profile = $this->content->upsert($service, $request->validated());
+
+        if ($previousSlug !== null && $previousSlug !== $profile->public_slug) {
+            $this->redirects->sync(
+                Redirect::SOURCE_TYPE_SERVICE_WEB_PROFILE,
+                $profile->id,
+                '/prestazioni/'.$previousSlug,
+                '/prestazioni/'.$profile->public_slug,
+            );
+        }
+
+        return new ServiceWebProfileResource($this->load($service));
     }
 
-    public function update(UpdateAdminWebServiceRequest $request, Service $service): AdminWebServiceResource
+    private function load(Service $service): Service
     {
-        $service = DB::transaction(fn () => $this->persist($service, $request->validated()));
-
-        return new AdminWebServiceResource($service->load(['sections', 'faqs', 'category']));
+        return $service->refresh()->load($this->relations());
     }
 
-    public function destroy(Service $service): Response
+    private function relations(): array
     {
-        $service->delete();
-
-        return response()->noContent();
-    }
-
-    private function persist(Service $service, array $payload): Service
-    {
-        $relationsPayload = [
-            'sections' => $payload['sections'] ?? [],
-            'faqs' => $payload['faqs'] ?? [],
+        return [
+            'webProfile.sections',
+            'webProfile.faqs',
+            'specializations',
+            'professionalServices.professional',
         ];
-
-        unset($payload['sections'], $payload['faqs']);
-
-        $service->fill($payload);
-        $service->save();
-
-        $this->persistSectionsAndFaqs($service, $relationsPayload);
-
-        return $service;
     }
 }

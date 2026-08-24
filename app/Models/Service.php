@@ -3,17 +3,19 @@
 namespace App\Models;
 
 use App\Enums\RobotsValue;
-use App\Models\Concerns\HasSectionsAndFaqs;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Service extends Model
 {
     use HasFactory;
-    use HasSectionsAndFaqs;
+    use SoftDeletes;
 
     protected $fillable = [
         'legacy_backend_id',
@@ -76,6 +78,11 @@ class Service extends Model
         return $this->belongsTo(ServiceCategory::class, 'category_id');
     }
 
+    public function webProfile(): HasOne
+    {
+        return $this->hasOne(ServiceWebProfile::class);
+    }
+
     public function aliases(): HasMany
     {
         return $this->hasMany(ServiceAlias::class);
@@ -115,5 +122,17 @@ class Service extends Model
         }
 
         return trim((string) $this->canonical_name);
+    }
+
+    public function scopeEffectivelyVisible(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereHas('webProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true));
+    }
+
+    public function isEffectivelyVisible(): bool
+    {
+        return (bool) $this->is_active && (bool) $this->webProfile?->is_web_enabled;
     }
 }

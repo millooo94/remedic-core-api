@@ -2,36 +2,57 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
-use App\Models\SpecializationWebProfile;
+use App\Models\ServiceWebProfile;
 use App\Support\Media\PublicMediaUrl;
-use App\Support\MedicalAreas\MedicalAreaSectionDefinition;
+use App\Support\Services\PrimarySpecializationResolver;
+use App\Support\Services\ServiceSectionDefinition;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class MedicalAreaResource extends JsonResource
+class ServiceWebProfileResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        /** @var SpecializationWebProfile|null $profile */
+        /** @var ServiceWebProfile|null $profile */
         $profile = $this->webProfile;
+        $primary = app(PrimarySpecializationResolver::class)->resolve($this->resource);
 
         return [
             'id' => $this->id,
-            'master' => [
+            'service' => [
                 'id' => $this->id,
-                'name' => $this->name,
-                'professional_title_male' => $this->professional_title_male,
-                'professional_title_female' => $this->professional_title_female,
-                'slug' => $this->slug,
-                'color_hex' => $this->color_hex,
-                'icon_path' => $this->icon_path,
-                'icon_url' => PublicMediaUrl::fromPublicDisk($this->icon_path, $request),
+                'name' => $this->display_name,
+                'canonical_name' => $this->canonical_name,
+                'master_slug' => $this->slug,
+                'price' => $this->importo_prestazione,
+                'duration_minutes' => $this->default_duration_minutes,
+                'operationally_active' => (bool) $this->is_active,
                 'featured_image_path' => $this->featured_image_path,
                 'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
-                'is_active' => (bool) $this->is_active,
-                'sort_order' => (int) $this->sort_order,
-                'services_count' => (int) ($this->services_count ?? $this->services->count()),
-                'professionals_count' => (int) ($this->professionals_count ?? $this->professionals->count()),
+                'icon_path' => $primary?->icon_path,
+                'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
+                'primary_area' => $primary ? [
+                    'id' => $primary->id,
+                    'name' => $primary->name,
+                    'slug' => $primary->slug,
+                ] : null,
+                'areas' => $this->specializations->map(fn ($area) => [
+                    'id' => $area->id,
+                    'name' => $area->name,
+                    'slug' => $area->slug,
+                    'is_primary' => (bool) ($area->pivot?->is_primary ?? false),
+                ])->values()->all(),
+                'professionals' => $this->professionalServices
+                    ->filter(fn ($link) => $link->professional !== null)
+                    ->map(fn ($link) => [
+                        'id' => $link->professional->id,
+                        'display_name' => trim(implode(' ', array_filter([
+                            $link->professional->honorific_prefix,
+                            $link->professional->full_name,
+                        ]))),
+                        'is_active' => (bool) $link->professional->is_active,
+                    ])->values()->all(),
+                'professionals_count' => $this->professionalServices->filter(fn ($link) => $link->professional !== null)->count(),
             ],
             'web_profile' => $profile ? $this->profile($profile) : null,
             'is_configured' => $profile !== null,
@@ -39,32 +60,15 @@ class MedicalAreaResource extends JsonResource
             'status' => $profile === null
                 ? 'not_configured'
                 : (((bool) $this->is_active && (bool) $profile->is_web_enabled) ? 'published' : 'not_published'),
-            'derived' => [
-                'services' => $this->services->map(fn ($service) => [
-                    'id' => $service->id,
-                    'name' => $service->publicLabel(),
-                    'is_active' => (bool) $service->is_active,
-                    'is_web_enabled' => (bool) $service->webProfile?->is_web_enabled,
-                    'effective_public_visibility' => $service->isEffectivelyVisible(),
-                ])->values()->all(),
-                'equipe' => $this->professionals
-                    ->filter(fn ($professional) => $professional->publicProfile !== null)
-                    ->map(fn ($professional) => [
-                        'id' => $professional->id,
-                        'display_name' => trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
-                        'is_active' => (bool) $professional->is_active,
-                        'is_web_enabled' => (bool) $professional->publicProfile?->is_web_enabled,
-                    ])->values()->all(),
-            ],
         ];
     }
 
-    private function profile(SpecializationWebProfile $profile): array
+    private function profile(ServiceWebProfile $profile): array
     {
         return [
             'id' => $profile->id,
-            'specialization_id' => $profile->specialization_id,
-            'slug' => $profile->slug,
+            'service_id' => $profile->service_id,
+            'public_slug' => $profile->public_slug,
             'short_description' => $profile->short_description,
             'is_web_enabled' => (bool) $profile->is_web_enabled,
             'list_sort_order' => (int) $profile->list_sort_order,
@@ -81,12 +85,12 @@ class MedicalAreaResource extends JsonResource
             'og_description' => $profile->og_description,
             'og_image_path' => $this->featured_image_path,
             'sections' => $profile->sections
-                ->whereIn('key', MedicalAreaSectionDefinition::keys())
+                ->whereIn('key', ServiceSectionDefinition::keys())
                 ->sortBy(fn ($section) => [$section->sort_order, $section->id])
                 ->map(fn ($section) => [
                     'id' => $section->id,
                     'key' => $section->key,
-                    'label' => MedicalAreaSectionDefinition::DEFINITIONS[$section->key],
+                    'label' => ServiceSectionDefinition::DEFINITIONS[$section->key],
                     'title' => $section->title,
                     'intro' => $section->content,
                     'data' => $section->extra_json ?? new \stdClass,

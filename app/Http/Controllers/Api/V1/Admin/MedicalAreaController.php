@@ -76,7 +76,7 @@ class MedicalAreaController extends Controller
         return [
             'webProfile.sections',
             'webProfile.faqs',
-            'services',
+            'services.webProfile',
             'professionals.publicProfile',
         ];
     }

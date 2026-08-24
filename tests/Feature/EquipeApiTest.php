@@ -10,11 +10,13 @@ use App\Models\Redirect;
 use App\Models\Section;
 use App\Models\Service;
 use App\Models\ServiceCategory;
+use App\Models\ServiceWebProfile;
 use App\Models\Specialization;
 use App\Models\SpecializationWebProfile;
 use App\Models\User;
 use App\Services\EquipeContentService;
 use App\Services\MedicalAreaContentService;
+use App\Services\ServiceWebContentService;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -261,6 +263,12 @@ class EquipeApiTest extends TestCase
             'is_active' => true,
             'is_web_active' => true,
         ]);
+        $serviceProfile = ServiceWebProfile::query()->create([
+            'service_id' => $service->id,
+            'public_slug' => 'visita-specialistica',
+            'is_web_enabled' => true,
+        ]);
+        app(ServiceWebContentService::class)->initializeSections($serviceProfile);
         $professional->professionalServices()->create([
             'service_id' => $service->id,
             'is_active' => true,
@@ -312,6 +320,12 @@ class EquipeApiTest extends TestCase
             'is_active' => true,
             'is_web_active' => true,
         ]);
+        $serviceProfile = ServiceWebProfile::query()->create([
+            'service_id' => $service->id,
+            'public_slug' => 'prestazione-neurologica',
+            'is_web_enabled' => true,
+        ]);
+        app(ServiceWebContentService::class)->initializeSections($serviceProfile);
         $service->specializations()->attach($specialization->id, ['sort_order' => 0, 'is_primary' => true]);
         $professional = Professional::factory()->create(['is_active' => true]);
         $professional->specializations()->attach($specialization->id, ['sort_order' => 0, 'is_primary' => true]);

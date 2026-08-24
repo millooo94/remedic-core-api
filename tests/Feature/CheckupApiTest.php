@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
@@ -9,10 +10,12 @@ use App\Models\Service;
 use App\Models\Specialization;
 use App\Models\User;
 use App\Services\CheckupCatalogService;
+use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class CheckupApiTest extends TestCase
@@ -23,7 +26,10 @@ class CheckupApiTest extends TestCase
     {
         parent::setUp();
 
-        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        $this->seed(BackofficeAccessSeeder::class);
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+        Sanctum::actingAs($user);
     }
 
     #[Test]
@@ -186,16 +192,20 @@ class CheckupApiTest extends TestCase
     }
 
     #[Test]
-    public function a_referenced_service_cannot_be_deleted_and_returns_an_application_conflict(): void
+    public function a_referenced_service_can_be_archived_but_not_hard_deleted(): void
     {
         $service = $this->createService('Prestazione referenziata');
         $this->postJson('/api/v1/checkups', $this->payload([$service->id]))->assertCreated();
 
-        $this->deleteJson("/api/v1/services/{$service->id}")
-            ->assertConflict()
-            ->assertJsonPath('message', 'La prestazione non puo essere eliminata perche e inclusa in uno o piu Check-up. Disattivala oppure rimuovila prima dai Check-up.');
+        $this->deleteJson("/api/v1/services/{$service->id}")->assertNoContent();
+        $this->assertSoftDeleted('services', ['id' => $service->id]);
+        $this->assertDatabaseHas('checkup_services', ['service_id' => $service->id]);
 
-        $this->assertDatabaseHas('services', ['id' => $service->id]);
+        $this->deleteJson("/api/v1/services/{$service->id}/force")
+            ->assertConflict()
+            ->assertJsonPath('dependencies.checkups', 1);
+
+        $this->assertSoftDeleted('services', ['id' => $service->id]);
         $this->assertDatabaseHas('checkup_services', ['service_id' => $service->id]);
     }
 

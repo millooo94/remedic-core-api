@@ -6,10 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Services\StoreServiceRequest;
 use App\Http\Requests\Api\V1\Services\UpdateServiceRequest;
 use App\Http\Resources\Api\V1\ServiceResource;
+use App\Models\Redirect;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\Specialization;
-use App\Services\ManagedMediaService;
 use App\Support\Filters\ServiceFilters;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +22,6 @@ class ServiceController extends Controller
 {
     public function __construct(
         private readonly ServiceFilters $filters,
-        private readonly ManagedMediaService $media,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -54,17 +53,47 @@ class ServiceController extends Controller
         return new ServiceResource($service->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
     }
 
-    public function destroy(Service $service): Response|JsonResponse
+    public function destroy(Service $service): Response
     {
-        if ($service->checkupItems()->exists()) {
+        $service->delete();
+
+        return response()->noContent();
+    }
+
+    public function restore(int $service): ServiceResource
+    {
+        $model = Service::withTrashed()->findOrFail($service);
+        $model->restore();
+
+        return new ServiceResource($model->load(['category', 'aliases', 'professionalServices.professional.specializations', 'specializations']));
+    }
+
+    public function forceDestroy(int $service): Response|JsonResponse
+    {
+        $model = Service::withTrashed()->findOrFail($service);
+        $profileId = $model->webProfile()->value('id');
+        $dependencies = collect([
+            'performance_records' => DB::table('performance_records')->where('service_id', $model->id)->count(),
+            'appointments' => DB::table('appointments')->where('service_id', $model->id)->count(),
+            'checkups' => $model->checkupItems()->count(),
+            'professionals' => $model->professionalServices()->count(),
+            'specializations' => $model->specializations()->count(),
+            'web_profile' => $profileId === null ? 0 : 1,
+            'media' => trim((string) $model->featured_image_path) === '' ? 0 : 1,
+            'redirects' => $profileId === null ? 0 : Redirect::query()
+                ->where('source_type', Redirect::SOURCE_TYPE_SERVICE_WEB_PROFILE)
+                ->where('source_id', $profileId)
+                ->count(),
+        ])->filter(fn (int $count): bool => $count > 0);
+
+        if ($dependencies->isNotEmpty()) {
             return response()->json([
-                'message' => 'La prestazione non puo essere eliminata perche e inclusa in uno o piu Check-up. Disattivala oppure rimuovila prima dai Check-up.',
+                'message' => 'La prestazione è utilizzata e non può essere eliminata definitivamente. Puoi archiviarla.',
+                'dependencies' => $dependencies->all(),
             ], Response::HTTP_CONFLICT);
         }
 
-        $imagePath = $service->featured_image_path;
-        $service->delete();
-        $this->media->deleteManagedFile($imagePath, ["services/{$service->id}/images"]);
+        $model->forceDelete();
 
         return response()->noContent();
     }
@@ -92,7 +121,6 @@ class ServiceController extends Controller
                 ? $payload['importo_prestazione']
                 : $service->importo_prestazione,
             'slug' => $service->exists ? $service->slug : $this->buildUniqueSlug($service, $categoryPrefix, $baseSlug),
-            'description' => null,
             'default_duration_minutes' => $payload['default_duration_minutes'] ?? null,
             'is_active' => $payload['is_active'] ?? true,
             'notes' => $payload['notes'] ?? null,
@@ -217,7 +245,7 @@ class ServiceController extends Controller
         $suffix = 2;
 
         while (
-            Service::query()
+            Service::withTrashed()
                 ->when($service->exists, fn ($query) => $query->whereKeyNot($service->id))
                 ->where('slug', $candidate)
                 ->exists()

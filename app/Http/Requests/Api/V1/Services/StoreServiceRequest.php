@@ -22,7 +22,7 @@ class StoreServiceRequest extends FormRequest
             'category_name' => ['nullable', 'string', 'max:190'],
             'canonical_name' => ['nullable', 'string', 'max:190'],
             'display_name' => ['required', 'string', 'max:190'],
-            'importo_prestazione' => ['nullable', 'integer', 'min:0'],
+            'importo_prestazione' => ['nullable', 'numeric', 'min:0', 'decimal:0,2', 'max:99999999.99'],
             'default_duration_minutes' => ['nullable', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string'],
@@ -36,7 +36,7 @@ class StoreServiceRequest extends FormRequest
             'professional_services' => ['required', 'array', 'min:1'],
             'professional_services.*.professional_id' => ['required', 'exists:professionals,id', 'distinct'],
             'professional_services.*.duration_minutes' => ['nullable', 'integer', 'min:1'],
-            'professional_services.*.price_amount' => ['nullable', 'numeric', 'min:0'],
+            'professional_services.*.price_amount' => ['nullable', 'numeric', 'min:0', 'decimal:0,2', 'max:99999999.99'],
             'professional_services.*.is_visible_public' => ['sometimes', 'boolean'],
             'professional_services.*.is_bookable_online' => ['sometimes', 'boolean'],
             'professional_services.*.source_platform' => ['nullable', 'string', 'max:120'],
@@ -45,11 +45,40 @@ class StoreServiceRequest extends FormRequest
         ];
     }
 
-    public function messages(): array
+    protected function prepareForValidation(): void
     {
-        return [
-            'importo_prestazione.integer' => "L'importo prestazione deve essere un numero intero senza centesimi.",
-        ];
+        $payload = [];
+        if ($this->has('importo_prestazione')) {
+            $payload['importo_prestazione'] = $this->normalizeDecimal($this->input('importo_prestazione'));
+        }
+
+        if (is_array($this->input('professional_services'))) {
+            $payload['professional_services'] = collect($this->input('professional_services'))
+                ->map(function (mixed $link): mixed {
+                    if (! is_array($link) || ! array_key_exists('price_amount', $link)) {
+                        return $link;
+                    }
+
+                    $link['price_amount'] = $this->normalizeDecimal($link['price_amount']);
+
+                    return $link;
+                })->all();
+        }
+
+        $this->merge($payload);
+    }
+
+    private function normalizeDecimal(mixed $value): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $normalized = trim(str_replace(['€', ' '], '', $value));
+
+        return str_contains($normalized, ',')
+            ? str_replace(['.', ','], ['', '.'], $normalized)
+            : $normalized;
     }
 
     public function withValidator(Validator $validator): void

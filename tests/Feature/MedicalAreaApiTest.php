@@ -10,11 +10,13 @@ use App\Models\Redirect;
 use App\Models\Section;
 use App\Models\Service;
 use App\Models\ServiceCategory;
+use App\Models\ServiceWebProfile;
 use App\Models\Specialization;
 use App\Models\SpecializationWebProfile;
 use App\Models\User;
 use App\Services\EquipeContentService;
 use App\Services\MedicalAreaContentService;
+use App\Services\ServiceWebContentService;
 use App\Support\MedicalAreas\MedicalAreaSectionDefinition;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,6 +135,14 @@ class MedicalAreaApiTest extends TestCase
         $categoryId = ServiceCategory::query()->value('id');
         $visibleService = Service::factory()->create(['category_id' => $categoryId, 'display_name' => 'ECG', 'is_active' => true, 'is_web_active' => true]);
         $hiddenService = Service::factory()->create(['category_id' => $categoryId, 'display_name' => 'Nascosta', 'is_active' => false, 'is_web_active' => true]);
+        foreach ([[$visibleService, 'ecg'], [$hiddenService, 'nascosta']] as [$service, $slug]) {
+            $serviceProfile = ServiceWebProfile::query()->create([
+                'service_id' => $service->id,
+                'public_slug' => $slug,
+                'is_web_enabled' => true,
+            ]);
+            app(ServiceWebContentService::class)->initializeSections($serviceProfile);
+        }
         $master->services()->attach($visibleService->id, ['is_primary' => true, 'sort_order' => 2]);
         $master->services()->attach($hiddenService->id, ['is_primary' => false, 'sort_order' => 1]);
 

@@ -552,21 +552,42 @@ class AdminBackofficeApiTest extends TestCase
         $this->putJson("/api/v1/admin/services/{$serviceId}", [
             'canonical_name' => 'Ecografia addome aggiornata',
             'display_name' => 'Ecografia Addome',
-            'slug' => 'ecografia-addome-completo',
-            'description' => 'Descrizione aggiornata',
+            'importo_prestazione' => 10,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['canonical_name', 'display_name', 'importo_prestazione']);
+
+        $sections = collect([
+            'hero', 'what_is', 'when_to_request', 'procedure',
+            'preparation', 'price', 'faqs', 'equipe',
+        ])->map(fn (string $key, int $index): array => [
+            'key' => $key,
+            'title' => $key === 'hero' ? null : ucfirst(str_replace('_', ' ', $key)),
+            'intro' => $key === 'what_is' ? 'Descrizione aggiornata' : null,
+            'is_active' => true,
+            'data' => match ($key) {
+                'what_is' => ['items' => [], 'bottom_note' => null],
+                'when_to_request' => ['groups' => []],
+                'procedure' => ['steps' => [], 'additional_info_enabled' => false, 'additional_info_title' => null, 'additional_info_text' => null, 'additional_info_items' => []],
+                'preparation' => ['items' => [], 'info_box_enabled' => false, 'info_box_text' => null],
+                default => [],
+            },
+        ])->all();
+
+        $this->putJson("/api/v1/admin/services/{$serviceId}", [
+            'public_slug' => 'ecografia-addome-completo-pubblica',
             'short_description' => 'Breve aggiornata',
-            'intro_text' => '<p>Intro aggiornata</p>',
-            'is_web_active' => false,
-            'is_featured' => false,
+            'is_web_enabled' => false,
             'is_local_seo_enabled' => false,
-            'sort_order' => 2,
-            'sections' => [],
+            'list_sort_order' => 2,
+            'robots' => 'index,follow',
+            'sections' => $sections,
             'faqs' => [],
         ])->assertOk()
-            ->assertJsonPath('display_name', 'Ecografia Addome Completo')
-            ->assertJsonPath('is_active', true)
-            ->assertJsonPath('is_featured', false)
-            ->assertJsonPath('is_web_active', false);
+            ->assertJsonPath('service.name', 'Ecografia Addome Completo')
+            ->assertJsonPath('service.operationally_active', true)
+            ->assertJsonPath('web_profile.public_slug', 'ecografia-addome-completo-pubblica')
+            ->assertJsonPath('web_profile.is_web_enabled', false)
+            ->assertJsonCount(8, 'web_profile.sections');
 
         $this->deleteJson("/api/v1/admin/services/{$serviceId}")
             ->assertMethodNotAllowed();
@@ -575,7 +596,7 @@ class AdminBackofficeApiTest extends TestCase
             'id' => $serviceId,
             'display_name' => 'Ecografia Addome Completo',
             'is_active' => true,
-            'is_web_active' => false,
+            'is_web_active' => true,
         ]);
     }
 

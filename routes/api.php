@@ -54,6 +54,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('aree-mediche/{slug}', [PublicSiteController::class, 'medicalArea']);
         Route::get('services', [PublicSiteController::class, 'services']);
         Route::get('services/{slug}', [PublicSiteController::class, 'service']);
+        Route::get('prestazioni', [PublicSiteController::class, 'prestazioni']);
+        Route::get('prestazioni/{slug}', [PublicSiteController::class, 'prestazione']);
         Route::get('professionals', [PublicSiteController::class, 'professionals']);
         Route::get('professionals/{slug}', [PublicSiteController::class, 'professional']);
         Route::get('equipe', [PublicSiteController::class, 'professionals']);
@@ -105,9 +107,16 @@ Route::prefix('v1')->group(function (): void {
             });
         Route::apiResource('specializations', SpecializationController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
-        Route::post('services/{service}/image', [EntityMediaController::class, 'uploadServiceImage']);
-        Route::delete('services/{service}/image', [EntityMediaController::class, 'deleteServiceImage']);
-        Route::apiResource('services', ServiceController::class);
+        Route::prefix('services')
+            ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value)
+            ->group(function (): void {
+                Route::post('{service}/image', [EntityMediaController::class, 'uploadServiceImage']);
+                Route::delete('{service}/image', [EntityMediaController::class, 'deleteServiceImage']);
+                Route::post('{service}/restore', [ServiceController::class, 'restore']);
+                Route::delete('{service}/force', [ServiceController::class, 'forceDestroy']);
+            });
+        Route::apiResource('services', ServiceController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
         Route::post('checkups/{checkup}/image', [EntityMediaController::class, 'uploadCheckupImage']);
         Route::delete('checkups/{checkup}/image', [EntityMediaController::class, 'deleteCheckupImage']);
         Route::post('checkups/{checkup}/icon', [EntityMediaController::class, 'uploadCheckupIcon']);
@@ -195,9 +204,14 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::match(['put', 'patch'], 'specializations/{specialization}', [AdminMedicalAreaController::class, 'update'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
-                Route::apiResource('services', AdminWebServiceController::class)
-                    ->only(['index', 'show', 'update'])
-                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                foreach (['prestazioni', 'services'] as $serviceWebRoute) {
+                    Route::get($serviceWebRoute, [AdminWebServiceController::class, 'index'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                    Route::get($serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'show'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                    Route::match(['put', 'patch'], $serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'update'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                }
                 Route::apiResource('professional-public-profiles', AdminProfessionalPublicProfileController::class)
                     ->parameters(['professional-public-profiles' => 'professionalPublicProfile'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);

@@ -8,11 +8,13 @@ use App\Models\Checkup;
 use App\Models\Professional;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\Service;
+use App\Models\ServiceWebProfile;
 use App\Models\Specialization;
 use App\Models\SpecializationWebProfile;
 use App\Models\User;
 use App\Services\MedicalAreaContentService;
 use App\Services\ProfessionalAvatarBackfill;
+use App\Services\ServiceWebContentService;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -252,7 +254,7 @@ class ManagementMediaApiTest extends TestCase
     }
 
     #[Test]
-    public function web_admin_requests_cannot_change_master_media_but_can_keep_editorial_social_media(): void
+    public function web_admin_requests_cannot_change_master_media_or_add_a_social_override(): void
     {
         $this->seed(BackofficeAccessSeeder::class);
         $user = User::factory()->create(['role' => UserRole::Admin]);
@@ -292,14 +294,14 @@ class ManagementMediaApiTest extends TestCase
             'slug' => $service->slug,
             'featured_image_path' => 'web/main.jpg',
             'social_image_path' => 'web/social.jpg',
-        ])->assertUnprocessable()->assertJsonValidationErrors(['featured_image_path']);
+        ])->assertUnprocessable()->assertJsonValidationErrors(['featured_image_path', 'social_image_path']);
         $this->assertSame('services/master.jpg', $service->refresh()->featured_image_path);
 
         $this->putJson("/api/v1/admin/services/{$service->id}", [
             'slug' => $service->slug,
             'social_image_path' => 'web/social.jpg',
-        ])->assertOk();
-        $this->assertSame('web/social.jpg', $service->refresh()->social_image_path);
+        ])->assertUnprocessable()->assertJsonValidationErrors(['social_image_path']);
+        $this->assertNull($service->refresh()->social_image_path);
     }
 
     #[Test]
@@ -324,6 +326,12 @@ class ManagementMediaApiTest extends TestCase
             'is_primary' => true,
             'sort_order' => 0,
         ]);
+        $serviceProfile = ServiceWebProfile::query()->create([
+            'service_id' => $service->id,
+            'public_slug' => 'prestazione-pubblica',
+            'is_web_enabled' => true,
+        ]);
+        app(ServiceWebContentService::class)->initializeSections($serviceProfile);
 
         $publicSpecialization = collect($this->getJson('/api/v1/public/specializations')
             ->assertOk()
@@ -333,7 +341,7 @@ class ManagementMediaApiTest extends TestCase
 
         $publicService = collect($this->getJson('/api/v1/public/services')
             ->assertOk()
-            ->json('data'))->firstWhere('slug', $service->slug);
+            ->json('data'))->firstWhere('slug', 'prestazione-pubblica');
         $this->assertStringContainsString('/storage/specializations/20/icons/icon.png', $publicService['icon_url']);
         $this->assertStringContainsString('/storage/services/30/images/service.jpg', $publicService['featured_image_url']);
     }

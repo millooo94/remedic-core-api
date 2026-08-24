@@ -21,11 +21,10 @@ class MedicalAreaPublicService
                 'sections' => fn ($query) => $query->active()->ordered(),
                 'faqs' => fn ($query) => $query->active()->ordered(),
                 'specialization.services' => fn ($query) => $query
-                    ->where('services.is_active', true)
-                    ->where('services.is_web_active', true)
+                    ->effectivelyVisible()
                     ->orderBy('service_specialization.sort_order')
-                    ->orderBy('services.sort_order')
                     ->orderBy('services.id'),
+                'specialization.services.webProfile',
                 'specialization.professionals' => fn ($query) => $query
                     ->where('professionals.is_active', true)
                     ->whereHas('publicProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true))
@@ -92,9 +91,9 @@ class MedicalAreaPublicService
                         'title' => $section->title,
                         'intro' => $section->content,
                         'items' => $services->map(fn (Service $service) => [
-                            'slug' => $service->slug,
+                            'slug' => $service->webProfile->public_slug,
                             'name' => $service->publicLabel(),
-                            'short_description' => $service->short_description ?: $service->description ?: '',
+                            'short_description' => $service->webProfile->short_description ?: '',
                         ])->values()->all(),
                     ],
                     'faqs' => [
