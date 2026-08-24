@@ -9,12 +9,17 @@ use App\Http\Requests\Api\V1\Admin\Users\StoreBackofficeUserRequest;
 use App\Http\Requests\Api\V1\Admin\Users\UpdateBackofficeUserRequest;
 use App\Http\Resources\Api\V1\Admin\BackofficeUserResource;
 use App\Models\User;
+use App\Services\BackofficeAccess\BackofficeAccessReconciler;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private readonly BackofficeAccessReconciler $backofficeAccessReconciler,
+    ) {}
+
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
         $query = User::query()->with(['roles.permissions']);
@@ -64,7 +69,9 @@ class UserController extends Controller
             return $user->load(['roles.permissions']);
         });
 
-        return new BackofficeUserResource($user);
+        $this->backofficeAccessReconciler->reconcileIfNeeded();
+
+        return new BackofficeUserResource($user->fresh()->load(['roles.permissions']));
     }
 
     public function show(User $user): BackofficeUserResource
@@ -92,7 +99,9 @@ class UserController extends Controller
             return $user->load(['roles.permissions']);
         });
 
-        return new BackofficeUserResource($user);
+        $this->backofficeAccessReconciler->reconcileIfNeeded();
+
+        return new BackofficeUserResource($user->fresh()->load(['roles.permissions']));
     }
 
     public function destroy(User $user): Response

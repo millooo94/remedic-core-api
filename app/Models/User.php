@@ -81,7 +81,8 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPrimaryAdmin(): bool
     {
-        return $this->email === config('auth.primary_admin.email');
+        return mb_strtolower(trim((string) $this->email))
+            === mb_strtolower(trim((string) config('auth.primary_admin.email')));
     }
 
     public function hasAdminApproval(): bool
@@ -100,11 +101,8 @@ class User extends Authenticatable implements MustVerifyEmail
             return false;
         }
 
-        if (! $this->supportsBackofficeRoles()) {
-            return $this->isAdmin();
-        }
-
-        return $this->can(AdminPermission::VIEW_BACKOFFICE->value) || $this->isAdmin();
+        return $this->supportsBackofficeRoles()
+            && $this->can(AdminPermission::VIEW_BACKOFFICE->value);
     }
 
     public function supportsBackofficeRolesAndPermissions(): bool

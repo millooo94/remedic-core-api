@@ -205,7 +205,7 @@ class AuthApiTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('user.email', 'admin@example.com')
-            ->assertJsonPath('user.can_access_backoffice', true)
+            ->assertJsonPath('user.can_access_backoffice', false)
             ->assertJsonPath('user.backoffice_roles', [])
             ->assertJsonPath('user.backoffice_permissions', []);
     }

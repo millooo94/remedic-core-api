@@ -11,6 +11,7 @@ use App\Http\Requests\Api\V1\Auth\ResendVerificationRequest;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
 use App\Services\AdminApprovalService;
+use App\Services\BackofficeAccess\BackofficeAccessReconciler;
 use App\Services\EmailVerificationService;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -26,8 +27,8 @@ class AuthController extends Controller
     public function __construct(
         private readonly AdminApprovalService $adminApprovalService,
         private readonly EmailVerificationService $emailVerificationService,
-    ) {
-    }
+        private readonly BackofficeAccessReconciler $backofficeAccessReconciler,
+    ) {}
 
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -105,6 +106,9 @@ class AuthController extends Controller
             ], Response::HTTP_FORBIDDEN);
         }
 
+        $this->backofficeAccessReconciler->reconcileIfNeeded();
+        $user->unsetRelation('roles')->unsetRelation('permissions');
+
         $user->forceFill(['last_login_at' => now()])->save();
 
         return response()->json([
@@ -115,6 +119,9 @@ class AuthController extends Controller
 
     public function me(Request $request): UserResource
     {
+        $this->backofficeAccessReconciler->reconcileIfNeeded();
+        $request->user()->unsetRelation('roles')->unsetRelation('permissions');
+
         return UserResource::make($request->user());
     }
 

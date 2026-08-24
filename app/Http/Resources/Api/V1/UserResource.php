@@ -13,9 +13,9 @@ class UserResource extends JsonResource
         $avatarUrl = PublicMediaUrl::fromPublicDisk($this->avatar_path, $request);
         $supportsBackofficeRoles = method_exists($this->resource, 'supportsBackofficeRolesAndPermissions')
             && $this->resource->supportsBackofficeRolesAndPermissions();
-        $roles = $supportsBackofficeRoles ? $this->getRoleNames()->values()->all() : [];
+        $roles = $supportsBackofficeRoles ? $this->getRoleNames()->sort()->values()->all() : [];
         $permissions = $supportsBackofficeRoles
-            ? $this->getAllPermissions()->pluck('name')->values()->all()
+            ? $this->getAllPermissions()->pluck('name')->sort()->values()->all()
             : [];
 
         return [

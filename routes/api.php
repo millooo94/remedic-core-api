@@ -167,47 +167,47 @@ Route::prefix('v1')->group(function (): void {
             ->middleware('permission:'.AdminPermission::VIEW_BACKOFFICE->value)
             ->group(function (): void {
                 Route::apiResource('users', AdminUserController::class)
-                    ->middleware('permission:manage users');
+                    ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
                 Route::apiResource('pages', AdminPageController::class)
-                    ->middleware('permission:manage pages');
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::post('pages/media', [AdminPageController::class, 'uploadMedia'])
-                    ->middleware('permission:manage pages');
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('blog-posts', AdminBlogPostController::class)
-                    ->middleware('permission:manage blog posts');
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::apiResource('redirects', AdminRedirectController::class)
-                    ->middleware('permission:manage redirects');
+                    ->middleware('permission:'.AdminPermission::MANAGE_REDIRECTS->value);
                 Route::apiResource('specializations', AdminSpecializationController::class)
                     ->only(['index', 'show', 'update'])
-                    ->middleware('permission:manage specializations');
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::apiResource('services', AdminWebServiceController::class)
                     ->only(['index', 'show', 'update'])
-                    ->middleware('permission:manage services');
+                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                 Route::apiResource('professional-public-profiles', AdminProfessionalPublicProfileController::class)
                     ->parameters(['professional-public-profiles' => 'professionalPublicProfile'])
-                    ->middleware('permission:manage doctors');
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::patch('professional-public-profiles/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
-                    ->middleware('permission:manage doctors');
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::apiResource('equipe', AdminProfessionalPublicProfileController::class)
                     ->parameters(['equipe' => 'professionalPublicProfile'])
-                    ->middleware('permission:manage doctors');
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::patch('equipe/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
-                    ->middleware('permission:manage doctors');
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::apiResource('consent-categories', AdminConsentCategoryController::class)
-                    ->middleware('permission:manage consent configuration');
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
                 Route::apiResource('consent-services', AdminConsentServiceController::class)
-                    ->middleware('permission:manage consent configuration');
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
                 Route::apiResource('consent-policy-versions', AdminConsentPolicyVersionController::class)
-                    ->middleware('permission:manage consent configuration');
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
                 Route::apiResource('consent-records', AdminConsentRecordController::class)
                     ->only(['index', 'show'])
-                    ->middleware('permission:view consent records');
+                    ->middleware('permission:'.AdminPermission::VIEW_CONSENT_RECORDS->value);
                 Route::apiResource('consent-preference-changes', AdminConsentPreferenceChangeController::class)
                     ->only(['index', 'show'])
-                    ->middleware('permission:view consent records');
+                    ->middleware('permission:'.AdminPermission::VIEW_CONSENT_RECORDS->value);
                 Route::get('site-settings', [AdminSiteSettingController::class, 'show'])
-                    ->middleware('permission:manage settings');
+                    ->middleware('permission:'.AdminPermission::MANAGE_SETTINGS->value);
                 Route::put('site-settings', [AdminSiteSettingController::class, 'update'])
-                    ->middleware('permission:manage settings');
+                    ->middleware('permission:'.AdminPermission::MANAGE_SETTINGS->value);
             });
     });
 });
