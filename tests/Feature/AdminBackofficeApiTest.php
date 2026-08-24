@@ -191,6 +191,8 @@ class AdminBackofficeApiTest extends TestCase
         ])->assertCreated();
 
         $pageId = (int) $created->json('id');
+        $firstFaqId = (int) $created->json('faqs.0.id');
+        $secondFaqId = (int) $created->json('faqs.1.id');
 
         $this->assertDatabaseHas('faq_items', [
             'faqable_type' => Page::class,
@@ -210,6 +212,7 @@ class AdminBackofficeApiTest extends TestCase
             'is_active' => true,
             'faqs' => [
                 [
+                    'id' => $firstFaqId,
                     'question' => 'FAQ attiva',
                     'answer' => 'Risposta attiva',
                     'sort_order' => 0,
@@ -217,6 +220,7 @@ class AdminBackofficeApiTest extends TestCase
                     'is_structured_data' => true,
                 ],
                 [
+                    'id' => $secondFaqId,
                     'question' => 'FAQ visibile senza schema',
                     'answer' => 'Risposta visibile senza schema',
                     'sort_order' => 1,

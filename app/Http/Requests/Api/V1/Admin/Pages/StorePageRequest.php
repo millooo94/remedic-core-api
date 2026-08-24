@@ -49,12 +49,17 @@ class StorePageRequest extends FormRequest
             'sections.*.extra_json' => ['nullable', 'array'],
             'sections.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'sections.*.is_active' => ['sometimes', 'boolean'],
+            'removed_section_keys' => ['sometimes', 'array'],
+            'removed_section_keys.*' => ['required', 'string', 'max:255', 'distinct'],
             'faqs' => ['sometimes', 'array'],
+            'faqs.*.id' => ['nullable', 'integer'],
             'faqs.*.question' => ['required', 'string', 'max:255'],
             'faqs.*.answer' => ['required', 'string'],
             'faqs.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'faqs.*.is_active' => ['sometimes', 'boolean'],
             'faqs.*.is_structured_data' => ['sometimes', 'boolean'],
+            'removed_faq_ids' => ['sometimes', 'array'],
+            'removed_faq_ids.*' => ['required', 'integer', 'distinct'],
         ];
     }
 }

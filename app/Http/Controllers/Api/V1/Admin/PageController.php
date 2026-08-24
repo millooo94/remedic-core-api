@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\Http\Controllers\Api\V1\Admin\Concerns\PersistsSectionsAndFaqs;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\StorePageRequest;
@@ -10,6 +9,7 @@ use App\Http\Requests\Api\V1\Admin\Pages\UpdatePageRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\UploadPageImageRequest;
 use App\Http\Resources\Api\V1\Admin\PageResource;
 use App\Models\Page;
+use App\Services\PageContentService;
 use App\Services\PageSlugRedirectService;
 use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\JsonResponse;
@@ -19,10 +19,9 @@ use Illuminate\Support\Facades\DB;
 
 class PageController extends Controller
 {
-    use PersistsSectionsAndFaqs;
-
     public function __construct(
         private readonly PageSlugRedirectService $pageSlugRedirectService,
+        private readonly PageContentService $content,
     ) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
@@ -114,17 +113,14 @@ class PageController extends Controller
     private function persist(Page $page, array $payload): Page
     {
         $previousSlug = $page->exists ? (string) $page->slug : null;
-        $relationsPayload = [];
+        $relationsPayload = array_intersect_key($payload, array_flip([
+            'sections',
+            'removed_section_keys',
+            'faqs',
+            'removed_faq_ids',
+        ]));
 
-        if (array_key_exists('sections', $payload)) {
-            $relationsPayload['sections'] = $payload['sections'];
-        }
-
-        if (array_key_exists('faqs', $payload)) {
-            $relationsPayload['faqs'] = $payload['faqs'];
-        }
-
-        unset($payload['sections'], $payload['faqs']);
+        unset($payload['sections'], $payload['removed_section_keys'], $payload['faqs'], $payload['removed_faq_ids']);
 
         if (! $page->exists && ! array_key_exists('internal_key', $payload)) {
             $payload['internal_key'] = (string) ($payload['slug'] ?? '');
@@ -137,7 +133,7 @@ class PageController extends Controller
             $this->pageSlugRedirectService->sync($page, $previousSlug, (string) $page->slug);
         }
 
-        $this->persistSectionsAndFaqs($page, $relationsPayload);
+        $this->content->sync($page, $relationsPayload);
 
         return $page;
     }
