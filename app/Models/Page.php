@@ -17,6 +17,10 @@ class Page extends Model
 
     public const HOME_SLUG = 'home';
 
+    public const CENTER_INTERNAL_KEY = 'center';
+
+    public const CENTER_SLUG = 'il-centro';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

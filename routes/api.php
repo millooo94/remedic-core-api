@@ -208,6 +208,8 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::post('pages/media', [AdminPageController::class, 'uploadMedia'])
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::delete('pages/{page}/sections/{sectionKey}/media', [AdminPageController::class, 'deleteSectionMedia'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('blog-posts', AdminBlogPostController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::apiResource('redirects', AdminRedirectController::class)

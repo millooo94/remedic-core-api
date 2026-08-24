@@ -17,6 +17,7 @@ class StorePageRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'internal_key' => ['sometimes', 'nullable', 'string', 'max:255', 'unique:pages,internal_key'],
             'title' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:pages,slug'],
             'template' => ['required', Rule::enum(PageTemplate::class)],
@@ -47,6 +48,7 @@ class StorePageRequest extends FormRequest
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
             'sections.*.content' => ['nullable', 'string'],
             'sections.*.extra_json' => ['nullable', 'array'],
+            'sections.*.data' => ['nullable', 'array'],
             'sections.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'sections.*.is_active' => ['sometimes', 'boolean'],
             'removed_section_keys' => ['sometimes', 'array'],

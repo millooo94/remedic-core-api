@@ -17,6 +17,7 @@ use App\Services\CheckupPublicContentService;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -847,13 +848,15 @@ class SiteController extends Controller
             'hero_image_url' => $this->resolveMediaPathOrUrl($page->hero_image_path, request()),
             'hero_image_alt' => $page->hero_image_alt,
             'faq_enabled' => (bool) $page->faq_enabled,
-            'sections' => $page->sections->map(fn (Section $section): array => [
-                'key' => $section->key,
-                'title' => $section->title,
-                'subtitle' => $section->subtitle,
-                'content' => $section->content,
-                'extra_json' => $section->extra_json,
-            ])->values()->all(),
+            'sections' => (string) $page->internal_key === PageSectionRegistry::CENTER_INTERNAL_KEY
+                ? $this->mapCenterSections($page)
+                : $page->sections->map(fn (Section $section): array => [
+                    'key' => $section->key,
+                    'title' => $section->title,
+                    'subtitle' => $section->subtitle,
+                    'content' => $section->content,
+                    'extra_json' => $section->extra_json,
+                ])->values()->all(),
             'faq' => $page->faq_enabled
                 ? $page->faqs->map(fn (FaqItem $faq): array => [
                     'question' => $faq->question,
@@ -883,6 +886,56 @@ class SiteController extends Controller
                 'keywords' => $page->meta_keywords,
             ],
         ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function mapCenterSections(Page $page): array
+    {
+        $targets = Page::query()
+            ->active()
+            ->published()
+            ->whereIn('internal_key', ['why_choose_us', 'plus_health_protocol'])
+            ->pluck('slug', 'internal_key');
+
+        return $page->sections
+            ->filter(fn (Section $section): bool => PageSectionRegistry::definition(PageSectionRegistry::CENTER_INTERNAL_KEY, $section->key) !== null)
+            ->map(function (Section $section) use ($targets): array {
+                $definition = PageSectionRegistry::definition(PageSectionRegistry::CENTER_INTERNAL_KEY, $section->key);
+                $extra = $section->extra_json ?? [];
+                $mapped = [
+                    'key' => $section->key,
+                    'title' => $section->title,
+                    'body' => $section->content,
+                ];
+
+                foreach (['eyebrow', 'link_label'] as $key) {
+                    if (array_key_exists($key, $extra)) {
+                        $mapped[$key] = $extra[$key];
+                    }
+                }
+                if (isset($definition['media_slot'])) {
+                    $mapped['media'] = [
+                        'image_url' => $this->resolveMediaPathOrUrl($extra['image_path'] ?? null, request()),
+                        'image_alt' => $extra['image_alt'] ?? null,
+                    ];
+                }
+                if (isset($definition['target_internal_key'])) {
+                    $targetKey = $definition['target_internal_key'];
+                    $targetSlug = $targets->get($targetKey);
+                    $mapped['action'] = [
+                        'label' => $extra['link_label'] ?? null,
+                        'target_internal_key' => $targetKey,
+                        'href' => $targetSlug ? '/'.$targetSlug : null,
+                    ];
+                }
+                if (isset($definition['actions'])) {
+                    $mapped['actions'] = $definition['actions'];
+                }
+
+                return $mapped;
+            })
+            ->values()
+            ->all();
     }
 
     private function resolveMediaPathOrUrl(?string $pathOrUrl, Request $request): ?string

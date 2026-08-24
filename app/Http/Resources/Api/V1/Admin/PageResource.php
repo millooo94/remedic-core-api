@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1\Admin;
 
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -42,16 +43,9 @@ class PageResource extends JsonResource
             'published_at' => optional($this->published_at)?->toIso8601String(),
             'publication_state' => $this->publicationState()->value,
             'effective_public_visibility' => $this->isPubliclyAvailable(),
-            'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(fn ($section) => [
-                'id' => $section->id,
-                'key' => $section->key,
-                'title' => $section->title,
-                'subtitle' => $section->subtitle,
-                'content' => $section->content,
-                'extra_json' => $section->extra_json,
-                'sort_order' => $section->sort_order,
-                'is_active' => (bool) $section->is_active,
-            ])->values()->all()),
+            'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(
+                fn ($section) => $this->mapSection($section, $request)
+            )->values()->all()),
             'faqs' => $this->whenLoaded('faqs', fn () => $this->faqs->map(fn ($faq) => [
                 'id' => $faq->id,
                 'question' => $faq->question,
@@ -63,5 +57,40 @@ class PageResource extends JsonResource
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function mapSection(object $section, Request $request): array
+    {
+        $base = [
+            'id' => $section->id,
+            'key' => $section->key,
+            'title' => $section->title,
+            'sort_order' => $section->sort_order,
+            'is_active' => (bool) $section->is_active,
+        ];
+        $definition = PageSectionRegistry::definition((string) $this->internal_key, $section->key);
+
+        if ($definition === null) {
+            return [...$base, ...[
+                'subtitle' => $section->subtitle,
+                'content' => $section->content,
+                'extra_json' => $section->extra_json,
+            ]];
+        }
+
+        $extra = $section->extra_json ?? [];
+        $data = ['body' => $section->content];
+        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt'] as $key) {
+            if (array_key_exists($key, $extra)) {
+                $data[$key] = $extra[$key];
+            }
+        }
+        if (isset($definition['media_slot'])) {
+            $data['image_path'] = $extra['image_path'] ?? null;
+            $data['image_url'] = PublicMediaUrl::fromPublicDisk($extra['image_path'] ?? null, $request);
+        }
+
+        return [...$base, 'data' => $data];
     }
 }

@@ -49,6 +49,7 @@ class UpdatePageRequest extends FormRequest
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
             'sections.*.content' => ['nullable', 'string'],
             'sections.*.extra_json' => ['nullable', 'array'],
+            'sections.*.data' => ['nullable', 'array'],
             'sections.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'sections.*.is_active' => ['sometimes', 'boolean'],
             'removed_section_keys' => ['sometimes', 'array'],

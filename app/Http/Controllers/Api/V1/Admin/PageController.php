@@ -9,13 +9,17 @@ use App\Http\Requests\Api\V1\Admin\Pages\UpdatePageRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\UploadPageImageRequest;
 use App\Http\Resources\Api\V1\Admin\PageResource;
 use App\Models\Page;
+use App\Models\Section;
 use App\Services\PageContentService;
 use App\Services\PageSlugRedirectService;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class PageController extends Controller
 {
@@ -97,6 +101,10 @@ class PageController extends Controller
     public function uploadMedia(UploadPageImageRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        if (isset($validated['page_id'])) {
+            return $this->uploadSectionMedia($request, $validated);
+        }
+
         $slot = (string) $validated['slot'];
         $file = $request->file('image');
 
@@ -107,6 +115,30 @@ class PageController extends Controller
             'url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
             'slot' => $slot,
             'original_name' => $file->getClientOriginalName(),
+        ]);
+    }
+
+    public function deleteSectionMedia(Page $page, string $sectionKey): JsonResponse
+    {
+        if (! PageSectionRegistry::supportsMedia($page, $sectionKey)) {
+            throw ValidationException::withMessages([
+                'section_key' => 'Lo slot media non è consentito per questa sezione.',
+            ]);
+        }
+
+        $section = $page->sections()->where('key', $sectionKey)->firstOrFail();
+        $extra = $section->extra_json ?? [];
+        $oldPath = $extra['image_path'] ?? null;
+        $extra['image_path'] = null;
+        $section->forceFill(['extra_json' => $extra])->save();
+        $this->deleteOwnedSectionMediaIfUnused($page, $section, is_string($oldPath) ? $oldPath : null);
+
+        return response()->json([
+            'section_key' => $sectionKey,
+            'media_slot' => 'image',
+            'image_path' => null,
+            'image_url' => null,
+            'image_alt' => $extra['image_alt'] ?? null,
         ]);
     }
 
@@ -123,7 +155,13 @@ class PageController extends Controller
         unset($payload['sections'], $payload['removed_section_keys'], $payload['faqs'], $payload['removed_faq_ids']);
 
         if (! $page->exists && ! array_key_exists('internal_key', $payload)) {
-            $payload['internal_key'] = (string) ($payload['slug'] ?? '');
+            $payload['internal_key'] = ($payload['slug'] ?? null) === Page::CENTER_SLUG
+                ? Page::CENTER_INTERNAL_KEY
+                : (string) ($payload['slug'] ?? '');
+        }
+
+        if (($payload['internal_key'] ?? $page->internal_key) === Page::CENTER_INTERNAL_KEY) {
+            $payload['faq_enabled'] = false;
         }
 
         $page->fill($payload);
@@ -136,5 +174,53 @@ class PageController extends Controller
         $this->content->sync($page, $relationsPayload);
 
         return $page;
+    }
+
+    /** @param array<string, mixed> $validated */
+    private function uploadSectionMedia(UploadPageImageRequest $request, array $validated): JsonResponse
+    {
+        $page = Page::query()->findOrFail((int) $validated['page_id']);
+        $sectionKey = (string) $validated['section_key'];
+        $mediaSlot = (string) $validated['media_slot'];
+
+        if (! PageSectionRegistry::supportsMedia($page, $sectionKey, $mediaSlot)) {
+            throw ValidationException::withMessages([
+                'section_key' => 'Lo slot media non è consentito per questa sezione.',
+            ]);
+        }
+
+        $this->content->initializeMissingSections($page);
+        $section = $page->sections()->where('key', $sectionKey)->firstOrFail();
+        $storedPath = $request->file('image')->store("pages/{$page->id}/{$sectionKey}/{$mediaSlot}", 'public');
+        $extra = $section->extra_json ?? [];
+        $oldPath = $extra['image_path'] ?? null;
+        $extra['image_path'] = $storedPath;
+        $section->forceFill(['extra_json' => $extra])->save();
+        $this->deleteOwnedSectionMediaIfUnused($page, $section, is_string($oldPath) ? $oldPath : null);
+
+        return response()->json([
+            'section_key' => $sectionKey,
+            'media_slot' => $mediaSlot,
+            'image_path' => $storedPath,
+            'image_url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
+            'image_alt' => $extra['image_alt'] ?? null,
+            'original_name' => $request->file('image')->getClientOriginalName(),
+        ]);
+    }
+
+    private function deleteOwnedSectionMediaIfUnused(Page $page, Section $section, ?string $path): void
+    {
+        if (! $path || ! str_starts_with($path, "pages/{$page->id}/{$section->key}/")) {
+            return;
+        }
+
+        $stillReferenced = Section::query()
+            ->where('id', '!=', $section->id)
+            ->where('extra_json->image_path', $path)
+            ->exists();
+
+        if (! $stillReferenced) {
+            Storage::disk('public')->delete($path);
+        }
     }
 }
