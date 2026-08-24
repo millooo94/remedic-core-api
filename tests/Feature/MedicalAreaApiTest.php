@@ -274,6 +274,16 @@ class MedicalAreaApiTest extends TestCase
         $this->assertSame($serviceFlags, $service->fresh()->specializations()->get()->mapWithKeys(
             fn ($area) => [$area->id => (bool) $area->pivot->is_primary]
         )->all());
+
+        $this->actingAsWebAdmin();
+        $this->putJson("/api/v1/professionals/{$professional->id}", [
+            'specialization_ids' => [$first->id, $second->id],
+        ])->assertOk();
+
+        $updatedLinks = $professional->fresh()->specializations()->get();
+        $this->assertCount(2, $updatedLinks);
+        $this->assertSame(1, $updatedLinks->where('pivot.is_primary', true)->count());
+        $this->assertTrue((bool) $updatedLinks->firstWhere('id', $first->id)->pivot->is_primary);
     }
 
     private function master(array $attributes = []): Specialization
