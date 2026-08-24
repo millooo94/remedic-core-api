@@ -603,52 +603,10 @@ class AdminBackofficeApiTest extends TestCase
         $created = $this->postJson('/api/v1/admin/professional-public-profiles', [
             'professional_id' => $professional->id,
             'slug' => 'dott-mario-rossi',
-            'title_prefix' => 'Dott.',
-            'registration_number' => 'AB123',
-            'birth_date' => '1980-05-12',
-            'birth_place' => 'Roma',
-            'short_bio' => '<p>Bio</p>',
-            'is_active' => true,
+            'short_bio' => 'Bio breve',
+            'bio_content' => 'Biografia completa',
+            'is_web_enabled' => true,
             'sort_order' => 1,
-            'degrees' => [
-                [
-                    'title' => 'Laurea in Medicina',
-                    'awarded_on' => '2005-07-15',
-                    'sort_order' => 0,
-                ],
-            ],
-            'academic_specializations' => [
-                [
-                    'title' => 'Specializzazione in Cardiologia',
-                    'awarded_on' => '2010-10-20',
-                    'sort_order' => 0,
-                ],
-            ],
-            'board_registrations' => [
-                [
-                    'board_name' => 'Ordine dei Medici di Roma',
-                    'registered_on' => '2006-01-10',
-                    'sort_order' => 0,
-                ],
-            ],
-            'sections' => [
-                [
-                    'key' => 'hero',
-                    'title' => 'Hero',
-                    'content' => '<p>Corpo</p>',
-                    'sort_order' => 0,
-                    'is_active' => true,
-                ],
-            ],
-            'faqs' => [
-                [
-                    'question' => 'Prima visita?',
-                    'answer' => 'Si.',
-                    'sort_order' => 0,
-                    'is_active' => true,
-                    'is_structured_data' => true,
-                ],
-            ],
         ])->assertCreated();
 
         $profileId = (int) $created->json('id');
@@ -659,29 +617,15 @@ class AdminBackofficeApiTest extends TestCase
             'professional_id' => $professional->id,
         ]);
 
-        $this->assertDatabaseHas('professional_degrees', [
-            'professional_id' => $professional->id,
-            'title' => 'Laurea in Medicina',
-        ]);
-
         $this->putJson("/api/v1/admin/professional-public-profiles/{$profileId}", [
-            'professional_id' => $professional->id,
             'slug' => 'dott-mario-rossi',
-            'title_prefix' => 'Dr.',
-            'registration_number' => 'AB999',
-            'birth_date' => '1980-05-12',
-            'birth_place' => 'Milano',
-            'short_bio' => '<p>Bio aggiornata</p>',
-            'is_active' => false,
+            'short_bio' => 'Bio aggiornata',
+            'is_web_enabled' => false,
             'sort_order' => 3,
-            'degrees' => [],
-            'academic_specializations' => [],
-            'board_registrations' => [],
-            'sections' => [],
-            'faqs' => [],
         ])->assertOk()
-            ->assertJsonPath('title_prefix', 'Dr.')
+            ->assertJsonPath('short_bio', 'Bio aggiornata')
             ->assertJsonPath('is_active', false)
+            ->assertJsonPath('is_web_enabled', false)
             ->assertJsonPath('sort_order', 3);
 
         $this->deleteJson("/api/v1/admin/professional-public-profiles/{$profileId}")

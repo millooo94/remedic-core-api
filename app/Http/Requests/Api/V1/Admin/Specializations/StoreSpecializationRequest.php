@@ -41,7 +41,7 @@ class StoreSpecializationRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'sections' => ['sometimes', 'array'],
-            'sections.*.key' => ['required', 'string', 'max:255'],
+            'sections.*.key' => ['required', 'string', 'max:255', 'distinct'],
             'sections.*.title' => ['nullable', 'string', 'max:255'],
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
             'sections.*.content' => ['nullable', 'string'],

@@ -172,7 +172,21 @@ class LegacyMedicalProfileImportService
             }
 
             if (! $dryRun) {
-                $profile = $existingProfile ?? new ProfessionalPublicProfile();
+                $masterPayload = [];
+                if (blank($professional->honorific_prefix) && filled($row['title_prefix'] ?? null)) {
+                    $masterPayload['honorific_prefix'] = trim((string) $row['title_prefix']);
+                }
+                if ($professional->birth_date === null && filled($row['birth_date'] ?? null)) {
+                    $masterPayload['birth_date'] = $row['birth_date'];
+                }
+                if (blank($professional->birth_place) && filled($row['birth_place'] ?? null)) {
+                    $masterPayload['birth_place'] = trim((string) $row['birth_place']);
+                }
+                if ($masterPayload !== []) {
+                    $professional->forceFill($masterPayload)->save();
+                }
+
+                $profile = $existingProfile ?? new ProfessionalPublicProfile;
                 $profile->fill([
                     'professional_id' => $professional->getKey(),
                     'slug' => $row['slug'],
@@ -190,10 +204,12 @@ class LegacyMedicalProfileImportService
                     'og_title' => $row['og_title'],
                     'og_description' => $row['og_description'],
                     'is_active' => $row['is_active'],
+                    'is_web_enabled' => $row['is_active'],
                     'sort_order' => $row['sort_order'],
                 ]);
                 $profile->legacy_backend_id = $row['id'];
                 $profile->save();
+                app(EquipeContentService::class)->initializeSections($profile);
             }
         }
 
@@ -332,7 +348,7 @@ class LegacyMedicalProfileImportService
             }
 
             if (! $dryRun) {
-                $professionalService = $existing ?? new ProfessionalService();
+                $professionalService = $existing ?? new ProfessionalService;
                 $professionalService->fill([
                     'professional_id' => $profile->professional_id,
                     'service_id' => $service->getKey(),
@@ -385,7 +401,7 @@ class LegacyMedicalProfileImportService
 
     protected function importProfessionalBoardRegistrations(ConnectionInterface $connection, bool $dryRun): array
     {
-        return $this->importDoctorChildTable(
+        $report = $this->importDoctorChildTable(
             connection: $connection,
             table: 'doctor_board_registrations',
             targetModelClass: ProfessionalBoardRegistration::class,
@@ -399,6 +415,30 @@ class LegacyMedicalProfileImportService
             ],
             dryRun: $dryRun,
         );
+
+        if (! $dryRun) {
+            ProfessionalPublicProfile::query()
+                ->whereNotNull('registration_number')
+                ->where('registration_number', '!=', '')
+                ->with('professional.boardRegistrations')
+                ->each(function (ProfessionalPublicProfile $profile): void {
+                    $registrations = $profile->professional?->boardRegistrations;
+
+                    if ($registrations?->count() !== 1) {
+                        return;
+                    }
+
+                    $registration = $registrations->first();
+
+                    if (blank($registration->registration_number)) {
+                        $registration->forceFill([
+                            'registration_number' => trim((string) $profile->registration_number),
+                        ])->save();
+                    }
+                });
+        }
+
+        return $report;
     }
 
     /**
@@ -437,7 +477,7 @@ class LegacyMedicalProfileImportService
             }
 
             if (! $dryRun) {
-                $model = $existing ?? new $targetModelClass();
+                $model = $existing ?? new $targetModelClass;
                 $model->fill($payloadCallback($row, $profile));
                 $model->legacy_backend_id = $row['id'];
                 $model->save();

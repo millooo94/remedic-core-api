@@ -19,7 +19,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 class SiteController extends Controller
 {
@@ -126,9 +125,10 @@ class SiteController extends Controller
             ->where(function (Builder $builder) use ($query): void {
                 $builder
                     ->where('slug', 'like', "%{$query}%")
-                    ->orWhere('title_prefix', 'like', "%{$query}%")
                     ->orWhereHas('professional', function (Builder $professionalQuery) use ($query): void {
-                        $professionalQuery->where('full_name', 'like', "%{$query}%");
+                        $professionalQuery
+                            ->where('full_name', 'like', "%{$query}%")
+                            ->orWhere('honorific_prefix', 'like', "%{$query}%");
                     })
                     ->orWhereHas('professional.specializations', function (Builder $specializationQuery) use ($query): void {
                         $specializationQuery->where('name', 'like', "%{$query}%");
@@ -138,7 +138,7 @@ class SiteController extends Controller
             ->get()
             ->map(fn (ProfessionalPublicProfile $profile): array => [
                 'type' => 'doctor',
-                'title' => trim(($profile->title_prefix ? $profile->title_prefix.' ' : '').$profile->professional->full_name),
+                'title' => trim(($profile->professional->honorific_prefix ? $profile->professional->honorific_prefix.' ' : '').$profile->professional->full_name),
                 'subtitle' => $profile->professional->specializations->pluck('name')->filter()->implode(', '),
                 'href' => '/equipe/'.$profile->slug,
             ]);
@@ -159,7 +159,12 @@ class SiteController extends Controller
         $limit = $this->resolveLimit($request, 50);
 
         $specializations = $this->specializationsBaseQuery()
-            ->withCount(['services', 'professionals'])
+            ->withCount([
+                'services',
+                'professionals as professionals_count' => fn (Builder $query) => $query
+                    ->where('professionals.is_active', true)
+                    ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true)),
+            ])
             ->limit($limit)
             ->get();
 
@@ -171,7 +176,12 @@ class SiteController extends Controller
     public function specialization(Request $request, string $slug): JsonResponse
     {
         $specialization = $this->specializationsBaseQuery()
-            ->withCount(['services', 'professionals'])
+            ->withCount([
+                'services',
+                'professionals as professionals_count' => fn (Builder $query) => $query
+                    ->where('professionals.is_active', true)
+                    ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true)),
+            ])
             ->where('slug', $slug)
             ->firstOrFail();
 
@@ -220,22 +230,10 @@ class SiteController extends Controller
     {
         $profile = $this->professionalProfilesBaseQuery()
             ->where('slug', $slug)
-            ->first();
-
-        if ($profile instanceof ProfessionalPublicProfile) {
-            return response()->json([
-                'data' => $this->mapProfessionalDetail($profile, $request),
-            ]);
-        }
-
-        $professional = $this->professionalsBaseQuery()
-            ->get()
-            ->first(fn (Professional $item): bool => $this->resolveProfessionalSlug($item) === $slug);
-
-        abort_unless($professional instanceof Professional, 404);
+            ->firstOrFail();
 
         return response()->json([
-            'data' => $this->mapProfessionalDetailFromProfessional($professional, $request),
+            'data' => $this->mapProfessionalDetail($profile, $request),
         ]);
     }
 
@@ -331,9 +329,10 @@ class SiteController extends Controller
                     ->orderBy('name'),
                 'professionals' => fn ($query) => $query
                     ->where('professionals.is_active', true)
+                    ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true))
                     ->orderBy('professional_specialization.sort_order')
                     ->orderBy('full_name'),
-                'professionals.publicProfile' => fn ($query) => $query->where('is_active', true),
+                'professionals.publicProfile' => fn ($query) => $query->where('is_web_enabled', true),
                 'professionals.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('sort_order')->orderBy('name'),
             ])
             ->where('is_active', true)
@@ -357,10 +356,13 @@ class SiteController extends Controller
                 'professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
+                    ->whereHas('professional', fn (Builder $professionalQuery) => $professionalQuery
+                        ->where('is_active', true)
+                        ->whereHas('publicProfile', fn (Builder $profileQuery) => $profileQuery->where('is_web_enabled', true)))
                     ->orderBy('public_sort_order')
                     ->orderBy('id'),
                 'professionalServices.professional' => fn ($query) => $query->where('is_active', true),
-                'professionalServices.professional.publicProfile' => fn ($query) => $query->where('is_active', true),
+                'professionalServices.professional.publicProfile' => fn ($query) => $query->where('is_web_enabled', true),
                 'professionalServices.professional.specializations' => fn ($query) => $query
                     ->where('specializations.is_active', true)
                     ->where('specializations.is_web_active', true)
@@ -384,9 +386,13 @@ class SiteController extends Controller
         return ProfessionalPublicProfile::query()
             ->with([
                 'sections' => fn ($query) => $query->active()->ordered(),
-                'faqs' => fn ($query) => $query->active()->ordered(),
                 'professional' => fn ($query) => $query->where('is_active', true),
-                'professional.specializations' => fn ($query) => $query->where('specializations.is_active', true)->orderBy('professional_specialization.sort_order')->orderBy('name'),
+                'professional.specializations' => fn ($query) => $query
+                    ->where('specializations.is_active', true)
+                    ->where('specializations.is_web_active', true)
+                    ->orderByDesc('professional_specialization.is_primary')
+                    ->orderBy('professional_specialization.sort_order')
+                    ->orderBy('specializations.id'),
                 'professional.professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
@@ -399,38 +405,16 @@ class SiteController extends Controller
                 'professional.degrees',
                 'professional.academicSpecializations',
                 'professional.boardRegistrations',
+                'professional.careerExperiences',
+                'heroCompetencies' => fn ($query) => $query->where('is_active', true),
+                'approachPrinciples' => fn ($query) => $query->where('is_active', true),
+                'competencies' => fn ($query) => $query->where('is_active', true),
+                'scientificActivities' => fn ($query) => $query->where('is_active', true),
             ])
-            ->where('is_active', true)
+            ->where('is_web_enabled', true)
             ->whereHas('professional', fn (Builder $query) => $query->where('is_active', true))
             ->orderBy('sort_order')
             ->orderBy('slug');
-    }
-
-    private function professionalsBaseQuery(): Builder
-    {
-        return Professional::query()
-            ->with([
-                'publicProfile' => fn ($query) => $query->where('is_active', true),
-                'specializations' => fn ($query) => $query
-                    ->where('specializations.is_active', true)
-                    ->where('specializations.is_web_active', true)
-                    ->orderBy('professional_specialization.sort_order')
-                    ->orderBy('name'),
-                'professionalServices' => fn ($query) => $query
-                    ->where('is_active', true)
-                    ->where('is_visible_public', true)
-                    ->orderBy('public_sort_order')
-                    ->orderBy('id'),
-                'professionalServices.service' => fn ($query) => $query
-                    ->where('is_active', true)
-                    ->where('is_web_active', true)
-                    ->orderBy('display_name'),
-                'degrees',
-                'academicSpecializations',
-                'boardRegistrations',
-            ])
-            ->where('is_active', true)
-            ->orderBy('full_name');
     }
 
     private function blogPostsBaseQuery(): Builder
@@ -775,12 +759,6 @@ class SiteController extends Controller
     ): array {
         $profile ??= $professional->publicProfile;
         $sections = $profile?->sections ?? collect();
-        $faqs = $profile?->faqs ?? collect();
-        $fullBioSection = $this->findSectionByKeys($sections, ['full_bio', 'bio', 'biography']);
-        $profileSection = $this->findSectionByKeys($sections, ['professional_profile', 'profile']);
-        $experienceSection = $this->findSectionByKeys($sections, ['clinical_experience', 'experience']);
-        $approachSection = $this->findSectionByKeys($sections, ['patient_approach', 'approach']);
-        $areasSection = $this->findSectionByKeys($sections, ['areas_of_interest', 'interests']);
 
         $services = $professional->professionalServices
             ->filter(fn ($link) => $link->service !== null && $link->service->is_active && $link->service->is_web_active)
@@ -791,54 +769,28 @@ class SiteController extends Controller
             ->values()
             ->all();
 
-        $areasOfInterest = [];
-        if (is_array($areasSection?->extra_json['items'] ?? null)) {
-            $areasOfInterest = array_values(array_filter(array_map(
-                fn ($item) => is_string($item) ? $item : null,
-                $areasSection->extra_json['items']
-            )));
-        }
-
-        if ($areasOfInterest === []) {
-            $areasOfInterest = $professional->specializations->pluck('name')->values()->all();
-        }
-
-        $publications = [];
-        $publicationsSection = $this->findSectionByKeys($sections, ['publications', 'articles']);
-        if (is_array($publicationsSection?->extra_json['items'] ?? null)) {
-            $publications = array_values(array_filter(array_map(function ($item): ?array {
-                if (! is_array($item)) {
-                    return null;
-                }
-
-                return [
-                    'title' => (string) ($item['title'] ?? ''),
-                    'year' => isset($item['year']) ? (int) $item['year'] : null,
-                    'journal' => (string) ($item['journal'] ?? ''),
-                ];
-            }, $publicationsSection->extra_json['items'])));
-        }
-
         return [
-            'id' => (string) ($profile?->id ?: $professional->id),
+            'id' => (string) $profile?->id,
             'slug' => $this->resolveProfessionalSlug($professional, $profile),
             'name' => $professional->full_name,
             'title' => $this->resolveProfessionalTitlePrefix($profile),
             'specialization' => $this->resolveProfessionalSpecialization($professional),
             'short_bio' => $this->resolveProfessionalShortBio($professional, $profile),
-            'full_bio' => $fullBioSection?->content ?: ($profile?->short_bio ?: ''),
-            'professional_profile' => $profileSection?->content ?: ($profile?->short_bio ?: ''),
+            'full_bio' => $profile?->bio_content ?: '',
+            'professional_profile' => $profile?->bio_content ?: '',
             'education' => $professional->degrees->map(fn ($degree) => $degree->title)->values()->all(),
-            'clinical_experience' => $experienceSection?->content ?: '',
-            'patient_approach' => $approachSection?->content ?: '',
-            'areas_of_interest' => $areasOfInterest,
+            'clinical_experience' => '',
+            'patient_approach' => $profile?->approach_content ?: '',
+            'areas_of_interest' => $profile?->competencies->pluck('title')->values()->all() ?? [],
             'services' => $services,
-            'publications' => $publications,
+            'publications' => $profile?->scientificActivities->map(fn ($item) => [
+                'title' => $item->title,
+                'year' => $item->year ?: optional($item->occurred_on)?->year,
+                'journal' => $item->source ?: '',
+                'url' => $item->url,
+            ])->values()->all() ?? [],
             'available_services' => array_map(fn (array $service): string => $service['name'], $services),
-            'faq_items' => $faqs->map(fn (FaqItem $faq): array => [
-                'question' => $faq->question,
-                'answer' => $faq->answer,
-            ])->values()->all(),
+            'sections' => $this->mapEquipeSections($professional, $profile, $request),
             'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
             'seo' => [
                 'title' => $profile?->seo_title,
@@ -850,6 +802,89 @@ class SiteController extends Controller
                 'og_description' => $profile?->og_description,
             ],
         ];
+    }
+
+    private function mapEquipeSections(
+        Professional $professional,
+        ProfessionalPublicProfile $profile,
+        Request $request
+    ): array {
+        $primary = $professional->specializations
+            ->sortBy(fn ($item) => [($item->pivot?->is_primary ?? false) ? 0 : 1, $item->pivot?->sort_order ?? PHP_INT_MAX, $item->id])
+            ->first();
+
+        $payloads = [
+            'hero' => [
+                'avatar_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
+                'honorific_prefix' => $professional->honorific_prefix,
+                'name' => $professional->full_name,
+                'primary_specialization' => $primary ? ['id' => $primary->id, 'name' => $primary->name, 'slug' => $primary->slug] : null,
+                'short_bio' => $profile->short_bio,
+                'competencies' => $profile->heroCompetencies->map(fn ($item) => [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'icon_key' => $item->icon_key,
+                ])->values()->all(),
+            ],
+            'biography' => ['content' => $profile->bio_content],
+            'approach' => [
+                'content' => $profile->approach_content,
+                'principles' => $profile->approachPrinciples->map(fn ($item) => [
+                    'id' => $item->id,
+                    'label' => $item->label,
+                    'icon_key' => $item->icon_key,
+                ])->values()->all(),
+            ],
+            'competencies' => [
+                'items' => $profile->competencies->map(fn ($item) => [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'description' => $item->description,
+                    'icon_key' => $item->icon_key,
+                ])->values()->all(),
+            ],
+            'career' => [
+                'items' => $professional->careerExperiences->map(fn ($item) => [
+                    'id' => $item->id,
+                    'year_from' => (int) $item->year_from,
+                    'year_to' => $item->year_to !== null ? (int) $item->year_to : null,
+                    'is_current' => (bool) $item->is_current,
+                    'title' => $item->title,
+                    'organization' => $item->organization,
+                    'description' => $item->description,
+                ])->values()->all(),
+            ],
+            'scientific_activity' => [
+                'items' => $profile->scientificActivities->map(fn ($item) => [
+                    'id' => $item->id,
+                    'contribution_type' => $item->contribution_type?->value ?? $item->contribution_type,
+                    'occurred_on' => optional($item->occurred_on)?->toDateString(),
+                    'year' => $item->year,
+                    'title' => $item->title,
+                    'source' => $item->source,
+                    'short_description' => $item->short_description,
+                    'url' => $item->url,
+                ])->values()->all(),
+            ],
+        ];
+
+        $renderable = [
+            'hero' => true,
+            'biography' => trim((string) $profile->bio_content) !== '',
+            'approach' => trim((string) $profile->approach_content) !== '' || $profile->approachPrinciples->isNotEmpty(),
+            'competencies' => $profile->competencies->isNotEmpty(),
+            'career' => $professional->careerExperiences->isNotEmpty(),
+            'scientific_activity' => $profile->scientificActivities->isNotEmpty(),
+        ];
+
+        return $profile->sections
+            ->filter(fn ($section) => isset($payloads[$section->key]) && ($renderable[$section->key] ?? false))
+            ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+            ->map(fn ($section) => [
+                'key' => $section->key,
+                'order' => (int) $section->sort_order,
+                'data' => $payloads[$section->key],
+            ])->values()->all();
     }
 
     private function mapBlogListItem(BlogPost $post): array
@@ -1015,19 +1050,10 @@ class SiteController extends Controller
 
     private function listProfessionalItems(Request $request, int $limit): array
     {
-        if ($this->activeProfessionalProfilesExist()) {
-            return $this->professionalProfilesBaseQuery()
-                ->limit($limit)
-                ->get()
-                ->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($profile, $request))
-                ->values()
-                ->all();
-        }
-
-        return $this->professionalsBaseQuery()
+        return $this->professionalProfilesBaseQuery()
             ->limit($limit)
             ->get()
-            ->map(fn (Professional $professional): array => $this->mapProfessionalSummary($professional, $request))
+            ->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($profile, $request))
             ->values()
             ->all();
     }
@@ -1040,7 +1066,7 @@ class SiteController extends Controller
         $profile ??= $professional->publicProfile;
 
         return [
-            'id' => (string) ($profile?->id ?: $professional->id),
+            'id' => (string) $profile?->id,
             'slug' => $this->resolveProfessionalSlug($professional, $profile),
             'name' => $professional->full_name,
             'title' => $this->resolveProfessionalTitlePrefix($profile),
@@ -1068,16 +1094,12 @@ class SiteController extends Controller
             return $slug;
         }
 
-        $generated = Str::slug($professional->full_name);
-
-        return $generated !== '' ? $generated : 'professionista-'.$professional->id;
+        return '';
     }
 
     private function resolveProfessionalTitlePrefix(?ProfessionalPublicProfile $profile = null): string
     {
-        return trim((string) ($profile?->title_prefix ?? '')) !== ''
-            ? trim((string) $profile?->title_prefix)
-            : 'Dott.';
+        return trim((string) ($profile?->professional?->honorific_prefix ?? ''));
     }
 
     private function resolveProfessionalDisplayName(
@@ -1089,7 +1111,9 @@ class SiteController extends Controller
 
     private function resolveProfessionalSpecialization(Professional $professional): string
     {
-        return $professional->specializations->pluck('name')->first()
+        return $professional->specializations
+            ->sortBy(fn ($item) => [($item->pivot?->is_primary ?? false) ? 0 : 1, $item->pivot?->sort_order ?? PHP_INT_MAX, $item->id])
+            ->pluck('name')->first()
             ?: $professional->area_name
             ?: 'Specialista';
     }
@@ -1130,11 +1154,6 @@ class SiteController extends Controller
         }
 
         return null;
-    }
-
-    private function activeProfessionalProfilesExist(): bool
-    {
-        return ProfessionalPublicProfile::query()->where('is_active', true)->exists();
     }
 
     private function servicesHaveFeaturedFlag(): bool

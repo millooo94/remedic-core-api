@@ -42,7 +42,7 @@ class StorePageRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'published_at' => ['nullable', 'date'],
             'sections' => ['sometimes', 'array'],
-            'sections.*.key' => ['required', 'string', 'max:255'],
+            'sections.*.key' => ['required', 'string', 'max:255', 'distinct'],
             'sections.*.title' => ['nullable', 'string', 'max:255'],
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
             'sections.*.content' => ['nullable', 'string'],

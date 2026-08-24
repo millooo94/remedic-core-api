@@ -47,7 +47,7 @@ class StoreAdminWebServiceRequest extends FormRequest
             'og_title' => ['nullable', 'string', 'max:255'],
             'og_description' => ['nullable', 'string'],
             'sections' => ['sometimes', 'array'],
-            'sections.*.key' => ['required', 'string', 'max:255'],
+            'sections.*.key' => ['required', 'string', 'max:255', 'distinct'],
             'sections.*.title' => ['nullable', 'string', 'max:255'],
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
             'sections.*.content' => ['nullable', 'string'],

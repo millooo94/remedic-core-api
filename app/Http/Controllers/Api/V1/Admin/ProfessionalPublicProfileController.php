@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\Http\Controllers\Api\V1\Admin\Concerns\PersistsSectionsAndFaqs;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\ProfessionalPublicProfiles\StoreProfessionalPublicProfileRequest;
+use App\Http\Requests\Api\V1\Admin\ProfessionalPublicProfiles\UpdateEquipeSectionsRequest;
 use App\Http\Requests\Api\V1\Admin\ProfessionalPublicProfiles\UpdateProfessionalPublicProfileRequest;
 use App\Http\Resources\Api\V1\Admin\ProfessionalPublicProfileResource;
-use App\Models\Professional;
 use App\Models\ProfessionalPublicProfile;
+use App\Models\Redirect;
+use App\Services\AutomaticSlugRedirectService;
+use App\Services\EquipeContentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -17,40 +19,32 @@ use Illuminate\Support\Facades\DB;
 
 class ProfessionalPublicProfileController extends Controller
 {
-    use PersistsSectionsAndFaqs;
+    public function __construct(
+        private readonly EquipeContentService $content,
+        private readonly AutomaticSlugRedirectService $redirects,
+    ) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
-        $query = ProfessionalPublicProfile::query()
-            ->with([
-                'professional',
-                'sections',
-                'faqs',
-                'professional.degrees',
-                'professional.academicSpecializations',
-                'professional.boardRegistrations',
-            ]);
+        $query = ProfessionalPublicProfile::query()->with($this->relations());
 
         if ($search = $request->search()) {
             $query->where(function ($builder) use ($search): void {
-                $builder
-                    ->where('slug', 'like', "%{$search}%")
+                $builder->where('slug', 'like', "%{$search}%")
                     ->orWhere('seo_title', 'like', "%{$search}%")
-                    ->orWhereHas('professional', function ($professionalQuery) use ($search): void {
-                        $professionalQuery
-                            ->where('full_name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
+                    ->orWhereHas('professional', fn ($professionalQuery) => $professionalQuery
+                        ->where('full_name', 'like', "%{$search}%"));
             });
         }
 
-        if ($request->has('is_active')) {
-            $query->where('is_active', (bool) $request->boolean('is_active'));
+        if ($request->has('is_web_enabled')) {
+            $query->where('is_web_enabled', $request->boolean('is_web_enabled'));
+        } elseif ($request->has('is_active')) {
+            $query->where('is_web_enabled', $request->boolean('is_active'));
         }
 
         $sort = $request->sort();
         $direction = $request->direction();
-
         match ($sort) {
             'slug' => $query->orderBy('slug', $direction),
             'sort_order' => $query->orderBy('sort_order', $direction),
@@ -65,23 +59,65 @@ class ProfessionalPublicProfileController extends Controller
 
     public function store(StoreProfessionalPublicProfileRequest $request): JsonResponse
     {
-        $profile = DB::transaction(fn () => $this->persist(new ProfessionalPublicProfile(), $request->validated()));
+        $profile = DB::transaction(function () use ($request): ProfessionalPublicProfile {
+            $payload = $request->validated();
+            $contentPayload = $this->extractContentPayload($payload);
+            $profile = ProfessionalPublicProfile::query()->create($payload + [
+                'is_active' => (bool) ($payload['is_web_enabled'] ?? false),
+            ]);
+            $this->content->initializeSections($profile);
+            $this->content->syncTypedContent($profile, $contentPayload);
+
+            return $profile;
+        });
 
         return (new ProfessionalPublicProfileResource($this->loadProfile($profile)))
-            ->response()
-            ->setStatusCode(201);
+            ->response()->setStatusCode(201);
     }
 
     public function show(ProfessionalPublicProfile $professionalPublicProfile): ProfessionalPublicProfileResource
     {
+        $this->content->initializeSections($professionalPublicProfile);
+
         return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
     }
 
-    public function update(UpdateProfessionalPublicProfileRequest $request, ProfessionalPublicProfile $professionalPublicProfile): ProfessionalPublicProfileResource
-    {
-        $profile = DB::transaction(fn () => $this->persist($professionalPublicProfile, $request->validated()));
+    public function update(
+        UpdateProfessionalPublicProfileRequest $request,
+        ProfessionalPublicProfile $professionalPublicProfile
+    ): ProfessionalPublicProfileResource {
+        $profile = DB::transaction(function () use ($request, $professionalPublicProfile): ProfessionalPublicProfile {
+            $previousSlug = $professionalPublicProfile->slug;
+            $payload = $request->validated();
+            $contentPayload = $this->extractContentPayload($payload);
+            $professionalPublicProfile->fill($payload);
+            $professionalPublicProfile->is_active = (bool) ($professionalPublicProfile->is_web_enabled ?? false);
+            $professionalPublicProfile->save();
+            $this->content->initializeSections($professionalPublicProfile);
+            $this->content->syncTypedContent($professionalPublicProfile, $contentPayload);
+
+            if ($previousSlug !== $professionalPublicProfile->slug) {
+                $this->redirects->sync(
+                    Redirect::SOURCE_TYPE_EQUIPE_PROFILE,
+                    $professionalPublicProfile->id,
+                    '/equipe/'.$previousSlug,
+                    '/equipe/'.$professionalPublicProfile->slug
+                );
+            }
+
+            return $professionalPublicProfile;
+        });
 
         return new ProfessionalPublicProfileResource($this->loadProfile($profile));
+    }
+
+    public function updateSections(
+        UpdateEquipeSectionsRequest $request,
+        ProfessionalPublicProfile $professionalPublicProfile
+    ): ProfessionalPublicProfileResource {
+        $this->content->updateSections($professionalPublicProfile, $request->validated('sections'));
+
+        return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
     }
 
     public function destroy(ProfessionalPublicProfile $professionalPublicProfile): Response
@@ -91,71 +127,39 @@ class ProfessionalPublicProfileController extends Controller
         return response()->noContent();
     }
 
-    private function persist(ProfessionalPublicProfile $profile, array $payload): ProfessionalPublicProfile
+    private function extractContentPayload(array &$payload): array
     {
-        $relationsPayload = [
-            'sections' => $payload['sections'] ?? [],
-            'faqs' => $payload['faqs'] ?? [],
-            'degrees' => $payload['degrees'] ?? [],
-            'academic_specializations' => $payload['academic_specializations'] ?? [],
-            'board_registrations' => $payload['board_registrations'] ?? [],
-        ];
-
-        unset(
-            $payload['sections'],
-            $payload['faqs'],
-            $payload['degrees'],
-            $payload['academic_specializations'],
-            $payload['board_registrations'],
-        );
-
-        $profile->fill($payload);
-        $profile->save();
-
-        $this->persistSectionsAndFaqs($profile, $relationsPayload);
-
-        /** @var Professional $professional */
-        $professional = $profile->professional()->firstOrFail();
-
-        $professional->degrees()->delete();
-        foreach ($relationsPayload['degrees'] as $index => $degree) {
-            $professional->degrees()->create([
-                'title' => $degree['title'],
-                'awarded_on' => $degree['awarded_on'] ?? null,
-                'sort_order' => $degree['sort_order'] ?? $index,
-            ]);
+        $keys = ['hero_competency_ids', 'approach_principles', 'competencies', 'scientific_activities'];
+        $content = [];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $payload)) {
+                $content[$key] = $payload[$key];
+                unset($payload[$key]);
+            }
         }
 
-        $professional->academicSpecializations()->delete();
-        foreach ($relationsPayload['academic_specializations'] as $index => $specialization) {
-            $professional->academicSpecializations()->create([
-                'title' => $specialization['title'],
-                'awarded_on' => $specialization['awarded_on'] ?? null,
-                'sort_order' => $specialization['sort_order'] ?? $index,
-            ]);
-        }
-
-        $professional->boardRegistrations()->delete();
-        foreach ($relationsPayload['board_registrations'] as $index => $registration) {
-            $professional->boardRegistrations()->create([
-                'board_name' => $registration['board_name'],
-                'registered_on' => $registration['registered_on'] ?? null,
-                'sort_order' => $registration['sort_order'] ?? $index,
-            ]);
-        }
-
-        return $profile->fresh();
+        return $content;
     }
 
     private function loadProfile(ProfessionalPublicProfile $profile): ProfessionalPublicProfile
     {
-        return $profile->load([
-            'professional',
+        return $profile->refresh()->load($this->relations());
+    }
+
+    private function relations(): array
+    {
+        return [
             'sections',
-            'faqs',
+            'competencies',
+            'heroCompetencies',
+            'approachPrinciples',
+            'scientificActivities',
+            'professional.specializations',
+            'professional.professionalServices.service',
             'professional.degrees',
             'professional.academicSpecializations',
             'professional.boardRegistrations',
-        ]);
+            'professional.careerExperiences',
+        ];
     }
 }

@@ -17,6 +17,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ProfessionalController extends Controller
 {
@@ -27,7 +28,7 @@ class ProfessionalController extends Controller
     public function index(): AnonymousResourceCollection
     {
         $professionals = Professional::query()
-            ->with(['areas', 'specializations', 'publicProfile'])
+            ->with($this->relations())
             ->orderBy('full_name')
             ->get();
 
@@ -49,9 +50,10 @@ class ProfessionalController extends Controller
 
             $this->syncAreas($professional, $areaNames);
             $this->syncSpecializations($professional, $specializationIds);
+            $this->syncMasterCollections($professional, $payload);
             $professional->forceFill(['area_name' => $areaNames[0] ?? null])->save();
 
-            return $professional->load(['areas', 'specializations', 'publicProfile']);
+            return $professional->load($this->relations());
         });
 
         return new ProfessionalResource($professional);
@@ -59,7 +61,7 @@ class ProfessionalController extends Controller
 
     public function show(Professional $professional): ProfessionalResource
     {
-        return new ProfessionalResource($professional->load(['areas', 'specializations', 'publicProfile']));
+        return new ProfessionalResource($professional->load($this->relations()));
     }
 
     public function update(UpdateProfessionalRequest $request, Professional $professional): ProfessionalResource
@@ -84,9 +86,10 @@ class ProfessionalController extends Controller
 
             $this->syncAreas($professional, $areaNames);
             $this->syncSpecializations($professional, $specializationIds);
+            $this->syncMasterCollections($professional, $payload);
             $professional->forceFill(['area_name' => $areaNames[0] ?? null])->save();
 
-            return $professional->refresh()->load(['areas', 'specializations', 'publicProfile']);
+            return $professional->refresh()->load($this->relations());
         });
 
         return new ProfessionalResource($professional);
@@ -119,12 +122,15 @@ class ProfessionalController extends Controller
             'gender' => $subjectType === ProfessionalSubjectType::Individual
                 ? ($payload['gender'] ?? ProfessionalGender::Unspecified->value)
                 : ProfessionalGender::Unspecified->value,
+            'honorific_prefix' => $this->nullableTrimmed($payload['honorific_prefix'] ?? null),
             'first_name' => $subjectType === ProfessionalSubjectType::Individual ? $firstName : null,
             'last_name' => $subjectType === ProfessionalSubjectType::Individual ? $lastName : null,
             'company_name' => $subjectType === ProfessionalSubjectType::Company ? $companyName : null,
             'full_name' => $subjectType === ProfessionalSubjectType::Company
                 ? (string) $companyName
                 : trim(((string) $lastName).' '.((string) $firstName)),
+            'birth_date' => $payload['birth_date'] ?? null,
+            'birth_place' => $this->nullableTrimmed($payload['birth_place'] ?? null),
             'area_name' => $areaNames[0] ?? $this->nullableTrimmed($payload['area_name'] ?? null),
             'email' => $payload['email'] ?? null,
             'iban' => IbanFormatter::normalize($payload['iban'] ?? null),
@@ -245,5 +251,57 @@ class ProfessionalController extends Controller
         $trimmed = trim($value);
 
         return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function relations(): array
+    {
+        return [
+            'areas',
+            'specializations',
+            'publicProfile',
+            'degrees',
+            'academicSpecializations',
+            'boardRegistrations',
+            'careerExperiences',
+        ];
+    }
+
+    private function syncMasterCollections(Professional $professional, array $payload): void
+    {
+        $definitions = [
+            'degrees' => [$professional->degrees(), ['title', 'awarded_on']],
+            'academic_specializations' => [$professional->academicSpecializations(), ['title', 'awarded_on']],
+            'board_registrations' => [$professional->boardRegistrations(), ['board_name', 'registration_number', 'registered_on']],
+            'career_experiences' => [$professional->careerExperiences(), ['year_from', 'year_to', 'is_current', 'title', 'organization', 'description']],
+        ];
+
+        foreach ($definitions as $key => [$relation, $fields]) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $existing = $relation->get()->keyBy('id');
+            $keptIds = [];
+
+            foreach (array_values($payload[$key] ?? []) as $index => $item) {
+                $attributes = collect($item)->only($fields)->all();
+                $attributes['sort_order'] = $index;
+                if (in_array('is_current', $fields, true) && ($attributes['is_current'] ?? false)) {
+                    $attributes['year_to'] = null;
+                }
+
+                $id = isset($item['id']) ? (int) $item['id'] : null;
+                if ($id !== null && ! $existing->has($id)) {
+                    throw ValidationException::withMessages(["{$key}.{$index}.id" => 'Il record non appartiene al professionista.']);
+                }
+
+                $model = $id !== null ? $existing->get($id) : $relation->make();
+                $model->fill($attributes);
+                $model->save();
+                $keptIds[] = $model->id;
+            }
+
+            $relation->whereNotIn('id', $keptIds ?: [0])->delete();
+        }
     }
 }

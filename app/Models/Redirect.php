@@ -13,6 +13,8 @@ class Redirect extends Model
 
     public const SOURCE_TYPE_PAGE = 'page';
 
+    public const SOURCE_TYPE_EQUIPE_PROFILE = 'equipe_profile';
+
     protected $fillable = [
         'legacy_backend_id',
         'from_path',

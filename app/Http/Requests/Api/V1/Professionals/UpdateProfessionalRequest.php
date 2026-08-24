@@ -37,9 +37,12 @@ class UpdateProfessionalRequest extends StoreProfessionalRequest
             $this->merge([
                 'subject_type' => $this->input('subject_type', $professional->subject_type?->value ?? ProfessionalSubjectType::Individual->value),
                 'gender' => $this->input('gender', $professional->gender?->value ?? ProfessionalGender::Unspecified->value),
+                'honorific_prefix' => $this->exists('honorific_prefix') ? $this->input('honorific_prefix') : $professional->honorific_prefix,
                 'first_name' => $this->input('first_name', $professional->first_name),
                 'last_name' => $this->input('last_name', $professional->last_name),
                 'company_name' => $this->exists('company_name') ? $this->input('company_name') : $professional->company_name,
+                'birth_date' => $this->exists('birth_date') ? $this->input('birth_date') : optional($professional->birth_date)?->toDateString(),
+                'birth_place' => $this->exists('birth_place') ? $this->input('birth_place') : $professional->birth_place,
                 'area_name' => $this->input('area_name', $professional->area_name),
                 'area_names' => $hasAreaNames ? $this->rawAreaNames() : $currentAreaNames,
                 'specialization_ids' => $hasSpecializationIds ? $this->rawSpecializationIds() : $currentSpecializationIds,

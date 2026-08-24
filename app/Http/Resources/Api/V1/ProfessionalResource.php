@@ -14,6 +14,7 @@ class ProfessionalResource extends JsonResource
         $specializations = $this->relationLoaded('specializations')
             ? $this->specializations
                 ->sortBy(fn ($specialization) => [
+                    ($specialization->pivot?->is_primary ?? false) ? 0 : 1,
                     $specialization->pivot?->sort_order ?? PHP_INT_MAX,
                     $specialization->id,
                 ])
@@ -64,15 +65,18 @@ class ProfessionalResource extends JsonResource
             'id' => $this->id,
             'subject_type' => $this->subject_type?->value ?? $this->subject_type,
             'gender' => $this->gender?->value ?? $this->gender ?? 'unspecified',
+            'honorific_prefix' => $this->honorific_prefix,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'company_name' => $this->company_name,
             'full_name' => $this->full_name,
+            'birth_date' => optional($this->birth_date)?->toDateString(),
+            'birth_place' => $this->birth_place,
             'area_name' => $this->area_name ?: ($areaNames->first() ?? null),
             'area_names' => $areaNames->all(),
             'area_ids' => $areaIds->all(),
             'email' => $this->email,
-            'title_prefix' => $this->whenLoaded('publicProfile', fn () => $this->publicProfile?->title_prefix),
+            'title_prefix' => $this->honorific_prefix,
             'iban' => $this->iban,
             'iban_display' => IbanFormatter::format($this->iban),
             'avatar_path' => $this->avatar_path,
@@ -91,6 +95,35 @@ class ProfessionalResource extends JsonResource
                     'is_primary' => (bool) ($specialization->pivot?->is_primary ?? false),
                     'sort_order' => (int) ($specialization->pivot?->sort_order ?? 0),
                 ])->all()),
+            'degrees' => $this->whenLoaded('degrees', fn () => $this->degrees->map(fn ($degree) => [
+                'id' => $degree->id,
+                'title' => $degree->title,
+                'awarded_on' => optional($degree->awarded_on)?->toDateString(),
+                'sort_order' => (int) $degree->sort_order,
+            ])->values()->all()),
+            'academic_specializations' => $this->whenLoaded('academicSpecializations', fn () => $this->academicSpecializations->map(fn ($item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'awarded_on' => optional($item->awarded_on)?->toDateString(),
+                'sort_order' => (int) $item->sort_order,
+            ])->values()->all()),
+            'board_registrations' => $this->whenLoaded('boardRegistrations', fn () => $this->boardRegistrations->map(fn ($item) => [
+                'id' => $item->id,
+                'board_name' => $item->board_name,
+                'registration_number' => $item->registration_number,
+                'registered_on' => optional($item->registered_on)?->toDateString(),
+                'sort_order' => (int) $item->sort_order,
+            ])->values()->all()),
+            'career_experiences' => $this->whenLoaded('careerExperiences', fn () => $this->careerExperiences->map(fn ($item) => [
+                'id' => $item->id,
+                'year_from' => (int) $item->year_from,
+                'year_to' => $item->year_to !== null ? (int) $item->year_to : null,
+                'is_current' => (bool) $item->is_current,
+                'title' => $item->title,
+                'organization' => $item->organization,
+                'description' => $item->description,
+                'sort_order' => (int) $item->sort_order,
+            ])->values()->all()),
             'created_at' => optional($this->created_at)->toIso8601String(),
             'updated_at' => optional($this->updated_at)->toIso8601String(),
         ];

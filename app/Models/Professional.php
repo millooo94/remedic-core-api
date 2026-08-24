@@ -18,10 +18,13 @@ class Professional extends Model
         'legacy_backend_id',
         'subject_type',
         'gender',
+        'honorific_prefix',
         'first_name',
         'last_name',
         'company_name',
         'full_name',
+        'birth_date',
+        'birth_place',
         'area_name',
         'email',
         'iban',
@@ -34,6 +37,7 @@ class Professional extends Model
     {
         return [
             'legacy_backend_id' => 'integer',
+            'birth_date' => 'date',
             'is_active' => 'boolean',
             'gender' => ProfessionalGender::class,
             'subject_type' => ProfessionalSubjectType::class,
@@ -91,6 +95,11 @@ class Professional extends Model
     public function boardRegistrations(): HasMany
     {
         return $this->hasMany(ProfessionalBoardRegistration::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function careerExperiences(): HasMany
+    {
+        return $this->hasMany(ProfessionalCareerExperience::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function publicProfile(): HasOne

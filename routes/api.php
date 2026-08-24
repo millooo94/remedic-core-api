@@ -54,6 +54,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('services/{slug}', [PublicSiteController::class, 'service']);
         Route::get('professionals', [PublicSiteController::class, 'professionals']);
         Route::get('professionals/{slug}', [PublicSiteController::class, 'professional']);
+        Route::get('equipe', [PublicSiteController::class, 'professionals']);
+        Route::get('equipe/{slug}', [PublicSiteController::class, 'professional']);
         Route::get('blog-posts', [PublicSiteController::class, 'blogPosts']);
         Route::get('blog-posts/{slug}', [PublicSiteController::class, 'blogPost']);
         Route::get('redirects/resolve', [PublicSiteController::class, 'resolveRedirect']);
@@ -181,6 +183,14 @@ Route::prefix('v1')->group(function (): void {
                     ->only(['index', 'show', 'update'])
                     ->middleware('permission:manage services');
                 Route::apiResource('professional-public-profiles', AdminProfessionalPublicProfileController::class)
+                    ->parameters(['professional-public-profiles' => 'professionalPublicProfile'])
+                    ->middleware('permission:manage doctors');
+                Route::patch('professional-public-profiles/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
+                    ->middleware('permission:manage doctors');
+                Route::apiResource('equipe', AdminProfessionalPublicProfileController::class)
+                    ->parameters(['equipe' => 'professionalPublicProfile'])
+                    ->middleware('permission:manage doctors');
+                Route::patch('equipe/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
                     ->middleware('permission:manage doctors');
                 Route::apiResource('consent-categories', AdminConsentCategoryController::class)
                     ->middleware('permission:manage consent configuration');

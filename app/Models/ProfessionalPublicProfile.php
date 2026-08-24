@@ -7,6 +7,8 @@ use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProfessionalPublicProfile extends Model
 {
@@ -19,6 +21,8 @@ class ProfessionalPublicProfile extends Model
         'slug',
         'title_prefix',
         'short_bio',
+        'bio_content',
+        'approach_content',
         'registration_number',
         'birth_date',
         'birth_place',
@@ -31,6 +35,7 @@ class ProfessionalPublicProfile extends Model
         'og_title',
         'og_description',
         'is_active',
+        'is_web_enabled',
         'sort_order',
     ];
 
@@ -41,6 +46,7 @@ class ProfessionalPublicProfile extends Model
             'birth_date' => 'date',
             'robots' => RobotsValue::class,
             'is_active' => 'boolean',
+            'is_web_enabled' => 'boolean',
             'sort_order' => 'integer',
         ];
     }
@@ -48,5 +54,38 @@ class ProfessionalPublicProfile extends Model
     public function professional(): BelongsTo
     {
         return $this->belongsTo(Professional::class);
+    }
+
+    public function approachPrinciples(): HasMany
+    {
+        return $this->hasMany(ProfessionalProfileApproachPrinciple::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function competencies(): HasMany
+    {
+        return $this->hasMany(ProfessionalProfileCompetency::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function heroCompetencies(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            ProfessionalProfileCompetency::class,
+            'professional_profile_hero_competencies',
+            'professional_public_profile_id',
+            'professional_profile_competency_id'
+        )->withPivot('sort_order')->orderByPivot('sort_order');
+    }
+
+    public function scientificActivities(): HasMany
+    {
+        return $this->hasMany(ProfessionalProfileScientificActivity::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (ProfessionalPublicProfile $profile): void {
+            $profile->sections()->delete();
+            $profile->faqs()->delete();
+        });
     }
 }
