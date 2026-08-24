@@ -848,8 +848,8 @@ class SiteController extends Controller
             'hero_image_url' => $this->resolveMediaPathOrUrl($page->hero_image_path, request()),
             'hero_image_alt' => $page->hero_image_alt,
             'faq_enabled' => (bool) $page->faq_enabled,
-            'sections' => (string) $page->internal_key === PageSectionRegistry::CENTER_INTERNAL_KEY
-                ? $this->mapCenterSections($page)
+            'sections' => PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
+                ? $this->mapTypedPageSections($page)
                 : $page->sections->map(fn (Section $section): array => [
                     'key' => $section->key,
                     'title' => $section->title,
@@ -889,7 +889,7 @@ class SiteController extends Controller
     }
 
     /** @return list<array<string, mixed>> */
-    private function mapCenterSections(Page $page): array
+    private function mapTypedPageSections(Page $page): array
     {
         $targets = Page::query()
             ->active()
@@ -898,9 +898,9 @@ class SiteController extends Controller
             ->pluck('slug', 'internal_key');
 
         return $page->sections
-            ->filter(fn (Section $section): bool => PageSectionRegistry::definition(PageSectionRegistry::CENTER_INTERNAL_KEY, $section->key) !== null)
-            ->map(function (Section $section) use ($targets): array {
-                $definition = PageSectionRegistry::definition(PageSectionRegistry::CENTER_INTERNAL_KEY, $section->key);
+            ->filter(fn (Section $section): bool => PageSectionRegistry::definition((string) $page->internal_key, $section->key) !== null)
+            ->map(function (Section $section) use ($targets, $page): array {
+                $definition = PageSectionRegistry::definition((string) $page->internal_key, $section->key);
                 $extra = $section->extra_json ?? [];
                 $mapped = [
                     'key' => $section->key,
@@ -908,7 +908,7 @@ class SiteController extends Controller
                     'body' => $section->content,
                 ];
 
-                foreach (['eyebrow', 'link_label'] as $key) {
+                foreach (['eyebrow', 'link_label', 'disclaimer'] as $key) {
                     if (array_key_exists($key, $extra)) {
                         $mapped[$key] = $extra[$key];
                     }
@@ -930,6 +930,16 @@ class SiteController extends Controller
                 }
                 if (isset($definition['actions'])) {
                     $mapped['actions'] = $definition['actions'];
+                }
+                if ($section->key === 'model_overview' || $section->key === 'three_reasons') {
+                    $mapped['items'] = $extra['items'] ?? [];
+                }
+                if ($section->key === 'patient_experiences') {
+                    $mapped['testimonials'] = collect($extra['testimonials'] ?? [])
+                        ->filter(fn (array $testimonial): bool => (bool) ($testimonial['is_active'] ?? true))
+                        ->sortBy('sort_order')
+                        ->values()
+                        ->all();
                 }
 
                 return $mapped;

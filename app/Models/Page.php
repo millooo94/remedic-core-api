@@ -21,6 +21,10 @@ class Page extends Model
 
     public const CENTER_SLUG = 'il-centro';
 
+    public const WHY_CHOOSE_US_INTERNAL_KEY = 'why_choose_us';
+
+    public const WHY_CHOOSE_US_SLUG = 'perche-sceglierci';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

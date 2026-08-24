@@ -155,12 +155,14 @@ class PageController extends Controller
         unset($payload['sections'], $payload['removed_section_keys'], $payload['faqs'], $payload['removed_faq_ids']);
 
         if (! $page->exists && ! array_key_exists('internal_key', $payload)) {
-            $payload['internal_key'] = ($payload['slug'] ?? null) === Page::CENTER_SLUG
-                ? Page::CENTER_INTERNAL_KEY
-                : (string) ($payload['slug'] ?? '');
+            $payload['internal_key'] = match ($payload['slug'] ?? null) {
+                Page::CENTER_SLUG => Page::CENTER_INTERNAL_KEY,
+                Page::WHY_CHOOSE_US_SLUG => Page::WHY_CHOOSE_US_INTERNAL_KEY,
+                default => (string) ($payload['slug'] ?? ''),
+            };
         }
 
-        if (($payload['internal_key'] ?? $page->internal_key) === Page::CENTER_INTERNAL_KEY) {
+        if (PageSectionRegistry::hasDefinitionsFor((string) ($payload['internal_key'] ?? $page->internal_key))) {
             $payload['faq_enabled'] = false;
         }
 
