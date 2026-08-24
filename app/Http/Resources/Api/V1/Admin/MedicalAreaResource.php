@@ -29,6 +29,7 @@ class MedicalAreaResource extends JsonResource
                 'featured_image_path' => $this->featured_image_path,
                 'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
                 'is_active' => (bool) $this->is_active,
+                'is_archived' => false,
                 'sort_order' => (int) $this->sort_order,
                 'services_count' => (int) ($this->services_count ?? $this->services->count()),
                 'professionals_count' => (int) ($this->professionals_count ?? $this->professionals->count()),

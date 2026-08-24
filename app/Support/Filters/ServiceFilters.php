@@ -8,6 +8,12 @@ class ServiceFilters
 {
     public function apply(Builder $query, array $filters): Builder
     {
+        match ($filters['archive_state'] ?? 'active') {
+            'archived' => $query->onlyTrashed(),
+            'all' => $query->withTrashed(),
+            default => null,
+        };
+
         return $query
             ->when($filters['q'] ?? null, function (Builder $builder, string $search): void {
                 $terms = preg_split('/\s+/', trim($search)) ?: [];

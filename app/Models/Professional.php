@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProfessionalGender;
 use App\Enums\ProfessionalSubjectType;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -105,6 +106,18 @@ class Professional extends Model
     public function publicProfile(): HasOne
     {
         return $this->hasOne(ProfessionalPublicProfile::class);
+    }
+
+    public function scopeEffectivelyVisible(Builder $query): Builder
+    {
+        return $query
+            ->where($this->qualifyColumn('is_active'), true)
+            ->whereHas('publicProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true));
+    }
+
+    public function isEffectivelyVisible(): bool
+    {
+        return (bool) $this->is_active && (bool) $this->publicProfile?->is_web_enabled;
     }
 
     public function availabilityRules(): HasMany

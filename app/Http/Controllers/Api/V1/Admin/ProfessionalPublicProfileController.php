@@ -43,6 +43,14 @@ class ProfessionalPublicProfileController extends Controller
             $query->where('is_web_enabled', $request->boolean('is_active'));
         }
 
+        if ($request->has('effective_public_visibility')) {
+            $request->boolean('effective_public_visibility')
+                ? $query->effectivelyVisible()
+                : $query->where(fn ($nested) => $nested
+                    ->where('is_web_enabled', false)
+                    ->orWhereHas('professional', fn ($master) => $master->where('is_active', false)));
+        }
+
         $sort = $request->sort();
         $direction = $request->direction();
         match ($sort) {

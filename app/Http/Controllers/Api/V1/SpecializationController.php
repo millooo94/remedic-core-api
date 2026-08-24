@@ -89,15 +89,11 @@ class SpecializationController extends Controller
 
     public function destroy(Specialization $specialization): Response|JsonResponse
     {
-        $specialization->loadCount(['professionals', 'services'])->load('webProfile');
-        if ($specialization->professionals_count > 0 || $specialization->services_count > 0 || $specialization->webProfile !== null) {
+        $dependencies = $specialization->deletionBlockers();
+        if ($dependencies !== []) {
             return response()->json([
                 'message' => 'La specializzazione è referenziata e non può essere eliminata.',
-                'dependencies' => [
-                    'professionals' => (int) $specialization->professionals_count,
-                    'services' => (int) $specialization->services_count,
-                    'web_profile' => $specialization->webProfile !== null,
-                ],
+                'dependencies' => $dependencies,
             ], 409);
         }
 

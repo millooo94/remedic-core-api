@@ -13,6 +13,7 @@ use App\Models\ServiceCategory;
 use App\Models\Specialization;
 use App\Services\ManagedMediaService;
 use App\Support\Professionals\IbanFormatter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -95,10 +96,25 @@ class ProfessionalController extends Controller
         return new ProfessionalResource($professional);
     }
 
-    public function destroy(Professional $professional): Response
+    public function destroy(Professional $professional): Response|JsonResponse
     {
+        $dependencies = collect([
+            'performance_records' => $professional->performanceRecords()->count(),
+            'appointments' => DB::table('appointments')->where('professional_id', $professional->id)->count(),
+        ])->filter(fn (int $count): bool => $count > 0)->all();
+
+        if ($dependencies !== []) {
+            return response()->json([
+                'message' => 'Il professionista è referenziato e non può essere eliminato.',
+                'dependencies' => $dependencies,
+            ], Response::HTTP_CONFLICT);
+        }
+
         $avatarPath = $professional->avatar_path;
-        $professional->delete();
+        DB::transaction(function () use ($professional): void {
+            $professional->publicProfile?->delete();
+            $professional->delete();
+        });
         $this->media->deleteManagedFile($avatarPath, [
             "professionals/{$professional->id}",
             "professional-avatars/{$professional->id}",

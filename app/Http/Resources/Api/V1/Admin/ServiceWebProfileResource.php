@@ -17,49 +17,54 @@ class ServiceWebProfileResource extends JsonResource
         $profile = $this->webProfile;
         $primary = app(PrimarySpecializationResolver::class)->resolve($this->resource);
 
+        $master = [
+            'id' => $this->id,
+            'name' => $this->display_name,
+            'canonical_name' => $this->canonical_name,
+            'master_slug' => $this->slug,
+            'price' => $this->importo_prestazione,
+            'duration_minutes' => $this->default_duration_minutes,
+            'is_active' => (bool) $this->is_active,
+            'is_archived' => $this->trashed(),
+            'operationally_active' => (bool) $this->is_active,
+            'featured_image_path' => $this->featured_image_path,
+            'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
+            'icon_path' => $primary?->icon_path,
+            'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
+            'primary_area' => $primary ? [
+                'id' => $primary->id,
+                'name' => $primary->name,
+                'slug' => $primary->slug,
+            ] : null,
+            'areas' => $this->specializations->map(fn ($area) => [
+                'id' => $area->id,
+                'name' => $area->name,
+                'slug' => $area->slug,
+                'is_primary' => (bool) ($area->pivot?->is_primary ?? false),
+            ])->values()->all(),
+            'professionals' => $this->professionalServices
+                ->filter(fn ($link) => $link->professional !== null)
+                ->map(fn ($link) => [
+                    'id' => $link->professional->id,
+                    'display_name' => trim(implode(' ', array_filter([
+                        $link->professional->honorific_prefix,
+                        $link->professional->full_name,
+                    ]))),
+                    'is_active' => (bool) $link->professional->is_active,
+                ])->values()->all(),
+            'professionals_count' => $this->professionalServices->filter(fn ($link) => $link->professional !== null)->count(),
+        ];
+
         return [
             'id' => $this->id,
-            'service' => [
-                'id' => $this->id,
-                'name' => $this->display_name,
-                'canonical_name' => $this->canonical_name,
-                'master_slug' => $this->slug,
-                'price' => $this->importo_prestazione,
-                'duration_minutes' => $this->default_duration_minutes,
-                'operationally_active' => (bool) $this->is_active,
-                'featured_image_path' => $this->featured_image_path,
-                'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
-                'icon_path' => $primary?->icon_path,
-                'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
-                'primary_area' => $primary ? [
-                    'id' => $primary->id,
-                    'name' => $primary->name,
-                    'slug' => $primary->slug,
-                ] : null,
-                'areas' => $this->specializations->map(fn ($area) => [
-                    'id' => $area->id,
-                    'name' => $area->name,
-                    'slug' => $area->slug,
-                    'is_primary' => (bool) ($area->pivot?->is_primary ?? false),
-                ])->values()->all(),
-                'professionals' => $this->professionalServices
-                    ->filter(fn ($link) => $link->professional !== null)
-                    ->map(fn ($link) => [
-                        'id' => $link->professional->id,
-                        'display_name' => trim(implode(' ', array_filter([
-                            $link->professional->honorific_prefix,
-                            $link->professional->full_name,
-                        ]))),
-                        'is_active' => (bool) $link->professional->is_active,
-                    ])->values()->all(),
-                'professionals_count' => $this->professionalServices->filter(fn ($link) => $link->professional !== null)->count(),
-            ],
+            'master' => $master,
+            'service' => $master,
             'web_profile' => $profile ? $this->profile($profile) : null,
             'is_configured' => $profile !== null,
-            'effective_public_visibility' => (bool) $this->is_active && (bool) $profile?->is_web_enabled,
+            'effective_public_visibility' => $this->isEffectivelyVisible(),
             'status' => $profile === null
                 ? 'not_configured'
-                : (((bool) $this->is_active && (bool) $profile->is_web_enabled) ? 'published' : 'not_published'),
+                : ($this->isEffectivelyVisible() ? 'published' : 'not_published'),
         ];
     }
 

@@ -21,7 +21,13 @@ class AdminWebServiceController extends Controller
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
-        $query = Service::query()->with($this->relations());
+        $query = Service::query();
+        match ($request->validated('archive_state', 'active')) {
+            'archived' => $query->onlyTrashed(),
+            'all' => $query->withTrashed(),
+            default => null,
+        };
+        $query->with($this->relations());
 
         if ($search = $request->search()) {
             $query->where(fn ($builder) => $builder
@@ -38,11 +44,26 @@ class AdminWebServiceController extends Controller
             : ($request->has('is_web_active') ? 'is_web_active' : null);
         if ($enabledFilter !== null) {
             $enabled = $request->boolean($enabledFilter);
-            $enabled
-                ? $query->whereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', true))
+            $query->whereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', $enabled));
+        }
+
+        if ($request->has('is_configured')) {
+            $request->boolean('is_configured')
+                ? $query->whereHas('webProfile')
+                : $query->whereDoesntHave('webProfile');
+        }
+
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        if ($request->has('effective_public_visibility')) {
+            $request->boolean('effective_public_visibility')
+                ? $query->effectivelyVisible()
                 : $query->where(fn ($nested) => $nested
-                    ->whereDoesntHave('webProfile')
-                    ->orWhereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', false)));
+                    ->whereNotNull('deleted_at')
+                    ->orWhere('is_active', false)
+                    ->orWhereDoesntHave('webProfile', fn ($profile) => $profile->where('is_web_enabled', true)));
         }
 
         match ($request->sort()) {

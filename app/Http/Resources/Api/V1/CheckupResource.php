@@ -62,6 +62,7 @@ class CheckupResource extends JsonResource
             'price_amount' => $this->price_amount,
             'indicative_duration_minutes' => $this->indicative_duration_minutes,
             'is_active' => (bool) $this->is_active,
+            'is_archived' => $this->trashed(),
             'is_operationally_available' => $this->isOperationallyAvailable(),
             'organizational_notes' => $this->organizational_notes,
             'featured_image_path' => $this->featured_image_path,

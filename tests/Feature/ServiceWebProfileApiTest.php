@@ -69,6 +69,7 @@ class ServiceWebProfileApiTest extends TestCase
         $legacyOnly = $this->masterService('Solo flag legacy', [
             'is_active' => true,
             'is_web_active' => true,
+            'is_featured' => true,
         ]);
         $visible = $this->profiledService('Visibile', 'visibile', true, true, 2);
         $inactiveMaster = $this->profiledService('Master inattivo', 'master-inattivo', false, true, 0);
@@ -85,6 +86,8 @@ class ServiceWebProfileApiTest extends TestCase
         $this->getJson('/api/v1/public/prestazioni/'.$visible->slug)->assertNotFound();
         $this->getJson('/api/v1/public/services/visibile')->assertOk()->assertJsonPath('data.slug', 'visibile');
         $this->getJson('/api/v1/public/services/'.$visible->slug)->assertOk()->assertJsonPath('data.slug', 'visibile');
+        $this->getJson('/api/v1/public/services?featured=1')->assertOk()
+            ->assertJsonMissing(['slug' => $legacyOnly->slug]);
         $this->getJson('/api/v1/public/prestazioni/senza-dipendenze')->assertOk();
         $this->getJson('/api/v1/public/home')->assertOk()
             ->assertJsonPath('data.services.0.slug', 'senza-dipendenze')
@@ -94,6 +97,13 @@ class ServiceWebProfileApiTest extends TestCase
             ->assertJsonPath('data.results.0.href', '/prestazioni/visibile');
         $this->assertFalse($legacyOnly->isEffectivelyVisible());
         $this->assertTrue($withoutAreaOrProfessional->isEffectivelyVisible());
+
+        $visible->delete();
+        $archived = Service::withTrashed()->findOrFail($visible->id);
+        $this->assertFalse($archived->isEffectivelyVisible());
+        $this->getJson('/api/v1/public/prestazioni/visibile')->assertNotFound();
+        $archived->restore();
+        $this->assertTrue($archived->refresh()->isEffectivelyVisible());
     }
 
     #[Test]

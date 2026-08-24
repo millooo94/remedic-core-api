@@ -61,6 +61,11 @@ class ServiceWebProfile extends Model
     {
         return $query
             ->where('is_web_enabled', true)
-            ->whereHas('service', fn (Builder $master) => $master->where('is_active', true));
+            ->whereHas('service', fn (Builder $master) => $master->effectivelyVisible());
+    }
+
+    public function isEffectivelyVisible(): bool
+    {
+        return (bool) $this->is_web_enabled && (bool) $this->service?->isEffectivelyVisible();
     }
 }

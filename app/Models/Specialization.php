@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\RobotsValue;
 use App\Models\Concerns\HasSectionsAndFaqs;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -79,5 +80,27 @@ class Specialization extends Model
     public function webProfile(): HasOne
     {
         return $this->hasOne(SpecializationWebProfile::class);
+    }
+
+    public function scopeEffectivelyVisible(Builder $query): Builder
+    {
+        return $query
+            ->where($this->qualifyColumn('is_active'), true)
+            ->whereHas('webProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true));
+    }
+
+    public function isEffectivelyVisible(): bool
+    {
+        return (bool) $this->is_active && (bool) $this->webProfile?->is_web_enabled;
+    }
+
+    /** @return array<string, int> */
+    public function deletionBlockers(): array
+    {
+        return collect([
+            'professionals' => $this->professionals()->count(),
+            'services' => $this->services()->count(),
+            'web_profile' => $this->webProfile()->exists() ? 1 : 0,
+        ])->filter(fn (int $count): bool => $count > 0)->all();
     }
 }

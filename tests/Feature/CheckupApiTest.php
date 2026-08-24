@@ -219,7 +219,7 @@ class CheckupApiTest extends TestCase
 
         $this->deleteJson("/api/v1/checkups/{$checkupId}")->assertNoContent();
 
-        $this->assertSoftDeleted('checkups', ['id' => $checkupId, 'is_active' => false]);
+        $this->assertSoftDeleted('checkups', ['id' => $checkupId, 'is_active' => true]);
         $this->assertDatabaseHas('checkup_services', [
             'checkup_id' => $checkupId,
             'service_id' => $service->id,

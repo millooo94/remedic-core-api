@@ -37,7 +37,11 @@ class SpecializationResource extends JsonResource
             'og_description' => $this->og_description,
             'is_local_seo_enabled' => (bool) $this->is_local_seo_enabled,
             'is_active' => (bool) $this->is_active,
-            'is_web_active' => (bool) $this->is_web_active,
+            'is_configured' => $this->webProfile !== null,
+            'is_web_enabled' => (bool) $this->webProfile?->is_web_enabled,
+            'effective_public_visibility' => $this->isEffectivelyVisible(),
+            // Compatibility alias: derived from the canonical Web profile, never from the legacy column.
+            'is_web_active' => (bool) $this->webProfile?->is_web_enabled,
             'sort_order' => (int) $this->sort_order,
             'services_count' => $this->whenCounted('services'),
             'professionals_count' => $this->whenCounted('professionals'),

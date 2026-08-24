@@ -31,6 +31,7 @@ class CheckupController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'specialization_name' => ['nullable', 'string', 'max:190'],
             'professional_id' => ['nullable', 'integer', 'exists:professionals,id'],
+            'archive_state' => ['nullable', 'in:active,archived,all'],
         ]);
         $query = Checkup::query();
         $this->filters->apply($query, $filters);

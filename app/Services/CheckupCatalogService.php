@@ -33,10 +33,7 @@ class CheckupCatalogService
 
     public function delete(Checkup $checkup): void
     {
-        DB::transaction(function () use ($checkup): void {
-            $checkup->forceFill(['is_active' => false])->save();
-            $checkup->delete();
-        });
+        DB::transaction(fn () => $checkup->delete());
     }
 
     public function loadForResource(Checkup $checkup, bool $includeProfessionals = false): Checkup

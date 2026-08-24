@@ -83,6 +83,17 @@ class CheckupWebProfileApiTest extends TestCase
             ->assertJsonPath('data.included_services.0.href', null)
             ->assertJsonFragment(['key' => 'included_services']);
         $this->assertTrue($archived->refresh()->load('webProfile')->isEffectivelyVisible());
+
+        $this->actingAsAdmin();
+        $this->getJson('/api/v1/admin/check-up?q=componente-archiviato&is_operationally_available=0')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $archived->id)
+            ->assertJsonPath('data.0.effective_public_visibility', true)
+            ->assertJsonPath('data.0.is_operationally_available', false);
+        $this->getJson('/api/v1/admin/check-up?q=componente-archiviato&is_operationally_available=1')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
     }
 
     #[Test]
@@ -194,7 +205,7 @@ class CheckupWebProfileApiTest extends TestCase
     }
 
     #[Test]
-    public function archive_preserves_everything_restore_stays_inactive_and_force_delete_is_safe(): void
+    public function archive_and_restore_preserve_master_and_web_state_and_force_delete_is_safe(): void
     {
         $this->actingAsAdmin();
         $service = $this->service('Componente');
@@ -202,11 +213,12 @@ class CheckupWebProfileApiTest extends TestCase
         $profileId = $checkup->webProfile->id;
 
         $this->deleteJson("/api/v1/checkups/{$checkup->id}")->assertNoContent();
-        $this->assertSoftDeleted('checkups', ['id' => $checkup->id, 'is_active' => false]);
+        $this->assertSoftDeleted('checkups', ['id' => $checkup->id, 'is_active' => true]);
         $this->assertDatabaseHas('checkup_web_profiles', ['id' => $profileId, 'is_web_enabled' => true]);
         $this->assertDatabaseHas('checkup_services', ['checkup_id' => $checkup->id, 'service_id' => $service->id]);
-        $this->postJson("/api/v1/checkups/{$checkup->id}/restore")->assertOk()->assertJsonPath('is_active', false);
         $this->getJson('/api/v1/public/check-up/conservato')->assertNotFound();
+        $this->postJson("/api/v1/checkups/{$checkup->id}/restore")->assertOk()->assertJsonPath('is_active', true);
+        $this->getJson('/api/v1/public/check-up/conservato')->assertOk();
         $this->deleteJson("/api/v1/checkups/{$checkup->id}/force")->assertConflict()
             ->assertJsonPath('dependencies.services', 1)->assertJsonPath('dependencies.web_profile', 1);
 

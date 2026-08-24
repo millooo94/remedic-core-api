@@ -25,6 +25,8 @@ class BlogPostResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'published_at' => optional($this->published_at)?->toIso8601String(),
             'is_published' => $this->isPublished(),
+            'publication_state' => $this->publicationState()->value,
+            'effective_public_visibility' => $this->isPubliclyAvailable(),
             'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(fn ($section) => [
                 'id' => $section->id,
                 'key' => $section->key,

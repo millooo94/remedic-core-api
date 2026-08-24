@@ -6,8 +6,8 @@ use App\Http\Controllers\Api\V1\Admin\Concerns\PersistsSectionsAndFaqs;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\StorePageRequest;
-use App\Http\Requests\Api\V1\Admin\Pages\UploadPageImageRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\UpdatePageRequest;
+use App\Http\Requests\Api\V1\Admin\Pages\UploadPageImageRequest;
 use App\Http\Resources\Api\V1\Admin\PageResource;
 use App\Models\Page;
 use App\Services\PageSlugRedirectService;
@@ -23,8 +23,7 @@ class PageController extends Controller
 
     public function __construct(
         private readonly PageSlugRedirectService $pageSlugRedirectService,
-    ) {
-    }
+    ) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
@@ -43,6 +42,10 @@ class PageController extends Controller
             $query->where('is_active', (bool) $request->boolean('is_active'));
         }
 
+        if ($request->filled('publication_state')) {
+            $query->publicationState((string) $request->validated('publication_state'));
+        }
+
         $sort = $request->sort();
         $direction = $request->direction();
 
@@ -58,7 +61,7 @@ class PageController extends Controller
 
     public function store(StorePageRequest $request): PageResource
     {
-        $page = DB::transaction(fn () => $this->persist(new Page(), $request->validated()));
+        $page = DB::transaction(fn () => $this->persist(new Page, $request->validated()));
 
         return new PageResource($page->load(['sections', 'faqs']));
     }
@@ -75,9 +78,15 @@ class PageController extends Controller
         return new PageResource($page->load(['sections', 'faqs']));
     }
 
-    public function destroy(Page $page): Response
+    public function destroy(Page $page): Response|JsonResponse
     {
-        $page->delete();
+        if ($page->isLegacyCheckupPage()) {
+            return response()->json([
+                'message' => 'La pagina Check-up legacy è protetta e non può essere eliminata.',
+            ], Response::HTTP_CONFLICT);
+        }
+
+        DB::transaction(fn () => $page->delete());
 
         return response()->noContent();
     }

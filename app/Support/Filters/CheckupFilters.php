@@ -10,6 +10,12 @@ class CheckupFilters
     {
         $search = trim((string) ($filters['q'] ?? $filters['search'] ?? ''));
 
+        match ($filters['archive_state'] ?? 'active') {
+            'archived' => $query->onlyTrashed(),
+            'all' => $query->withTrashed(),
+            default => null,
+        };
+
         return $query
             ->when($search !== '', function (Builder $builder) use ($search): void {
                 $builder->where(function (Builder $nested) use ($search): void {

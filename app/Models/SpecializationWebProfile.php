@@ -61,6 +61,11 @@ class SpecializationWebProfile extends Model
     {
         return $query
             ->where('is_web_enabled', true)
-            ->whereHas('specialization', fn (Builder $master) => $master->where('is_active', true));
+            ->whereHas('specialization', fn (Builder $master) => $master->effectivelyVisible());
+    }
+
+    public function isEffectivelyVisible(): bool
+    {
+        return (bool) $this->is_web_enabled && (bool) $this->specialization?->isEffectivelyVisible();
     }
 }

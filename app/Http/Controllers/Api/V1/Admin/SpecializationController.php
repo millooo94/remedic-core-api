@@ -9,6 +9,7 @@ use App\Http\Requests\Api\V1\Admin\Specializations\StoreSpecializationRequest;
 use App\Http\Requests\Api\V1\Admin\Specializations\UpdateSpecializationRequest;
 use App\Http\Resources\Api\V1\Admin\SpecializationResource;
 use App\Models\Specialization;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ class SpecializationController extends Controller
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
         $query = Specialization::query()
-            ->with(['sections', 'faqs'])
+            ->with(['sections', 'faqs', 'webProfile'])
             ->withCount(['services', 'professionals']);
 
         if ($search = $request->search()) {
@@ -34,7 +35,8 @@ class SpecializationController extends Controller
         }
 
         if ($request->has('is_web_active')) {
-            $query->where('is_web_active', (bool) $request->boolean('is_web_active'));
+            $query->whereHas('webProfile', fn ($profile) => $profile
+                ->where('is_web_enabled', $request->boolean('is_web_active')));
         }
 
         $sort = $request->sort();
@@ -52,7 +54,7 @@ class SpecializationController extends Controller
 
     public function store(StoreSpecializationRequest $request): SpecializationResource
     {
-        $specialization = DB::transaction(fn () => $this->persist(new Specialization(), $request->validated()));
+        $specialization = DB::transaction(fn () => $this->persist(new Specialization, $request->validated()));
 
         return new SpecializationResource($specialization->load(['sections', 'faqs'])->loadCount(['services', 'professionals']));
     }
@@ -69,8 +71,16 @@ class SpecializationController extends Controller
         return new SpecializationResource($specialization->load(['sections', 'faqs'])->loadCount(['services', 'professionals']));
     }
 
-    public function destroy(Specialization $specialization): Response
+    public function destroy(Specialization $specialization): Response|JsonResponse
     {
+        $dependencies = $specialization->deletionBlockers();
+        if ($dependencies !== []) {
+            return response()->json([
+                'message' => 'La specializzazione è referenziata e non può essere eliminata.',
+                'dependencies' => $dependencies,
+            ], Response::HTTP_CONFLICT);
+        }
+
         $specialization->delete();
 
         return response()->noContent();
@@ -83,12 +93,27 @@ class SpecializationController extends Controller
             'faqs' => $payload['faqs'] ?? [],
         ];
 
-        unset($payload['sections'], $payload['faqs']);
+        $legacyWebEnabled = array_key_exists('is_web_active', $payload)
+            ? (bool) $payload['is_web_active']
+            : null;
+
+        unset($payload['sections'], $payload['faqs'], $payload['is_web_active']);
 
         $specialization->fill($payload);
         $specialization->save();
 
         $this->persistSectionsAndFaqs($specialization, $relationsPayload);
+
+        if ($legacyWebEnabled !== null) {
+            if ($specialization->webProfile !== null) {
+                $specialization->webProfile->update(['is_web_enabled' => $legacyWebEnabled]);
+            } elseif ($legacyWebEnabled) {
+                $specialization->webProfile()->create([
+                    'slug' => $specialization->slug,
+                    'is_web_enabled' => true,
+                ]);
+            }
+        }
 
         return $specialization;
     }

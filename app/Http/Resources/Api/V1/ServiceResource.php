@@ -29,6 +29,7 @@ class ServiceResource extends JsonResource
             'importo_prestazione' => $this->importo_prestazione,
             'default_duration_minutes' => $this->default_duration_minutes,
             'is_active' => (bool) $this->is_active,
+            'is_archived' => $this->trashed(),
             'notes' => $this->notes,
             'featured_image_path' => $this->featured_image_path,
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PageTemplate;
+use App\Enums\PublicationState;
 use App\Enums\RobotsValue;
 use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Builder;
@@ -15,6 +16,18 @@ class Page extends Model
     use HasSectionsAndFaqs;
 
     public const HOME_SLUG = 'home';
+
+    public const LEGACY_CHECKUP_SLUGS = [
+        'check-up',
+        'check-up-donna',
+        'check-up-uomo',
+        'check-up-personalizzato',
+        'check-up-cardiologico',
+        'check-up-dermatologico',
+        'check-up-ginecologico',
+        'check-up-urologico',
+        'check-up-endocrinologico',
+    ];
 
     protected $fillable = [
         'legacy_backend_id',
@@ -64,20 +77,50 @@ class Page extends Model
 
     public function scopePublished(Builder $query): Builder
     {
-        return $query->where(function (Builder $builder): void {
-            $builder
-                ->whereNull('published_at')
-                ->orWhere('published_at', '<=', now());
-        });
+        return $query
+            ->whereNotNull('published_at')
+            ->where('published_at', '<=', now());
+    }
+
+    public function scopePublicationState(Builder $query, PublicationState|string $state): Builder
+    {
+        $state = $state instanceof PublicationState ? $state : PublicationState::from($state);
+
+        return match ($state) {
+            PublicationState::Draft => $query->where('is_active', true)->whereNull('published_at'),
+            PublicationState::Scheduled => $query->where('is_active', true)->where('published_at', '>', now()),
+            PublicationState::Published => $query->active()->published(),
+            PublicationState::Suspended => $query->where('is_active', false),
+        };
     }
 
     public function isPublished(): bool
     {
-        return $this->published_at === null || $this->published_at->lessThanOrEqualTo(now());
+        return $this->published_at !== null && $this->published_at->lessThanOrEqualTo(now());
     }
 
     public function isPubliclyAvailable(): bool
     {
         return (bool) $this->is_active && $this->isPublished();
+    }
+
+    public function publicationState(): PublicationState
+    {
+        if (! $this->is_active) {
+            return PublicationState::Suspended;
+        }
+
+        if ($this->published_at === null) {
+            return PublicationState::Draft;
+        }
+
+        return $this->published_at->isFuture()
+            ? PublicationState::Scheduled
+            : PublicationState::Published;
+    }
+
+    public function isLegacyCheckupPage(): bool
+    {
+        return in_array($this->slug, self::LEGACY_CHECKUP_SLUGS, true);
     }
 }

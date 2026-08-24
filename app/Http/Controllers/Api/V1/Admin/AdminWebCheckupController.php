@@ -22,7 +22,13 @@ class AdminWebCheckupController extends Controller
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
-        $query = Checkup::query()->with($this->relations());
+        $query = Checkup::query();
+        match ($request->validated('archive_state', 'active')) {
+            'archived' => $query->onlyTrashed(),
+            'all' => $query->withTrashed(),
+            default => null,
+        };
+        $query->with($this->relations());
         if ($search = $request->search()) {
             $query->where(fn ($builder) => $builder->where('display_name', 'like', "%{$search}%")
                 ->orWhereHas('webProfile', fn ($profile) => $profile->where('public_slug', 'like', "%{$search}%")
@@ -30,10 +36,36 @@ class AdminWebCheckupController extends Controller
                     ->orWhere('seo_title', 'like', "%{$search}%")));
         }
         if ($request->has('is_web_enabled')) {
-            $request->boolean('is_web_enabled')
-                ? $query->whereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', true))
-                : $query->where(fn ($nested) => $nested->whereDoesntHave('webProfile')
-                    ->orWhereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', false)));
+            $query->whereHas('webProfile', fn ($profile) => $profile
+                ->where('is_web_enabled', $request->boolean('is_web_enabled')));
+        }
+        if ($request->has('is_configured')) {
+            $request->boolean('is_configured')
+                ? $query->whereHas('webProfile')
+                : $query->whereDoesntHave('webProfile');
+        }
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+        if ($request->has('effective_public_visibility')) {
+            $request->boolean('effective_public_visibility')
+                ? $query->effectivelyVisible()
+                : $query->where(fn ($nested) => $nested
+                    ->whereNotNull('deleted_at')
+                    ->orWhere('is_active', false)
+                    ->orWhereDoesntHave('webProfile', fn ($profile) => $profile->where('is_web_enabled', true)));
+        }
+        if ($request->has('is_operationally_available')) {
+            $request->boolean('is_operationally_available')
+                ? $query->operationallyAvailable()
+                : $query->where(fn ($nested) => $nested
+                    ->whereNotNull('deleted_at')
+                    ->orWhere('is_active', false)
+                    ->orWhereDoesntHave('items')
+                    ->orWhereHas('items', fn ($item) => $item
+                        ->whereDoesntHave('service', fn ($service) => $service
+                            ->whereNull('services.deleted_at')
+                            ->where('is_active', true))));
         }
 
         match ($request->sort()) {

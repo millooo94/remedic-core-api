@@ -201,6 +201,15 @@ class EquipeApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.slug', 'giulia-ferri-nuovo');
 
+        ProfessionalPublicProfile::query()->whereKey($profileId)->update(['is_active' => false]);
+        $this->getJson('/api/v1/public/equipe/giulia-ferri-nuovo')->assertOk();
+        ProfessionalPublicProfile::query()->whereKey($profileId)->update([
+            'is_active' => true,
+            'is_web_enabled' => false,
+        ]);
+        $this->getJson('/api/v1/public/equipe/giulia-ferri-nuovo')->assertNotFound();
+        ProfessionalPublicProfile::query()->whereKey($profileId)->update(['is_web_enabled' => true]);
+
         $keys = collect($public->json('data.sections'))->pluck('key');
         $this->assertFalse($keys->contains('biography'));
         $this->assertFalse(collect($public->json('data.sections'))->flatten()->containsStrict('Competenza nascosta'));
@@ -375,6 +384,36 @@ class EquipeApiTest extends TestCase
         $this->assertDatabaseMissing('professional_profile_competencies', ['professional_public_profile_id' => $profileId]);
         $this->assertDatabaseMissing('professional_profile_approach_principles', ['professional_public_profile_id' => $profileId]);
         $this->assertDatabaseMissing('professional_profile_scientific_activities', ['professional_public_profile_id' => $profileId]);
+    }
+
+    #[Test]
+    public function deleting_an_unreferenced_professional_explicitly_cleans_profile_morph_children(): void
+    {
+        $this->actingAsWebAdmin();
+        $professional = Professional::factory()->create();
+        $profile = ProfessionalPublicProfile::query()->create([
+            'professional_id' => $professional->id,
+            'slug' => 'profilo-con-owner-rimosso',
+            'is_web_enabled' => true,
+        ]);
+        app(EquipeContentService::class)->initializeSections($profile);
+        $profile->faqs()->create([
+            'question' => 'Domanda?',
+            'answer' => 'Risposta.',
+            'sort_order' => 0,
+        ]);
+
+        $this->deleteJson("/api/v1/professionals/{$professional->id}")->assertNoContent();
+        $this->assertDatabaseMissing('professionals', ['id' => $professional->id]);
+        $this->assertDatabaseMissing('professional_public_profiles', ['id' => $profile->id]);
+        $this->assertDatabaseMissing('sections', [
+            'sectionable_type' => ProfessionalPublicProfile::class,
+            'sectionable_id' => $profile->id,
+        ]);
+        $this->assertDatabaseMissing('faq_items', [
+            'faqable_type' => ProfessionalPublicProfile::class,
+            'faqable_id' => $profile->id,
+        ]);
     }
 
     private function actingAsWebAdmin(): void

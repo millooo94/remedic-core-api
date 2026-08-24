@@ -317,6 +317,8 @@ class AdminBackofficeApiTest extends TestCase
         ])->assertCreated();
 
         $postId = (int) $created->json('id');
+        $sectionId = (int) $created->json('sections.0.id');
+        $faqId = (int) $created->json('faqs.0.id');
 
         $this->assertDatabaseHas('blog_posts', [
             'id' => $postId,
@@ -341,6 +343,8 @@ class AdminBackofficeApiTest extends TestCase
         $this->assertDatabaseMissing('blog_posts', [
             'id' => $postId,
         ]);
+        $this->assertDatabaseMissing('sections', ['id' => $sectionId]);
+        $this->assertDatabaseMissing('faq_items', ['id' => $faqId]);
     }
 
     #[Test]

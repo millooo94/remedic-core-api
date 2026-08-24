@@ -34,6 +34,10 @@ class BlogPostController extends Controller
             $query->where('is_active', (bool) $request->boolean('is_active'));
         }
 
+        if ($request->filled('publication_state')) {
+            $query->publicationState((string) $request->validated('publication_state'));
+        }
+
         $sort = $request->sort();
         $direction = $request->direction();
 
@@ -49,7 +53,7 @@ class BlogPostController extends Controller
 
     public function store(StoreBlogPostRequest $request): BlogPostResource
     {
-        $post = DB::transaction(fn () => $this->persist(new BlogPost(), $request->validated()));
+        $post = DB::transaction(fn () => $this->persist(new BlogPost, $request->validated()));
 
         return new BlogPostResource($post->load(['sections', 'faqs']));
     }
@@ -68,7 +72,7 @@ class BlogPostController extends Controller
 
     public function destroy(BlogPost $blogPost): Response
     {
-        $blogPost->delete();
+        DB::transaction(fn () => $blogPost->delete());
 
         return response()->noContent();
     }

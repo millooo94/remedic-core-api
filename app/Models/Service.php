@@ -127,12 +127,15 @@ class Service extends Model
     public function scopeEffectivelyVisible(Builder $query): Builder
     {
         return $query
+            ->whereNull($query->getModel()->getQualifiedDeletedAtColumn())
             ->where('is_active', true)
             ->whereHas('webProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true));
     }
 
     public function isEffectivelyVisible(): bool
     {
-        return (bool) $this->is_active && (bool) $this->webProfile?->is_web_enabled;
+        return ! $this->trashed()
+            && (bool) $this->is_active
+            && (bool) $this->webProfile?->is_web_enabled;
     }
 }

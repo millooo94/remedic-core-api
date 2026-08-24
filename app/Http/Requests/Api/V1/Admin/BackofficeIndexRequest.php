@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1\Admin;
 
+use App\Enums\PublicationState;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,6 +22,12 @@ class BackofficeIndexRequest extends FormRequest
             'sort' => ['sometimes', 'nullable', 'string', 'max:120'],
             'direction' => ['sometimes', 'nullable', Rule::in(['asc', 'desc'])],
             'is_active' => ['sometimes', 'nullable', 'boolean'],
+            'is_configured' => ['sometimes', 'nullable', 'boolean'],
+            'is_web_enabled' => ['sometimes', 'nullable', 'boolean'],
+            'effective_public_visibility' => ['sometimes', 'nullable', 'boolean'],
+            'is_operationally_available' => ['sometimes', 'nullable', 'boolean'],
+            'publication_state' => ['sometimes', 'nullable', Rule::enum(PublicationState::class)],
+            'archive_state' => ['sometimes', 'nullable', Rule::in(['active', 'archived', 'all'])],
             'is_automatic' => ['sometimes', 'nullable', 'boolean'],
         ];
     }

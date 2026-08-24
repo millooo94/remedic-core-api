@@ -39,6 +39,8 @@ class PageResource extends JsonResource
             'faq_enabled' => (bool) $this->faq_enabled,
             'is_active' => (bool) $this->is_active,
             'published_at' => optional($this->published_at)?->toIso8601String(),
+            'publication_state' => $this->publicationState()->value,
+            'effective_public_visibility' => $this->isPubliclyAvailable(),
             'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(fn ($section) => [
                 'id' => $section->id,
                 'key' => $section->key,

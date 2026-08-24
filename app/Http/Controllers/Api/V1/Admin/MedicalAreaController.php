@@ -35,6 +35,24 @@ class MedicalAreaController extends Controller
             $query->whereHas('webProfile', fn ($profile) => $profile->where('is_web_enabled', $enabled));
         }
 
+        if ($request->has('is_configured')) {
+            $request->boolean('is_configured')
+                ? $query->whereHas('webProfile')
+                : $query->whereDoesntHave('webProfile');
+        }
+
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        if ($request->has('effective_public_visibility')) {
+            $request->boolean('effective_public_visibility')
+                ? $query->effectivelyVisible()
+                : $query->where(fn ($nested) => $nested
+                    ->where('is_active', false)
+                    ->orWhereDoesntHave('webProfile', fn ($profile) => $profile->where('is_web_enabled', true)));
+        }
+
         return MedicalAreaResource::collection(
             $query->orderBy('name', $request->direction())->paginate($request->perPage())
         );

@@ -27,6 +27,8 @@ class ProfessionalPublicProfileResource extends JsonResource
             'full_name' => $professional->full_name,
             'honorific_prefix' => $professional->honorific_prefix,
             'subject_type' => $professional->subject_type?->value ?? $professional->subject_type,
+            'is_active' => (bool) $professional->is_active,
+            'is_archived' => false,
             'operationally_active' => (bool) $professional->is_active,
             'avatar_path' => $professional->avatar_path,
             'avatar_url' => PublicMediaUrl::fromPublicDisk($avatarPath, $request),
@@ -36,8 +38,7 @@ class ProfessionalPublicProfileResource extends JsonResource
                 ->filter(fn ($link) => $link->is_active
                     && $link->is_visible_public
                     && $link->service !== null
-                    && $link->service->is_active
-                    && $link->service->is_web_active)
+                    && $link->service->isEffectivelyVisible())
                 ->map(fn ($link) => [
                     'id' => $link->service->id,
                     'name' => $link->service->publicLabel(),
@@ -77,12 +78,14 @@ class ProfessionalPublicProfileResource extends JsonResource
         ];
 
         $web = [
+            'id' => $this->id,
+            'professional_id' => $this->professional_id,
             'slug' => $this->slug,
             'short_bio' => $this->short_bio,
             'bio_content' => $this->bio_content,
             'approach_content' => $this->approach_content,
             'is_web_enabled' => (bool) $this->is_web_enabled,
-            'effective_public_visibility' => (bool) $this->is_web_enabled && (bool) $professional->is_active,
+            'effective_public_visibility' => $this->isEffectivelyVisible(),
             'sort_order' => (int) $this->sort_order,
             'hero_competency_ids' => $this->heroCompetencies->pluck('id')->map(fn ($id) => (int) $id)->all(),
             'sections' => $this->sections
@@ -138,8 +141,12 @@ class ProfessionalPublicProfileResource extends JsonResource
         return [
             'id' => $this->id,
             'professional_id' => $this->professional_id,
+            'master' => $professionalProjection,
             'professional' => $professionalProjection,
+            'web_profile' => $web,
             'web' => $web,
+            'is_configured' => true,
+            'effective_public_visibility' => $this->isEffectivelyVisible(),
             // Transitional aliases for existing Core consumers.
             ...$web,
             'avatar_path' => $professional->avatar_path,

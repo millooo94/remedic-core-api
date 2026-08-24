@@ -404,8 +404,7 @@ class SiteController extends Controller
                 'competencies' => fn ($query) => $query->where('is_active', true),
                 'scientificActivities' => fn ($query) => $query->where('is_active', true),
             ])
-            ->where('is_web_enabled', true)
-            ->whereHas('professional', fn (Builder $query) => $query->where('is_active', true))
+            ->effectivelyVisible()
             ->orderBy('sort_order')
             ->orderBy('slug');
     }
@@ -417,10 +416,8 @@ class SiteController extends Controller
                 'sections' => fn ($query) => $query->active()->ordered(),
                 'faqs' => fn ($query) => $query->active()->ordered(),
             ])
-            ->where('is_active', true)
-            ->where(function (Builder $query): void {
-                $query->whereNull('published_at')->orWhere('published_at', '<=', now());
-            })
+            ->active()
+            ->published()
             ->orderByDesc('published_at')
             ->orderByDesc('id');
 
@@ -769,10 +766,17 @@ class SiteController extends Controller
     {
         $relatedArticles = [];
         if (is_array($post->related_article_slugs)) {
-            $relatedArticles = array_values(array_filter(array_map(
-                fn ($slug) => is_string($slug) ? $slug : null,
-                $post->related_article_slugs
-            )));
+            $requestedSlugs = collect($post->related_article_slugs)
+                ->filter(fn ($slug) => is_string($slug) && trim($slug) !== '')
+                ->values();
+            $publishedSlugs = $this->blogPostsBaseQuery()
+                ->whereIn('slug', $requestedSlugs)
+                ->pluck('slug')
+                ->flip();
+            $relatedArticles = $requestedSlugs
+                ->filter(fn (string $slug) => $publishedSlugs->has($slug))
+                ->values()
+                ->all();
         }
 
         $relatedServices = [];

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\RobotsValue;
 use App\Models\Concerns\HasSectionsAndFaqs;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -79,6 +80,18 @@ class ProfessionalPublicProfile extends Model
     public function scientificActivities(): HasMany
     {
         return $this->hasMany(ProfessionalProfileScientificActivity::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function scopeEffectivelyVisible(Builder $query): Builder
+    {
+        return $query
+            ->where('is_web_enabled', true)
+            ->whereHas('professional', fn (Builder $master) => $master->effectivelyVisible());
+    }
+
+    public function isEffectivelyVisible(): bool
+    {
+        return (bool) $this->is_web_enabled && (bool) $this->professional?->isEffectivelyVisible();
     }
 
     protected static function booted(): void

@@ -56,8 +56,21 @@ class Checkup extends Model
 
     public function scopeEffectivelyVisible(Builder $query): Builder
     {
-        return $query->where('is_active', true)
+        return $query->whereNull($query->getModel()->getQualifiedDeletedAtColumn())
+            ->where('is_active', true)
             ->whereHas('webProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true));
+    }
+
+    public function scopeOperationallyAvailable(Builder $query): Builder
+    {
+        return $query
+            ->whereNull($query->getModel()->getQualifiedDeletedAtColumn())
+            ->where('is_active', true)
+            ->whereHas('items')
+            ->whereDoesntHave('items', fn (Builder $item) => $item
+                ->whereDoesntHave('service', fn (Builder $service) => $service
+                    ->whereNull('services.deleted_at')
+                    ->where('is_active', true)));
     }
 
     public function isEffectivelyVisible(): bool

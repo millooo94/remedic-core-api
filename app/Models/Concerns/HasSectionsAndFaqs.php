@@ -8,6 +8,14 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 trait HasSectionsAndFaqs
 {
+    public static function bootHasSectionsAndFaqs(): void
+    {
+        static::deleting(function (self $owner): void {
+            $owner->sections()->delete();
+            $owner->faqs()->delete();
+        });
+    }
+
     public function sections(): MorphMany
     {
         return $this->morphMany(Section::class, 'sectionable')->ordered();
