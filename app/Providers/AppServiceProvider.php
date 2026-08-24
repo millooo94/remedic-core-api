@@ -4,18 +4,41 @@ namespace App\Providers;
 
 use App\Models\ExpenseRecord;
 use App\Observers\ExpenseRecordObserver;
+use App\Support\TestingDatabaseGuard;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Env;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Symfony\Component\Console\Input\ArgvInput;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        $requestedEnvironment = Env::get('APP_ENV');
+        $requestedConnection = null;
+
+        if ($this->app->runningInConsole()) {
+            $input = new ArgvInput;
+
+            if ($input->hasParameterOption('--env')
+                && $input->getParameterOption('--env') === 'testing') {
+                $requestedEnvironment = 'testing';
+            }
+
+            if ($input->hasParameterOption('--database')) {
+                $requestedConnection = $input->getParameterOption('--database');
+            }
+        }
+
+        TestingDatabaseGuard::assertConfigurationIsSafe(
+            $this->app->make('config'),
+            $requestedEnvironment,
+            $requestedConnection,
+        );
     }
 
     public function boot(): void
