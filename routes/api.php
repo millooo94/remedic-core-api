@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Http\Controllers\Api\V1\Admin\AdminWebCheckupController;
 use App\Http\Controllers\Api\V1\Admin\AdminWebServiceController;
 use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostController;
 use App\Http\Controllers\Api\V1\Admin\ConsentCategoryController as AdminConsentCategoryController;
@@ -56,6 +57,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('services/{slug}', [PublicSiteController::class, 'service']);
         Route::get('prestazioni', [PublicSiteController::class, 'prestazioni']);
         Route::get('prestazioni/{slug}', [PublicSiteController::class, 'prestazione']);
+        Route::get('check-up', [PublicSiteController::class, 'checkups']);
+        Route::get('check-up/{publicSlug}', [PublicSiteController::class, 'checkup']);
         Route::get('professionals', [PublicSiteController::class, 'professionals']);
         Route::get('professionals/{slug}', [PublicSiteController::class, 'professional']);
         Route::get('equipe', [PublicSiteController::class, 'professionals']);
@@ -117,11 +120,16 @@ Route::prefix('v1')->group(function (): void {
             });
         Route::apiResource('services', ServiceController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
-        Route::post('checkups/{checkup}/image', [EntityMediaController::class, 'uploadCheckupImage']);
-        Route::delete('checkups/{checkup}/image', [EntityMediaController::class, 'deleteCheckupImage']);
-        Route::post('checkups/{checkup}/icon', [EntityMediaController::class, 'uploadCheckupIcon']);
-        Route::delete('checkups/{checkup}/icon', [EntityMediaController::class, 'deleteCheckupIcon']);
-        Route::apiResource('checkups', CheckupController::class);
+        Route::prefix('checkups')->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value)->group(function (): void {
+            Route::post('{checkup}/image', [EntityMediaController::class, 'uploadCheckupImage']);
+            Route::delete('{checkup}/image', [EntityMediaController::class, 'deleteCheckupImage']);
+            Route::post('{checkup}/icon', [EntityMediaController::class, 'uploadCheckupIcon']);
+            Route::delete('{checkup}/icon', [EntityMediaController::class, 'deleteCheckupIcon']);
+            Route::post('{checkup}/restore', [CheckupController::class, 'restore']);
+            Route::delete('{checkup}/force', [CheckupController::class, 'forceDestroy']);
+        });
+        Route::apiResource('checkups', CheckupController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
         Route::get('patients/options', [PatientController::class, 'options']);
         Route::post('patients/import', [PatientController::class, 'import']);
         Route::apiResource('patients', PatientController::class);
@@ -212,6 +220,12 @@ Route::prefix('v1')->group(function (): void {
                     Route::match(['put', 'patch'], $serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'update'])
                         ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                 }
+                Route::get('check-up', [AdminWebCheckupController::class, 'index'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                Route::get('check-up/{checkup}', [AdminWebCheckupController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                Route::match(['put', 'patch'], 'check-up/{checkup}', [AdminWebCheckupController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                 Route::apiResource('professional-public-profiles', AdminProfessionalPublicProfileController::class)
                     ->parameters(['professional-public-profiles' => 'professionalPublicProfile'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);

@@ -19,6 +19,8 @@ class Redirect extends Model
 
     public const SOURCE_TYPE_SERVICE_WEB_PROFILE = 'service_web_profile';
 
+    public const SOURCE_TYPE_CHECKUP_WEB_PROFILE = 'checkup_web_profile';
+
     protected $fillable = [
         'legacy_backend_id',
         'from_path',

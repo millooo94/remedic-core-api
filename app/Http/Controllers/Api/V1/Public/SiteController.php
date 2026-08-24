@@ -13,6 +13,7 @@ use App\Models\Section;
 use App\Models\Service;
 use App\Models\SiteSetting;
 use App\Models\SpecializationWebProfile;
+use App\Services\CheckupPublicContentService;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
@@ -26,6 +27,7 @@ class SiteController extends Controller
     public function __construct(
         private readonly MedicalAreaPublicService $medicalAreaContent,
         private readonly ServicePublicContentService $serviceContent,
+        private readonly CheckupPublicContentService $checkupContent,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -141,11 +143,25 @@ class SiteController extends Controller
                 'href' => '/equipe/'.$profile->slug,
             ]);
 
+        $checkups = $this->checkupContent->query()
+            ->where(function (Builder $builder) use ($query): void {
+                $builder->where('display_name', 'like', "%{$query}%")
+                    ->orWhereHas('webProfile', fn (Builder $profile) => $profile
+                        ->where('public_slug', 'like', "%{$query}%")
+                        ->orWhere('short_description', 'like', "%{$query}%")
+                        ->orWhere('category_label', 'like', "%{$query}%"));
+            })->limit(6)->get()->map(fn ($checkup): array => [
+                'type' => 'checkup', 'title' => $checkup->display_name,
+                'subtitle' => $checkup->webProfile->category_label,
+                'href' => '/check-up/'.$checkup->webProfile->public_slug,
+            ]);
+
         return response()->json([
             'data' => [
                 'results' => $specializations
                     ->concat($services)
                     ->concat($professionals)
+                    ->concat($checkups)
                     ->values()
                     ->all(),
             ],
@@ -239,6 +255,24 @@ class SiteController extends Controller
             ->firstOrFail();
 
         return response()->json(['data' => $this->serviceContent->detail($service, $request)]);
+    }
+
+    public function checkups(Request $request): JsonResponse
+    {
+        $items = $this->checkupContent->query()->limit($this->resolveLimit($request, 100))->get();
+
+        return response()->json(['data' => $items->map(
+            fn ($checkup): array => $this->checkupContent->listItem($checkup, $request)
+        )->values()->all()]);
+    }
+
+    public function checkup(Request $request, string $publicSlug): JsonResponse
+    {
+        $checkup = $this->checkupContent->query()
+            ->whereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $publicSlug))
+            ->firstOrFail();
+
+        return response()->json(['data' => $this->checkupContent->detail($checkup, $request)]);
     }
 
     public function professionals(Request $request): JsonResponse

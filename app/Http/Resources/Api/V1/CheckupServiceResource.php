@@ -31,6 +31,7 @@ class CheckupServiceResource extends JsonResource
             'sort_order' => (int) $this->sort_order,
             'display_name' => $service?->display_name,
             'is_active' => (bool) $service?->is_active,
+            'is_archived' => (bool) $service?->trashed(),
             'price_amount' => $service?->importo_prestazione,
             'duration_minutes' => $service?->default_duration_minutes,
             'areas' => $specializations->map(fn ($specialization): array => [

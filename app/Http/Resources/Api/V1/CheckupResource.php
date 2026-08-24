@@ -14,7 +14,7 @@ class CheckupResource extends JsonResource
             ? $this->items->sortBy('sort_order')->values()
             : collect();
         $inactiveItemsCount = $items
-            ->filter(fn ($item): bool => ! (bool) $item->service?->is_active)
+            ->filter(fn ($item): bool => $item->service === null || $item->service->trashed() || ! (bool) $item->service->is_active)
             ->count();
         $areas = collect();
         $professionals = collect();
@@ -62,7 +62,7 @@ class CheckupResource extends JsonResource
             'price_amount' => $this->price_amount,
             'indicative_duration_minutes' => $this->indicative_duration_minutes,
             'is_active' => (bool) $this->is_active,
-            'is_operationally_available' => (bool) $this->is_active && $inactiveItemsCount === 0,
+            'is_operationally_available' => $this->isOperationallyAvailable(),
             'organizational_notes' => $this->organizational_notes,
             'featured_image_path' => $this->featured_image_path,
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($this->featured_image_path, $request),
