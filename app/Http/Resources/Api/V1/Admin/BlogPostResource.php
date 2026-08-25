@@ -15,6 +15,7 @@ class BlogPostResource extends JsonResource
             'slug' => $this->slug,
             'subtitle' => $this->subtitle,
             'category_label' => $this->category_label,
+            'content_type' => $this->content_type,
             'excerpt' => $this->excerpt,
             'intro_text' => $this->intro_text,
             'cover_image' => $this->cover_image,

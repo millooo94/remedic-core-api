@@ -17,6 +17,7 @@ use App\Models\SpecializationWebProfile;
 use App\Services\CheckupPublicContentService;
 use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
+use App\Services\HomePagePublicProjection;
 use App\Services\LegalDocumentPublicProjection;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ServicePublicContentService;
@@ -37,6 +38,7 @@ class SiteController extends Controller
         private readonly ContactCenterDataResolver $contactCenterData,
         private readonly ConventionPartnerPublicProjection $conventionPartners,
         private readonly LegalDocumentPublicProjection $legalDocuments,
+        private readonly HomePagePublicProjection $homePage,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -91,6 +93,13 @@ class SiteController extends Controller
                 'blog_posts' => $blogPosts->map(fn (BlogPost $post): array => $this->mapBlogListItem($post))->values()->all(),
             ],
         ]);
+    }
+
+    public function homePage(Request $request): JsonResponse
+    {
+        $page = Page::query()->where('internal_key', Page::HOME_INTERNAL_KEY)->active()->published()->firstOrFail();
+
+        return response()->json(['data' => $this->homePage->project($page, $request)]);
     }
 
     public function search(Request $request): JsonResponse

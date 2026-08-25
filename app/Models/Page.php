@@ -17,6 +17,8 @@ class Page extends Model
 
     public const HOME_SLUG = 'home';
 
+    public const HOME_INTERNAL_KEY = 'home';
+
     public const CENTER_INTERNAL_KEY = 'center';
 
     public const CENTER_SLUG = 'il-centro';

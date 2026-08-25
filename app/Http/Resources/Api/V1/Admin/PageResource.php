@@ -7,6 +7,7 @@ use App\Models\SiteSetting;
 use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\HomePageRegistry;
 use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\Request;
@@ -89,6 +90,16 @@ class PageResource extends JsonResource
             $data = $section->key === LegalDocumentRegistry::HERO_KEY
                 ? ['eyebrow' => $extra['eyebrow'] ?? null, 'body' => $section->content, 'last_updated_on' => $extra['last_updated_on'] ?? null]
                 : ['blocks' => $extra['blocks'] ?? []];
+
+            return [...$base, 'data' => $data];
+        }
+        if ((string) $this->internal_key === HomePageRegistry::INTERNAL_KEY) {
+            $data = $extra;
+            $data['media'] = collect($extra['media'] ?? [])->map(fn ($media) => [
+                'path' => $media['path'] ?? null,
+                'url' => PublicMediaUrl::fromPublicDisk($media['path'] ?? null, $request),
+                'alt' => $media['alt'] ?? null,
+            ])->all();
 
             return [...$base, 'data' => $data];
         }

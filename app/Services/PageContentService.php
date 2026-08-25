@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\BlogPost;
+use App\Models\ConventionPartner;
 use App\Models\FaqItem;
 use App\Models\Page;
 use App\Models\Section;
+use App\Support\Pages\HomePageRegistry;
 use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Support\Arr;
@@ -110,6 +113,9 @@ class PageContentService
         if (LegalDocumentRegistry::isLegal((string) $page->internal_key)) {
             return $this->legalSectionAttributes($section, $payload, $data, $index);
         }
+        if ((string) $page->internal_key === HomePageRegistry::INTERNAL_KEY) {
+            return $this->homeSectionAttributes($section, $payload, $data, $index);
+        }
 
         $allowedData = $this->allowedData((string) $page->internal_key, $section->key);
 
@@ -182,6 +188,40 @@ class PageContentService
         }
 
         return ['title' => $payload['title'] ?? $section->title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $payload['sort_order'] ?? $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+    }
+
+    /** @param array<string,mixed> $payload @param array<string,mixed> $data @return array<string,mixed> */
+    private function homeSectionAttributes(Section $section, array $payload, array $data, int $index): array
+    {
+        $defaults = HomePageRegistry::defaults($section->key);
+        $unknown = array_diff(array_keys($data), array_keys($defaults));
+        if ($unknown !== []) {
+            throw ValidationException::withMessages(["sections.{$index}.data" => 'Il payload Homepage contiene campi non consentiti.']);
+        }
+        $extra = $section->extra_json ?? [];
+        foreach ($data as $key => $value) {
+            $extra[$key] = $value;
+        }
+        if (isset($extra['max_items']) && (! is_int($extra['max_items']) || $extra['max_items'] < 1 || $extra['max_items'] > 24)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.max_items" => 'Il numero massimo deve essere compreso tra 1 e 24.']);
+        }
+        if (isset($extra['selection_mode']) && ! in_array($extra['selection_mode'], ['automatic', 'manual'], true)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.selection_mode" => 'La modalità di selezione non è valida.']);
+        }
+        if ($section->key === 'health_pills') {
+            $ids = array_filter([(int) ($extra['featured_blog_post_id'] ?? 0), ...array_map('intval', $extra['secondary_blog_post_ids'] ?? [])]);
+            if (count($ids) !== count(array_unique($ids)) || count($ids) > 3 || BlogPost::query()->whereIn('id', $ids)->where('content_type', 'health_pill')->count() !== count($ids)) {
+                throw ValidationException::withMessages(["sections.{$index}.data" => 'Le Pillole selezionate devono essere uniche e di tipo health_pill.']);
+            }
+        }
+        if ($section->key === 'conventions') {
+            $ids = array_map('intval', $extra['partner_ids'] ?? []);
+            if (count($ids) > 2 || count($ids) !== count(array_unique($ids)) || ConventionPartner::query()->whereIn('id', $ids)->where('is_active', true)->count() !== count($ids)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.partner_ids" => 'Seleziona al massimo due convenzioni attive e diverse.']);
+            }
+        }
+
+        return ['title' => PageSectionRegistry::definition(HomePageRegistry::INTERNAL_KEY, $section->key)['label'], 'content' => null, 'extra_json' => $extra, 'sort_order' => $payload['sort_order'] ?? $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
     }
 
     /** @return list<array<string,mixed>> */
@@ -508,7 +548,7 @@ class PageContentService
     /** @param array<string, mixed> $payload */
     private function syncFaqs(Page $page, array $payload): void
     {
-        if (PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
+        if ((string) $page->internal_key !== HomePageRegistry::INTERNAL_KEY && PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
             && (($payload['faqs'] ?? []) !== [] || ($payload['removed_faq_ids'] ?? []) !== [])) {
             throw ValidationException::withMessages([
                 'faqs' => 'La pagina Il centro non prevede FAQ.',

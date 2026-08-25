@@ -20,6 +20,7 @@ class StoreBlogPostRequest extends FormRequest
             'slug' => ['required', 'string', 'max:255', 'unique:blog_posts,slug'],
             'subtitle' => ['nullable', 'string', 'max:255'],
             'category_label' => ['nullable', 'string', 'max:255'],
+            'content_type' => ['nullable', Rule::in(['health_pill', 'news'])],
             'excerpt' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'cover_image' => ['nullable', 'string', 'max:255'],

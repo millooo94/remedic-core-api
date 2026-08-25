@@ -26,6 +26,8 @@ class ServiceWebProfile extends Model
         'public_slug',
         'short_description',
         'is_web_enabled',
+        'is_diagnostic',
+        'is_aesthetic_medicine',
         'list_sort_order',
         'seo_title',
         'local_seo_title',
@@ -45,6 +47,8 @@ class ServiceWebProfile extends Model
     {
         return [
             'is_web_enabled' => 'boolean',
+            'is_diagnostic' => 'boolean',
+            'is_aesthetic_medicine' => 'boolean',
             'is_local_seo_enabled' => 'boolean',
             'list_sort_order' => 'integer',
             'robots' => RobotsValue::class,

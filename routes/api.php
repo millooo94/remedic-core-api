@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\Admin\ConsentPolicyVersionController as AdminCon
 use App\Http\Controllers\Api\V1\Admin\ConsentPreferenceChangeController as AdminConsentPreferenceChangeController;
 use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
 use App\Http\Controllers\Api\V1\Admin\ConsentServiceController as AdminConsentServiceController;
+use App\Http\Controllers\Api\V1\Admin\HomePageController as AdminHomePageController;
 use App\Http\Controllers\Api\V1\Admin\MedicalAreaController as AdminMedicalAreaController;
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
@@ -51,6 +52,7 @@ Route::prefix('v1')->group(function (): void {
     Route::prefix('public')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
         Route::get('home', [PublicSiteController::class, 'home']);
+        Route::get('site/home', [PublicSiteController::class, 'homePage']);
         Route::get('search', [PublicSiteController::class, 'search']);
         Route::get('specializations', [PublicSiteController::class, 'specializations']);
         Route::get('specializations/{slug}', [PublicSiteController::class, 'specialization']);
@@ -225,6 +227,8 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('admin')
             ->middleware('permission:'.AdminPermission::VIEW_BACKOFFICE->value)
             ->group(function (): void {
+                Route::get('homepage', [AdminHomePageController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
                 Route::apiResource('pages', AdminPageController::class)

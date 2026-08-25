@@ -13,6 +13,7 @@ use App\Models\Section;
 use App\Services\PageContentService;
 use App\Services\PageSlugRedirectService;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\HomePageRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -163,11 +164,13 @@ class PageController extends Controller
                 Page::CONVENTIONS_NETWORK_SLUG => Page::CONVENTIONS_NETWORK_INTERNAL_KEY,
                 Page::CAREERS_SLUG => Page::CAREERS_INTERNAL_KEY,
                 Page::TERMS_OF_SERVICE_SLUG => Page::TERMS_OF_SERVICE_INTERNAL_KEY,
+                Page::HOME_SLUG => Page::HOME_INTERNAL_KEY,
                 default => (string) ($payload['slug'] ?? ''),
             };
         }
 
-        if (PageSectionRegistry::hasDefinitionsFor((string) ($payload['internal_key'] ?? $page->internal_key))) {
+        if (PageSectionRegistry::hasDefinitionsFor((string) ($payload['internal_key'] ?? $page->internal_key))
+            && (string) ($payload['internal_key'] ?? $page->internal_key) !== HomePageRegistry::INTERNAL_KEY) {
             $payload['faq_enabled'] = false;
         }
 

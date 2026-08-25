@@ -76,6 +76,8 @@ class ServiceWebProfileResource extends JsonResource
             'public_slug' => $profile->public_slug,
             'short_description' => $profile->short_description,
             'is_web_enabled' => (bool) $profile->is_web_enabled,
+            'is_diagnostic' => (bool) $profile->is_diagnostic,
+            'is_aesthetic_medicine' => (bool) $profile->is_aesthetic_medicine,
             'list_sort_order' => (int) $profile->list_sort_order,
             'seo_title' => $profile->seo_title,
             'local_seo_title' => $profile->local_seo_title,

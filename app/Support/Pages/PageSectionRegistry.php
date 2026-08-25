@@ -95,6 +95,9 @@ final class PageSectionRegistry
     /** @return array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}|null */
     public static function definition(string $internalKey, string $sectionKey): ?array
     {
+        if ($internalKey === HomePageRegistry::INTERNAL_KEY) {
+            return HomePageRegistry::definitions()[$sectionKey] ?? null;
+        }
         if (LegalDocumentRegistry::isLegal($internalKey)) {
             return LegalDocumentRegistry::definitions($internalKey)[$sectionKey] ?? null;
         }
@@ -105,6 +108,9 @@ final class PageSectionRegistry
     /** @return array<string, array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}> */
     public static function definitions(string $internalKey): array
     {
+        if ($internalKey === HomePageRegistry::INTERNAL_KEY) {
+            return HomePageRegistry::definitions();
+        }
         if (LegalDocumentRegistry::isLegal($internalKey)) {
             return LegalDocumentRegistry::definitions($internalKey);
         }
@@ -114,7 +120,7 @@ final class PageSectionRegistry
 
     public static function hasDefinitionsFor(string $internalKey): bool
     {
-        return LegalDocumentRegistry::isLegal($internalKey) || array_key_exists($internalKey, self::DEFINITIONS);
+        return $internalKey === HomePageRegistry::INTERNAL_KEY || LegalDocumentRegistry::isLegal($internalKey) || array_key_exists($internalKey, self::DEFINITIONS);
     }
 
     public static function canCreate(string $internalKey, string $sectionKey): bool
@@ -124,6 +130,10 @@ final class PageSectionRegistry
 
     public static function supportsMedia(Page $page, string $sectionKey, string $mediaSlot = 'image'): bool
     {
+        if ((string) $page->internal_key === HomePageRegistry::INTERNAL_KEY) {
+            return HomePageRegistry::supportsMedia($sectionKey, $mediaSlot);
+        }
+
         return (self::definition((string) $page->internal_key, $sectionKey)['media_slot'] ?? null) === $mediaSlot;
     }
 
@@ -131,6 +141,9 @@ final class PageSectionRegistry
     public static function missingDefaults(Page $page): array
     {
         $internalKey = (string) $page->internal_key;
+        if ($internalKey === HomePageRegistry::INTERNAL_KEY) {
+            return HomePageRegistry::missingDefaults($page);
+        }
         if (LegalDocumentRegistry::isLegal($internalKey)) {
             return LegalDocumentRegistry::missingDefaults($page);
         }

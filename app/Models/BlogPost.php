@@ -21,6 +21,7 @@ class BlogPost extends Model
         'slug',
         'subtitle',
         'category_label',
+        'content_type',
         'excerpt',
         'intro_text',
         'cover_image',
@@ -79,6 +80,11 @@ class BlogPost extends Model
     public function isPubliclyAvailable(): bool
     {
         return (bool) $this->is_active && $this->isPublished();
+    }
+
+    public function scopeHealthPills(Builder $query): Builder
+    {
+        return $query->where('content_type', 'health_pill');
     }
 
     public function relatedServices(): BelongsToMany
