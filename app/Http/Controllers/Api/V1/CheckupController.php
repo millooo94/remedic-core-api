@@ -44,8 +44,11 @@ class CheckupController extends Controller
         return CheckupResource::collection($checkups);
     }
 
-    public function store(StoreCheckupRequest $request): CheckupResource
+    public function store(StoreCheckupRequest $request): CheckupResource|JsonResponse
     {
+        if (Checkup::query()->count() >= 6) {
+            return response()->json(['message' => 'Limite massimo di 6 Check-up raggiunto.'], Response::HTTP_CONFLICT);
+        }
         $checkup = $this->service->create($request->validated());
 
         return new CheckupResource($this->service->loadForResource($checkup, true));
@@ -73,6 +76,9 @@ class CheckupController extends Controller
     public function restore(int $checkup): CheckupResource
     {
         $model = Checkup::withTrashed()->findOrFail($checkup);
+        if (Checkup::query()->count() >= 6) {
+            abort(Response::HTTP_CONFLICT, 'Limite massimo di 6 Check-up raggiunto.');
+        }
         $model->restore();
 
         return new CheckupResource($this->service->loadForResource($model, true));

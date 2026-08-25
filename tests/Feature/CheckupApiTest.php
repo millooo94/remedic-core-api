@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
+use App\Models\Checkup;
 use App\Models\Professional;
 use App\Models\ProfessionalService;
 use App\Models\Service;
@@ -330,6 +331,35 @@ class CheckupApiTest extends TestCase
 
         $this->getJson('/api/v1/checkups')->assertUnauthorized();
         $this->postJson('/api/v1/checkups', $this->payload([$service->id]))->assertUnauthorized();
+    }
+
+    #[Test]
+    public function catalog_limit_counts_every_non_archived_checkup_and_is_authoritative_for_create_and_restore(): void
+    {
+        $service = $this->createService('Prestazione limite');
+        $ids = [];
+        foreach (range(1, 6) as $number) {
+            $ids[] = $this->postJson('/api/v1/checkups', $this->payload([$service->id], [
+                'display_name' => "Check-up {$number}",
+            ]))->assertCreated()->json('id');
+        }
+
+        $this->postJson('/api/v1/checkups', $this->payload([$service->id], ['display_name' => 'Settimo']))
+            ->assertConflict()->assertJsonPath('message', 'Limite massimo di 6 Check-up raggiunto.');
+        $this->putJson("/api/v1/checkups/{$ids[0]}", $this->payload([$service->id], ['display_name' => 'Modifica consentita']))->assertOk();
+
+        Checkup::query()->findOrFail($ids[1])->update(['is_active' => false]);
+        $this->postJson('/api/v1/checkups', $this->payload([$service->id], ['display_name' => 'Ancora settimo']))->assertConflict();
+
+        $this->deleteJson("/api/v1/checkups/{$ids[0]}")->assertNoContent();
+        $replacement = $this->postJson('/api/v1/checkups', $this->payload([$service->id], ['display_name' => 'Sostituto']))
+            ->assertCreated()->json('id');
+        $this->postJson("/api/v1/checkups/{$ids[0]}/restore")->assertConflict()
+            ->assertJsonPath('message', 'Limite massimo di 6 Check-up raggiunto.');
+
+        $this->deleteJson("/api/v1/checkups/{$replacement}")->assertNoContent();
+        $this->postJson("/api/v1/checkups/{$ids[0]}/restore")->assertOk();
+        $this->assertSame(6, Checkup::query()->count());
     }
 
     private function createService(

@@ -49,12 +49,29 @@ class CheckupPublicContentService
         ];
     }
 
+    public function indexItem(Checkup $checkup, Request $request): array
+    {
+        $profile = $checkup->webProfile;
+        $slug = $profile->public_slug;
+
+        return [
+            ...$this->listItem($checkup, $request),
+            'id' => $checkup->id,
+            'public_slug' => $slug,
+            'href' => '/check-up/'.$slug,
+            'anchor' => 'checkup-'.$slug,
+            'display_name' => $checkup->display_name,
+            'image_url' => PublicMediaUrl::fromPublicDisk($checkup->featured_image_path, $request),
+            'duration' => $checkup->indicative_duration_minutes,
+            'duration_label' => $checkup->indicative_duration_minutes ? $checkup->indicative_duration_minutes.' min' : null,
+            'included_services' => $this->includedServices($checkup, $request)->all(),
+        ];
+    }
+
     public function detail(Checkup $checkup, Request $request): array
     {
         $profile = $checkup->webProfile;
-        $included = $checkup->items->sortBy(fn ($item) => [$item->sort_order, $item->id])
-            ->filter(fn ($item) => $item->service !== null)
-            ->map(fn ($item) => $this->includedService($item, $request))->values();
+        $included = $this->includedServices($checkup, $request);
         $areas = $checkup->items->flatMap(fn ($item) => $item->service?->specializations ?? [])
             ->unique('id')->map(fn ($area) => $this->area($area, $request))->values();
         $professionals = $checkup->items->flatMap(fn ($item) => $item->service?->professionalServices ?? [])
@@ -139,10 +156,17 @@ class CheckupPublicContentService
             'duration_minutes' => $service->default_duration_minutes,
             'is_active' => (bool) $service->is_active, 'is_archived' => $service->trashed(),
             'is_publicly_visible' => $visible,
-            'href' => $visible ? '/prestazioni/'.$service->webProfile->public_slug : null,
+            'href' => $visible && $service->webProfile?->public_slug ? '/prestazioni/'.$service->webProfile->public_slug : null,
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
             'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
         ];
+    }
+
+    private function includedServices(Checkup $checkup, Request $request)
+    {
+        return $checkup->items->sortBy(fn ($item) => [$item->sort_order, $item->id])
+            ->filter(fn ($item) => $item->service !== null)
+            ->map(fn ($item) => $this->includedService($item, $request))->values();
     }
 
     private function area($area, Request $request): array

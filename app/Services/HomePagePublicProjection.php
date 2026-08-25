@@ -6,6 +6,7 @@ use App\Models\BlogPost;
 use App\Models\ConventionPartner;
 use App\Models\Page;
 use App\Models\ProfessionalPublicProfile;
+use App\Models\SiteIndexPage;
 use App\Models\SiteSetting;
 use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
@@ -34,7 +35,15 @@ class HomePagePublicProjection
             $data['media'] = $this->media($data, $request);
             if ($section->key === 'hero') {
                 $data['booking_action'] = ['type' => 'booking'];
-                $data['search_action'] = ['target' => 'medical_areas_index'];
+                $data['search_action'] = $this->indexAction('medical_areas_index');
+            }
+            if ($target = match ($section->key) {
+                'medical_areas' => 'medical_areas_index',
+                'professionals' => 'equipe_index',
+                'checkups' => 'checkups_index',
+                default => null,
+            }) {
+                $data['index_action'] = $this->indexAction($target);
             }
             if ($section->key === 'newsletter') {
                 $data['component_type'] = 'newsletter_signup';
@@ -49,6 +58,17 @@ class HomePagePublicProjection
     private function limit(array $data): int
     {
         return min(24, max(1, (int) ($data['max_items'] ?? 6)));
+    }
+
+    private function indexAction(string $key): array
+    {
+        $action = ['target' => $key];
+        $page = SiteIndexPage::query()->where('internal_key', $key)->first();
+        if ($page?->isPubliclyAvailable()) {
+            $action['href'] = $page->canonical_url;
+        }
+
+        return $action;
     }
 
     private function media(array $data, Request $request): array
