@@ -15,6 +15,8 @@ final class PageSectionRegistry
 
     public const CONTACT_INTERNAL_KEY = 'contact';
 
+    public const CONVENTIONS_NETWORK_INTERNAL_KEY = 'conventions_network';
+
     public const CENTER_SECTION_KEYS = [
         'hero', 'intro', 'coordinated_care', 'continuity', 'why_remedic', 'plus_health_protocol', 'orientation_cta',
     ];
@@ -28,6 +30,8 @@ final class PageSectionRegistry
     ];
 
     public const CONTACT_SECTION_KEYS = ['hero', 'location_and_contacts', 'orientation_cta'];
+
+    public const CONVENTIONS_NETWORK_SECTION_KEYS = ['hero', 'access_process', 'conventions_catalog', 'contact_cta'];
 
     /**
      * @var array<string, array<string, array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}>>
@@ -70,6 +74,12 @@ final class PageSectionRegistry
             'location_and_contacts' => ['label' => 'Informazioni e sede', 'summary' => 'Copy editoriale e dati derivati dal Centro.', 'editor' => 'contact-location-and-contacts', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'contact-orientation-cta', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
         ],
+        self::CONVENTIONS_NETWORK_INTERNAL_KEY => [
+            'hero' => ['label' => 'Hero', 'summary' => 'Introduzione e immagine editoriale della pagina.', 'editor' => 'conventions-hero', 'default_sort_order' => 0, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
+            'access_process' => ['label' => 'Accesso alle prestazioni', 'summary' => 'Tre passaggi fissi, con copy editoriale.', 'editor' => 'conventions-access-process', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'conventions_catalog' => ['label' => 'Tutte le convenzioni', 'summary' => 'Copy editoriale e catalogo derivato dalla Gestione.', 'editor' => 'conventions-catalog', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'contact_cta' => ['label' => 'Contatto finale', 'summary' => 'CTA globale per contattare il centro.', 'editor' => 'conventions-contact-cta', 'default_sort_order' => 3, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['contact']],
+        ],
     ];
 
     /** @return array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}|null */
@@ -103,7 +113,7 @@ final class PageSectionRegistry
     public static function missingDefaults(Page $page): array
     {
         $internalKey = (string) $page->internal_key;
-        if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY, self::CONTACT_INTERNAL_KEY], true)) {
+        if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY, self::CONTACT_INTERNAL_KEY, self::CONVENTIONS_NETWORK_INTERNAL_KEY], true)) {
             return [];
         }
 
@@ -113,6 +123,7 @@ final class PageSectionRegistry
             self::CENTER_INTERNAL_KEY => self::centerDefaults(),
             self::WHY_CHOOSE_US_INTERNAL_KEY => self::whyChooseUsDefaults(),
             self::CONTACT_INTERNAL_KEY => self::contactDefaults(),
+            self::CONVENTIONS_NETWORK_INTERNAL_KEY => self::conventionsNetworkDefaults(),
             default => self::plusHealthProtocolDefaults(),
         };
 
@@ -186,6 +197,27 @@ final class PageSectionRegistry
             ['key' => 'hero', 'title' => 'Contatti', 'content' => 'Tutte le informazioni per contattare Remedic e raggiungere il centro.', 'extra_json' => ['eyebrow' => 'CONTATTI', 'image_path' => null, 'image_alt' => null], 'sort_order' => 0, 'is_active' => true],
             ['key' => 'location_and_contacts', 'title' => 'Informazioni e sede', 'content' => 'Consulta i recapiti e gli orari del centro, oppure scegli l’azione più utile per te.', 'extra_json' => [], 'sort_order' => 1, 'is_active' => true],
             ['key' => 'orientation_cta', 'title' => 'Cerchi una visita o un esame?', 'content' => 'Prenota online oppure contattaci per ricevere assistenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 2, 'is_active' => true],
+        ];
+    }
+
+    /** @return list<array{key: string, title: string, content: string, extra_json: array<string, mixed>, sort_order: int, is_active: bool}> */
+    private static function conventionsNetworkDefaults(): array
+    {
+        return [
+            ['key' => 'hero', 'title' => 'Convenzioni e network', 'content' => 'Remedic collabora con fondi, assicurazioni, network, enti e realtà convenzionate per facilitare l’accesso alle prestazioni e semplificare la gestione delle pratiche.', 'extra_json' => ['eyebrow' => 'CONVENZIONI', 'image_path' => null, 'image_alt' => null], 'sort_order' => 0, 'is_active' => true],
+            ['key' => 'access_process', 'title' => 'Più semplice accedere alle prestazioni', 'content' => 'Ogni convenzione segue regole specifiche. Il centro ti aiuta a comprendere i passaggi utili prima della prenotazione.', 'extra_json' => ['items' => self::conventionAccessProcessItems()], 'sort_order' => 1, 'is_active' => true],
+            ['key' => 'conventions_catalog', 'title' => 'Tutte le convenzioni', 'content' => 'Consulta i fondi, network, assicurazioni, enti e realtà convenzionate con Remedic.', 'extra_json' => [], 'sort_order' => 2, 'is_active' => true],
+            ['key' => 'contact_cta', 'title' => 'Non trovi la tua convenzione?', 'content' => 'Verifichiamo insieme la tua convenzione.', 'extra_json' => ['actions' => ['contact']], 'sort_order' => 3, 'is_active' => true],
+        ];
+    }
+
+    /** @return list<array{semantic_key: string, title: string, description: string, icon_key: string}> */
+    private static function conventionAccessProcessItems(): array
+    {
+        return [
+            ['semantic_key' => 'direct_booking', 'title' => 'Prenotazione diretta', 'description' => 'Remedic può supportare la prenotazione attraverso il fondo, network, ente o convenzione applicabile.', 'icon_key' => 'calendar'],
+            ['semantic_key' => 'practice_management', 'title' => 'Gestione della pratica', 'description' => 'Il centro supporta il paziente nella gestione delle informazioni e della documentazione richiesta dal circuito convenzionato.', 'icon_key' => 'clipboard'],
+            ['semantic_key' => 'agreement_conditions', 'title' => 'Condizioni della convenzione', 'description' => 'Coperture, franchigie, rimborsi o eventuale anticipazione dipendono dalle condizioni previste dallo specifico accordo o piano.', 'icon_key' => 'info'],
         ];
     }
 

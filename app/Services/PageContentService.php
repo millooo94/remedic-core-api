@@ -130,7 +130,10 @@ class PageContentService
         }
 
         if (array_key_exists('items', $data)) {
-            $extra['items'] = $this->normalizeItems($section->key, $data['items'], $index);
+            $extra['items'] = (string) $page->internal_key === PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY
+                && $section->key === 'access_process'
+                ? $this->normalizeConventionAccessProcessItems($data['items'], $index)
+                : $this->normalizeItems($section->key, $data['items'], $index);
         }
         if (array_key_exists('testimonials', $data)) {
             $extra['testimonials'] = $this->normalizeTestimonials($data['testimonials'], $index);
@@ -191,6 +194,16 @@ class PageContentService
             };
         }
 
+        if ($internalKey === PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY) {
+            return match ($sectionKey) {
+                'hero' => ['eyebrow', 'body', 'image_alt'],
+                'access_process' => ['intro', 'items'],
+                'conventions_catalog' => ['intro'],
+                'contact_cta' => ['body'],
+                default => [],
+            };
+        }
+
         return match ($sectionKey) {
             'hero' => ['eyebrow', 'body', 'image_alt'],
             'intro' => ['body'],
@@ -199,6 +212,29 @@ class PageContentService
             'orientation_cta' => ['body'],
             default => [],
         };
+    }
+
+    /** @return list<array{semantic_key: string, title: string, description: string, icon_key: string}> */
+    private function normalizeConventionAccessProcessItems(mixed $items, int $index): array
+    {
+        $expected = ['direct_booking', 'practice_management', 'agreement_conditions'];
+        $icons = ['calendar', 'clipboard', 'info'];
+        if (! is_array($items) || array_values(array_map(fn ($item) => is_array($item) ? $item['semantic_key'] ?? null : null, $items)) !== $expected) {
+            throw ValidationException::withMessages(["sections.{$index}.data.items" => 'I tre passaggi hanno chiavi e ordine fissi.']);
+        }
+
+        return array_map(function (array $item, int $itemIndex) use ($expected, $icons, $index): array {
+            if (array_diff(array_keys($item), ['semantic_key', 'title', 'description']) !== [] || ! isset($item['title'], $item['description'])) {
+                throw ValidationException::withMessages(["sections.{$index}.data.items.{$itemIndex}" => 'Il passaggio contiene dati non consentiti.']);
+            }
+
+            return [
+                'semantic_key' => $expected[$itemIndex],
+                'title' => trim((string) $item['title']),
+                'description' => trim((string) $item['description']),
+                'icon_key' => $icons[$itemIndex],
+            ];
+        }, array_values($items), array_keys(array_values($items)));
     }
 
     /** @return list<array<string, string>> */

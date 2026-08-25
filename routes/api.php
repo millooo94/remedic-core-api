@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CashMovementController;
 use App\Http\Controllers\Api\V1\CheckupController;
+use App\Http\Controllers\Api\V1\ConventionPartnerController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\EntityMediaController;
@@ -104,6 +105,15 @@ Route::prefix('v1')->group(function (): void {
             });
         Route::apiResource('professionals', ProfessionalController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+        Route::prefix('conventions')
+            ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value)
+            ->group(function (): void {
+                Route::post('{convention}/logo', [ConventionPartnerController::class, 'uploadLogo']);
+                Route::delete('{convention}/logo', [ConventionPartnerController::class, 'deleteLogo']);
+            });
+        Route::apiResource('conventions', ConventionPartnerController::class)
+            ->parameters(['conventions' => 'convention'])
+            ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
         Route::prefix('specializations')
             ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value)
             ->group(function (): void {

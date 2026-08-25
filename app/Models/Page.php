@@ -33,6 +33,10 @@ class Page extends Model
 
     public const CONTACT_SLUG = 'contatti';
 
+    public const CONVENTIONS_NETWORK_INTERNAL_KEY = 'conventions_network';
+
+    public const CONVENTIONS_NETWORK_SLUG = 'convenzioni-e-network';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

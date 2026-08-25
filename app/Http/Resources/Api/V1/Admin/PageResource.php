@@ -4,6 +4,7 @@ namespace App\Http\Resources\Api\V1\Admin;
 
 use App\Models\SiteSetting;
 use App\Services\ContactCenterDataResolver;
+use App\Services\ConventionPartnerPublicProjection;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\Request;
@@ -85,6 +86,14 @@ class PageResource extends JsonResource
         $data = (string) $this->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts'
             ? ['intro' => $section->content, 'action' => ['type' => 'contact'], 'center' => app(ContactCenterDataResolver::class)->resolve(SiteSetting::current())]
             : ['body' => $section->content];
+        if ((string) $this->internal_key === PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY) {
+            $data = match ($section->key) {
+                'access_process' => ['intro' => $section->content, 'items' => $extra['items'] ?? []],
+                'conventions_catalog' => ['intro' => $section->content, ...app(ConventionPartnerPublicProjection::class)->catalog($request)],
+                'contact_cta' => ['body' => $section->content, 'action' => ['type' => 'contact']],
+                default => ['body' => $section->content],
+            };
+        }
         foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body'] as $key) {
             if (array_key_exists($key, $extra)) {
                 $data[$key] = $extra[$key];

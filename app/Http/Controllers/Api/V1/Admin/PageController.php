@@ -160,6 +160,7 @@ class PageController extends Controller
                 Page::WHY_CHOOSE_US_SLUG => Page::WHY_CHOOSE_US_INTERNAL_KEY,
                 Page::PLUS_HEALTH_PROTOCOL_SLUG => Page::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY,
                 Page::CONTACT_SLUG => Page::CONTACT_INTERNAL_KEY,
+                Page::CONVENTIONS_NETWORK_SLUG => Page::CONVENTIONS_NETWORK_INTERNAL_KEY,
                 default => (string) ($payload['slug'] ?? ''),
             };
         }

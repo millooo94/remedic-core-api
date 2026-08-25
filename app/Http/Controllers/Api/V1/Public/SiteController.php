@@ -15,6 +15,7 @@ use App\Models\SiteSetting;
 use App\Models\SpecializationWebProfile;
 use App\Services\CheckupPublicContentService;
 use App\Services\ContactCenterDataResolver;
+use App\Services\ConventionPartnerPublicProjection;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
@@ -31,6 +32,7 @@ class SiteController extends Controller
         private readonly ServicePublicContentService $serviceContent,
         private readonly CheckupPublicContentService $checkupContent,
         private readonly ContactCenterDataResolver $contactCenterData,
+        private readonly ConventionPartnerPublicProjection $conventionPartners,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -962,6 +964,29 @@ class SiteController extends Controller
                             'center' => $this->contactCenterData->resolve(SiteSetting::current()),
                         ],
                     ];
+                }
+                if ((string) $page->internal_key === PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY) {
+                    if ($section->key === 'access_process') {
+                        $mapped = [
+                            'key' => $section->key,
+                            'title' => $section->title,
+                            'data' => ['intro' => $section->content, 'items' => $extra['items'] ?? []],
+                        ];
+                    }
+                    if ($section->key === 'conventions_catalog') {
+                        $mapped = [
+                            'key' => $section->key,
+                            'title' => $section->title,
+                            'data' => ['intro' => $section->content, ...$this->conventionPartners->catalog(request())],
+                        ];
+                    }
+                    if ($section->key === 'contact_cta') {
+                        $mapped = [
+                            'key' => $section->key,
+                            'title' => $section->title,
+                            'data' => ['body' => $section->content, 'action' => ['type' => 'contact']],
+                        ];
+                    }
                 }
                 if ($section->key === 'patient_experiences') {
                     $mapped['testimonials'] = collect($extra['testimonials'] ?? [])
