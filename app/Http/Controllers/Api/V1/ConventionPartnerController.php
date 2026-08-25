@@ -34,7 +34,9 @@ class ConventionPartnerController extends Controller
 
     public function store(StoreConventionPartnerRequest $request): ConventionPartnerResource
     {
-        $partner = ConventionPartner::query()->create($request->validated());
+        $attributes = $request->validated();
+        $attributes['sort_order'] = (int) ConventionPartner::max('sort_order') + 1;
+        $partner = ConventionPartner::query()->create($attributes);
 
         return new ConventionPartnerResource($partner);
     }
@@ -58,6 +60,19 @@ class ConventionPartnerController extends Controller
         $this->media->deleteManagedFile($path, ["conventions/{$convention->id}/logos"]);
 
         return response()->noContent();
+    }
+
+    public function reorder(Request $request): AnonymousResourceCollection
+    {
+        $data = $request->validate(['ids' => ['required', 'array'], 'ids.*' => ['required', 'integer', 'distinct', 'exists:convention_partners,id']]);
+        if (count($data['ids']) !== ConventionPartner::count()) {
+            abort(422, 'L’ordinamento deve includere tutte le convenzioni.');
+        }
+        foreach ($data['ids'] as $sortOrder => $id) {
+            ConventionPartner::whereKey($id)->update(['sort_order' => $sortOrder]);
+        }
+
+        return ConventionPartnerResource::collection(ConventionPartner::query()->publicOrder()->get());
     }
 
     public function uploadLogo(UploadMasterImageRequest $request, ConventionPartner $convention): ConventionPartnerResource

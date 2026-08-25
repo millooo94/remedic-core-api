@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Public;
 
 use App\Http\Controllers\Controller;
+use App\Models\ApplicationType;
 use App\Models\BlogPost;
 use App\Models\FaqItem;
 use App\Models\Page;
@@ -908,7 +909,7 @@ class SiteController extends Controller
         $targets = Page::query()
             ->active()
             ->published()
-            ->whereIn('internal_key', ['why_choose_us', 'plus_health_protocol'])
+            ->whereIn('internal_key', ['why_choose_us', 'plus_health_protocol', 'privacy'])
             ->pluck('slug', 'internal_key');
 
         return $page->sections
@@ -953,6 +954,15 @@ class SiteController extends Controller
                 }
                 if ($section->key === 'four_pillars') {
                     $mapped['pillars'] = $extra['pillars'] ?? [];
+                }
+                if ((string) $page->internal_key === PageSectionRegistry::CAREERS_INTERNAL_KEY) {
+                    if (in_array($section->key, ['professional_profiles', 'what_we_look_for'], true)) {
+                        $mapped = ['key' => $section->key, 'title' => $section->title, 'data' => ['intro' => $section->content, 'subheading' => $extra['subheading'] ?? null, 'items' => $extra['items'] ?? []]];
+                    }
+                    if ($section->key === 'application') {
+                        $privacySlug = $targets->get('privacy');
+                        $mapped = ['key' => 'application', 'title' => $section->title, 'data' => ['body' => $section->content, 'action' => ['type' => 'open_application_form'], 'privacy' => ['text' => $extra['privacy_text'] ?? null, 'target_internal_key' => 'privacy', 'href' => $privacySlug ? '/'.$privacySlug : null], 'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get()->map(fn (ApplicationType $type) => ['id' => $type->id, 'name' => $type->name])->all()]];
+                    }
                 }
                 if ((string) $page->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts') {
                     $mapped = [

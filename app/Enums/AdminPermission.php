@@ -11,6 +11,7 @@ enum AdminPermission: string
     case MANAGE_SERVICES = 'manage services';
     case MANAGE_DOCTORS = 'manage doctors';
     case MANAGE_CONVENTIONS = 'manage conventions';
+    case MANAGE_APPLICATIONS = 'manage applications';
     case MANAGE_BLOG_POSTS = 'manage blog posts';
     case MANAGE_REDIRECTS = 'manage redirects';
     case MANAGE_SETTINGS = 'manage settings';

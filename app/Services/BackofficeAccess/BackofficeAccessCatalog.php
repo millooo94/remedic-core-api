@@ -39,6 +39,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SERVICES->value,
                 AdminPermission::MANAGE_DOCTORS->value,
                 AdminPermission::MANAGE_CONVENTIONS->value,
+                AdminPermission::MANAGE_APPLICATIONS->value,
                 AdminPermission::MANAGE_BLOG_POSTS->value,
                 AdminPermission::MANAGE_SETTINGS->value,
                 AdminPermission::MANAGE_CENTER_SETTINGS->value,
@@ -55,6 +56,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SERVICES->value,
                 AdminPermission::MANAGE_DOCTORS->value,
                 AdminPermission::MANAGE_CONVENTIONS->value,
+                AdminPermission::MANAGE_APPLICATIONS->value,
                 AdminPermission::MANAGE_BLOG_POSTS->value,
             ],
             AdminRole::SEO_MANAGER->value => [
@@ -64,6 +66,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SERVICES->value,
                 AdminPermission::MANAGE_DOCTORS->value,
                 AdminPermission::MANAGE_CONVENTIONS->value,
+                AdminPermission::MANAGE_APPLICATIONS->value,
                 AdminPermission::MANAGE_BLOG_POSTS->value,
                 AdminPermission::MANAGE_REDIRECTS->value,
                 AdminPermission::MANAGE_SETTINGS->value,

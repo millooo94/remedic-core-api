@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as Adm
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
+use App\Http\Controllers\Api\V1\ApplicationTypeController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CashMovementController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Api\V1\EntityMediaController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseRecordController;
 use App\Http\Controllers\Api\V1\ExpenseTemplateController;
+use App\Http\Controllers\Api\V1\JobApplicationController;
 use App\Http\Controllers\Api\V1\Management\CenterSettingController as ManagementCenterSettingController;
 use App\Http\Controllers\Api\V1\MarketingCampaignController;
 use App\Http\Controllers\Api\V1\MarketingSegmentController;
@@ -68,6 +70,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('blog-posts/{slug}', [PublicSiteController::class, 'blogPost']);
         Route::get('redirects/resolve', [PublicSiteController::class, 'resolveRedirect']);
         Route::get('pages/{slug}', [PublicSiteController::class, 'page']);
+        Route::get('application-types', [ApplicationTypeController::class, 'publicIndex']);
+        Route::post('job-applications', [JobApplicationController::class, 'storePublic'])->middleware('throttle:5,1');
     });
 
     Route::prefix('auth')->group(function (): void {
@@ -105,9 +109,18 @@ Route::prefix('v1')->group(function (): void {
             });
         Route::apiResource('professionals', ProfessionalController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+        Route::prefix('application-types')->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value)->group(function (): void {
+            Route::post('reorder', [ApplicationTypeController::class, 'reorder']);
+        });
+        Route::apiResource('application-types', ApplicationTypeController::class)->except(['show'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
+        Route::get('job-applications', [JobApplicationController::class, 'index'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
+        Route::get('job-applications/{jobApplication}', [JobApplicationController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
+        Route::patch('job-applications/{jobApplication}/status', [JobApplicationController::class, 'updateStatus'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
+        Route::get('job-applications/{jobApplication}/cv', [JobApplicationController::class, 'downloadCv'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
         Route::prefix('conventions')
             ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value)
             ->group(function (): void {
+                Route::post('reorder', [ConventionPartnerController::class, 'reorder']);
                 Route::post('{convention}/logo', [ConventionPartnerController::class, 'uploadLogo']);
                 Route::delete('{convention}/logo', [ConventionPartnerController::class, 'deleteLogo']);
             });

@@ -17,6 +17,8 @@ final class PageSectionRegistry
 
     public const CONVENTIONS_NETWORK_INTERNAL_KEY = 'conventions_network';
 
+    public const CAREERS_INTERNAL_KEY = 'careers';
+
     public const CENTER_SECTION_KEYS = [
         'hero', 'intro', 'coordinated_care', 'continuity', 'why_remedic', 'plus_health_protocol', 'orientation_cta',
     ];
@@ -32,6 +34,8 @@ final class PageSectionRegistry
     public const CONTACT_SECTION_KEYS = ['hero', 'location_and_contacts', 'orientation_cta'];
 
     public const CONVENTIONS_NETWORK_SECTION_KEYS = ['hero', 'access_process', 'conventions_catalog', 'contact_cta'];
+
+    public const CAREERS_SECTION_KEYS = ['hero', 'professional_profiles', 'what_we_look_for', 'application'];
 
     /**
      * @var array<string, array<string, array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}>>
@@ -80,6 +84,12 @@ final class PageSectionRegistry
             'conventions_catalog' => ['label' => 'Tutte le convenzioni', 'summary' => 'Copy editoriale e catalogo derivato dalla Gestione.', 'editor' => 'conventions-catalog', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'contact_cta' => ['label' => 'Contatto finale', 'summary' => 'CTA globale per contattare il centro.', 'editor' => 'conventions-contact-cta', 'default_sort_order' => 3, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['contact']],
         ],
+        self::CAREERS_INTERNAL_KEY => [
+            'hero' => ['label' => 'Hero', 'summary' => 'Introduzione editoriale.', 'editor' => 'careers-hero', 'default_sort_order' => 0, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
+            'professional_profiles' => ['label' => 'Profili professionali', 'summary' => 'Quattro card editoriali fisse.', 'editor' => 'careers-profiles', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'what_we_look_for' => ['label' => 'Cosa cerchiamo', 'summary' => 'Sei valori editoriali fissi.', 'editor' => 'careers-values', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'application' => ['label' => 'Candidatura', 'summary' => 'Copy e modulo applicativo fisso.', 'editor' => 'careers-application', 'default_sort_order' => 3, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['open_application_form']],
+        ],
     ];
 
     /** @return array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}|null */
@@ -113,7 +123,7 @@ final class PageSectionRegistry
     public static function missingDefaults(Page $page): array
     {
         $internalKey = (string) $page->internal_key;
-        if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY, self::CONTACT_INTERNAL_KEY, self::CONVENTIONS_NETWORK_INTERNAL_KEY], true)) {
+        if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY, self::CONTACT_INTERNAL_KEY, self::CONVENTIONS_NETWORK_INTERNAL_KEY, self::CAREERS_INTERNAL_KEY], true)) {
             return [];
         }
 
@@ -124,6 +134,7 @@ final class PageSectionRegistry
             self::WHY_CHOOSE_US_INTERNAL_KEY => self::whyChooseUsDefaults(),
             self::CONTACT_INTERNAL_KEY => self::contactDefaults(),
             self::CONVENTIONS_NETWORK_INTERNAL_KEY => self::conventionsNetworkDefaults(),
+            self::CAREERS_INTERNAL_KEY => self::careersDefaults(),
             default => self::plusHealthProtocolDefaults(),
         };
 
@@ -208,6 +219,16 @@ final class PageSectionRegistry
             ['key' => 'access_process', 'title' => 'Più semplice accedere alle prestazioni', 'content' => 'Ogni convenzione segue regole specifiche. Il centro ti aiuta a comprendere i passaggi utili prima della prenotazione.', 'extra_json' => ['items' => self::conventionAccessProcessItems()], 'sort_order' => 1, 'is_active' => true],
             ['key' => 'conventions_catalog', 'title' => 'Tutte le convenzioni', 'content' => 'Consulta i fondi, network, assicurazioni, enti e realtà convenzionate con Remedic.', 'extra_json' => [], 'sort_order' => 2, 'is_active' => true],
             ['key' => 'contact_cta', 'title' => 'Non trovi la tua convenzione?', 'content' => 'Verifichiamo insieme la tua convenzione.', 'extra_json' => ['actions' => ['contact']], 'sort_order' => 3, 'is_active' => true],
+        ];
+    }
+
+    private static function careersDefaults(): array
+    {
+        return [
+            ['key' => 'hero', 'title' => 'Lavora con noi', 'content' => 'Entra in una realtà sanitaria che mette in relazione competenze diverse per costruire percorsi più chiari, coordinati e vicini alle persone.', 'extra_json' => ['eyebrow' => 'CARRIERE', 'image_path' => null, 'image_alt' => null], 'sort_order' => 0, 'is_active' => true],
+            ['key' => 'professional_profiles', 'title' => 'Costruiamo insieme una medicina più vicina alle persone', 'content' => 'Remedic cresce attraverso professionisti che uniscono competenza, responsabilità e attenzione alla qualità dell’esperienza di cura.', 'extra_json' => ['subheading' => 'Profili professionali', 'items' => [['semantic_key' => 'specialist_doctors', 'title' => 'Medici specialisti', 'description' => 'Professionisti interessati a lavorare in un contesto multidisciplinare e orientato alla continuità di cura.'], ['semantic_key' => 'healthcare_professionals', 'title' => 'Professionisti sanitari', 'description' => 'Figure sanitarie che condividono un approccio competente, chiaro e attento alla persona.'], ['semantic_key' => 'collaborations', 'title' => 'Collaborazioni', 'description' => 'Competenze complementari utili a sviluppare percorsi, servizi e progetti coerenti con il modello Remedic.'], ['semantic_key' => 'organizational_area', 'title' => 'Area organizzativa', 'description' => 'Persone capaci di accompagnare pazienti e professionisti con precisione, disponibilità e affidabilità.']]], 'sort_order' => 1, 'is_active' => true],
+            ['key' => 'what_we_look_for', 'title' => 'Cosa cerchiamo', 'content' => 'Un modo di lavorare coerente con il nostro impegno verso pazienti, colleghi e comunità professionale.', 'extra_json' => ['items' => [['semantic_key' => 'person_care', 'title' => 'Attenzione alla persona', 'description' => 'Ascolto, rispetto e cura della relazione in ogni passaggio.'], ['semantic_key' => 'quality', 'title' => 'Qualità', 'description' => 'Responsabilità professionale e attenzione costante alla qualità del servizio.'], ['semantic_key' => 'clarity', 'title' => 'Chiarezza', 'description' => 'Informazioni comprensibili e comunicazione trasparente con pazienti e colleghi.'], ['semantic_key' => 'multidisciplinary_collaboration', 'title' => 'Collaborazione multidisciplinare', 'description' => 'Disponibilità al confronto e alla costruzione di percorsi condivisi.'], ['semantic_key' => 'reliability', 'title' => 'Affidabilità', 'description' => 'Precisione negli impegni, nei processi e nella gestione delle informazioni.'], ['semantic_key' => 'continuity', 'title' => 'Continuità', 'description' => 'Un modo di lavorare che accompagna la persona nel tempo e collega le diverse fasi del percorso.']]], 'sort_order' => 2, 'is_active' => true],
+            ['key' => 'application', 'title' => 'Candidatura spontanea', 'content' => 'Raccontaci il tuo percorso professionale e il tipo di collaborazione che vorresti costruire con Remedic. Puoi scrivere al recapito generale del centro indicando nell’oggetto “Candidatura spontanea Remedic” e allegando soltanto i documenti pertinenti alla candidatura.', 'extra_json' => ['privacy_text' => 'Prima di inviare i tuoi dati, consulta la Privacy Policy.'], 'sort_order' => 3, 'is_active' => true],
         ];
     }
 

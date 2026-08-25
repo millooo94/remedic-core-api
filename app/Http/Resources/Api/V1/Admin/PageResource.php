@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
+use App\Models\ApplicationType;
 use App\Models\SiteSetting;
 use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
@@ -94,7 +95,20 @@ class PageResource extends JsonResource
                 default => ['body' => $section->content],
             };
         }
-        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body'] as $key) {
+        if ((string) $this->internal_key === PageSectionRegistry::CAREERS_INTERNAL_KEY) {
+            $data = match ($section->key) {
+                'professional_profiles' => ['intro' => $section->content, 'subheading' => $extra['subheading'] ?? null, 'items' => $extra['items'] ?? []],
+                'what_we_look_for' => ['intro' => $section->content, 'items' => $extra['items'] ?? []],
+                'application' => [
+                    'body' => $section->content,
+                    'privacy_text' => $extra['privacy_text'] ?? null,
+                    'action' => ['type' => 'open_application_form'],
+                    'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get(['id', 'name'])->map(fn (ApplicationType $type) => ['id' => $type->id, 'name' => $type->name])->all(),
+                ],
+                default => ['body' => $section->content],
+            };
+        }
+        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body', 'subheading', 'privacy_text'] as $key) {
             if (array_key_exists($key, $extra)) {
                 $data[$key] = $extra[$key];
             }

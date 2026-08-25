@@ -37,6 +37,10 @@ class Page extends Model
 
     public const CONVENTIONS_NETWORK_SLUG = 'convenzioni-e-network';
 
+    public const CAREERS_INTERNAL_KEY = 'careers';
+
+    public const CAREERS_SLUG = 'lavora-con-noi';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

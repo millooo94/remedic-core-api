@@ -116,7 +116,7 @@ class PageContentService
         }
 
         $extra = $section->extra_json ?? [];
-        foreach (['eyebrow', 'link_label', 'image_alt', 'disclaimer', 'callout_eyebrow', 'callout_body'] as $key) {
+        foreach (['eyebrow', 'link_label', 'image_alt', 'disclaimer', 'callout_eyebrow', 'callout_body', 'subheading', 'privacy_text'] as $key) {
             if (array_key_exists($key, $data)) {
                 $extra[$key] = $data[$key] === null ? null : trim((string) $data[$key]);
             }
@@ -130,10 +130,13 @@ class PageContentService
         }
 
         if (array_key_exists('items', $data)) {
-            $extra['items'] = (string) $page->internal_key === PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY
-                && $section->key === 'access_process'
-                ? $this->normalizeConventionAccessProcessItems($data['items'], $index)
-                : $this->normalizeItems($section->key, $data['items'], $index);
+            $extra['items'] = match ((string) $page->internal_key) {
+                PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY => $section->key === 'access_process'
+                    ? $this->normalizeConventionAccessProcessItems($data['items'], $index)
+                    : $this->normalizeItems($section->key, $data['items'], $index),
+                PageSectionRegistry::CAREERS_INTERNAL_KEY => $this->normalizeCareerItems($section->key, $data['items'], $index),
+                default => $this->normalizeItems($section->key, $data['items'], $index),
+            };
         }
         if (array_key_exists('testimonials', $data)) {
             $extra['testimonials'] = $this->normalizeTestimonials($data['testimonials'], $index);
@@ -200,6 +203,16 @@ class PageContentService
                 'access_process' => ['intro', 'items'],
                 'conventions_catalog' => ['intro'],
                 'contact_cta' => ['body'],
+                default => [],
+            };
+        }
+
+        if ($internalKey === PageSectionRegistry::CAREERS_INTERNAL_KEY) {
+            return match ($sectionKey) {
+                'hero' => ['eyebrow', 'body', 'image_alt'],
+                'professional_profiles' => ['intro', 'subheading', 'items'],
+                'what_we_look_for' => ['intro', 'items'],
+                'application' => ['body', 'privacy_text'],
                 default => [],
             };
         }
@@ -272,6 +285,31 @@ class PageContentService
         }
 
         return $normalized;
+    }
+
+    /** @return list<array{semantic_key: string, title: string, description: string}> */
+    private function normalizeCareerItems(string $sectionKey, mixed $items, int $index): array
+    {
+        $expected = match ($sectionKey) {
+            'professional_profiles' => ['specialist_doctors', 'healthcare_professionals', 'collaborations', 'organizational_area'],
+            'what_we_look_for' => ['person_care', 'quality', 'clarity', 'multidisciplinary_collaboration', 'reliability', 'continuity'],
+            default => [],
+        };
+        if ($expected === [] || ! is_array($items) || array_values(array_map(fn ($item) => is_array($item) ? $item['semantic_key'] ?? null : null, $items)) !== $expected) {
+            throw ValidationException::withMessages(["sections.{$index}.data.items" => 'Le card hanno chiavi e ordine fissi.']);
+        }
+
+        return array_map(function (array $item, int $itemIndex) use ($expected, $index): array {
+            if (array_diff(array_keys($item), ['semantic_key', 'title', 'description']) !== [] || ! isset($item['title'], $item['description'])) {
+                throw ValidationException::withMessages(["sections.{$index}.data.items.{$itemIndex}" => 'La card contiene dati non consentiti.']);
+            }
+
+            return [
+                'semantic_key' => $expected[$itemIndex],
+                'title' => trim((string) $item['title']),
+                'description' => trim((string) $item['description']),
+            ];
+        }, array_values($items), array_keys(array_values($items)));
     }
 
     /** @return list<array{semantic_key: string, label: string, description: string}> */
