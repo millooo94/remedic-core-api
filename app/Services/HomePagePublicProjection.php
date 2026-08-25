@@ -41,6 +41,8 @@ class HomePagePublicProjection
                 'medical_areas' => 'medical_areas_index',
                 'professionals' => 'equipe_index',
                 'checkups' => 'checkups_index',
+                'diagnostics' => 'diagnostics_index',
+                'aesthetic_medicine' => 'aesthetic_medicine_index',
                 default => null,
             }) {
                 $data['index_action'] = $this->indexAction($target);

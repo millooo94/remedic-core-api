@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageController as AdminSiteIndexPageController;
+use App\Http\Controllers\Api\V1\Admin\SiteIndexPageMediaController as AdminSiteIndexPageMediaController;
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\ApplicationTypeController;
@@ -55,7 +56,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
         Route::get('home', [PublicSiteController::class, 'home']);
         Route::get('site/home', [PublicSiteController::class, 'homePage']);
-        Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index']);
+        Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index']);
         Route::get('search', [PublicSiteController::class, 'search']);
         Route::get('specializations', [PublicSiteController::class, 'specializations']);
         Route::get('specializations/{slug}', [PublicSiteController::class, 'specialization']);
@@ -234,6 +235,8 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::get('index-pages', [AdminSiteIndexPageController::class, 'index'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::put('index-pages/{siteIndexPage}', [AdminSiteIndexPageController::class, 'update'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::post('index-pages/{siteIndexPage}/media/{slot}', [AdminSiteIndexPageMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::delete('index-pages/{siteIndexPage}/media/{slot}', [AdminSiteIndexPageMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
                 Route::apiResource('pages', AdminPageController::class)

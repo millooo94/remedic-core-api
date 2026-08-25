@@ -7,26 +7,40 @@ use App\Models\ProfessionalPublicProfile;
 use App\Models\SiteIndexPage;
 use App\Services\CheckupPublicContentService;
 use App\Services\MedicalAreaPublicService;
+use App\Services\SiteIndexProjectionService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\SiteIndexes\SiteIndexPageRegistry;
 use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups) {}
+    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections) {}
 
     public function show(Request $request, string $key)
     {
         abort_unless(SiteIndexPageRegistry::contains($key), 404);
 
         $page = SiteIndexPage::query()->where('internal_key', $key)->active()->published()->firstOrFail();
-        $items = match ($key) {
+        $projection = match ($key) {
             'medical_areas_index' => $this->areas->query()->when($request->filled('q'), fn ($q) => $q->whereHas('specialization', fn ($s) => $s->where('name', 'like', '%'.$request->q.'%')))->get()->map(fn ($area) => $this->areaItem($area, $request))->all(),
             'equipe_index' => $this->professionals($request),
             'checkups_index' => $this->checkups->query()->limit(6)->get()->map(fn ($checkup) => $this->checkups->indexItem($checkup, $request))->all(),
+            'diagnostics_index' => $this->projections->diagnostics($page, $request),
+            'aesthetic_medicine_index' => $this->projections->aesthetics($page, $request),
         };
+        $data = is_array($projection) && array_key_exists('items', $projection) ? $projection : ['items' => $projection, 'result_count' => count($projection)];
+        $data += ['available_areas' => $key === 'equipe_index' ? $this->availableAreas() : [], 'final_cta' => $key === 'checkups_index' ? ['action' => 'contact'] : null];
+        if ($key === 'diagnostics_index') {
+            $data['catalog_anchor'] = 'catalogo';
+            $data['hero_action'] = ['action' => 'anchor', 'target' => 'catalogo'];
+            $data['contact_cta'] = ['action' => 'contact'];
+        }
+        if ($key === 'aesthetic_medicine_index') {
+            $data['hero_actions'] = ['primary' => ['action' => 'anchor', 'target' => 'trattamenti'], 'secondary' => ['action' => 'booking']];
+            $data['final_cta'] = ['action' => 'booking'];
+        }
 
-        return response()->json(['data' => ['internal_key' => $key, 'canonical_url' => $page->canonical_url, 'content' => $this->content($page), 'seo' => ['title' => $page->seo_title, 'description' => $page->seo_description, 'h1' => $page->seo_h1, 'canonical_url' => $page->canonical_url, 'robots' => $page->robots], 'items' => $items, 'result_count' => count($items), 'available_areas' => $key === 'equipe_index' ? $this->availableAreas() : [], 'final_cta' => $key === 'checkups_index' ? ['action' => 'contact'] : null]]);
+        return response()->json(['data' => ['internal_key' => $key, 'canonical_url' => $page->canonical_url, 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => ['title' => $page->seo_title, 'description' => $page->seo_description, 'h1' => $page->seo_h1, 'canonical_url' => $page->canonical_url, 'robots' => $page->robots], ...$data]]);
     }
 
     private function content(SiteIndexPage $page): array
@@ -76,5 +90,10 @@ class SiteIndexPageController extends Controller
     private function availableAreas(): array
     {
         return ProfessionalPublicProfile::query()->effectivelyVisible()->with('professional.specializations.webProfile')->get()->flatMap(fn ($profile) => $profile->professional->specializations)->filter(fn ($area) => $area->is_active && $area->webProfile?->is_web_enabled)->unique('id')->sortBy('name')->map(fn ($area) => ['name' => $area->name, 'public_slug' => $area->webProfile->slug])->values()->all();
+    }
+
+    private function media(SiteIndexPage $page, Request $request): array
+    {
+        return ['hero_video_url' => PublicMediaUrl::fromPublicDisk($page->hero_video_path, $request), 'hero_poster_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path, $request), 'intro_split_image_url' => PublicMediaUrl::fromPublicDisk($page->intro_split_image_path, $request)];
     }
 }

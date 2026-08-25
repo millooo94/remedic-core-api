@@ -48,13 +48,15 @@ class SiteIndexPageApiTest extends TestCase
         $medical->update(['title' => 'Copy conservata']);
         $initializer->initialize();
 
-        $this->assertSame(3, SiteIndexPage::query()->count());
+        $this->assertSame(5, SiteIndexPage::query()->count());
         $this->assertSame('Copy conservata', $medical->fresh()->title);
         $this->assertSame(SiteIndexPageRegistry::KEYS, SiteIndexPage::query()->orderBy('id')->pluck('internal_key')->all());
         $this->assertFalse(SiteIndexPageRegistry::contains('arbitrary_index'));
         $this->assertSame('/aree-mediche', SiteIndexPage::query()->where('internal_key', 'medical_areas_index')->value('canonical_url'));
         $this->assertSame('/equipe', SiteIndexPage::query()->where('internal_key', 'equipe_index')->value('canonical_url'));
         $this->assertSame('/check-up', SiteIndexPage::query()->where('internal_key', 'checkups_index')->value('canonical_url'));
+        $this->assertSame('/diagnostica', SiteIndexPage::query()->where('internal_key', 'diagnostics_index')->value('canonical_url'));
+        $this->assertSame('/medicina-estetica', SiteIndexPage::query()->where('internal_key', 'aesthetic_medicine_index')->value('canonical_url'));
         $this->assertSame($legacyPageCount, Page::query()->whereIn('slug', ['aree-mediche', 'equipe', 'check-up'])->count());
         $this->assertSame(0, Section::query()->where('sectionable_type', SiteIndexPage::class)->count());
         $this->assertSame(0, FaqItem::query()->where('faqable_type', SiteIndexPage::class)->count());
@@ -134,11 +136,33 @@ class SiteIndexPageApiTest extends TestCase
     }
 
     #[Test]
+    public function diagnostic_and_aesthetic_indexes_are_effective_safe_projections(): void
+    {
+        $this->publishIndexes('diagnostics_index', 'aesthetic_medicine_index');
+        $area = Specialization::query()->create(['name' => 'Radiologia', 'slug' => 'radiologia-master', 'is_active' => true]);
+        SpecializationWebProfile::query()->create(['specialization_id' => $area->id, 'slug' => 'radiologia', 'is_web_enabled' => true]);
+        $diagnostic = Service::query()->create(['category_id' => null, 'display_name' => 'Risonanza magnetica', 'canonical_name' => 'Risonanza magnetica', 'slug' => 'risonanza-master', 'default_duration_minutes' => 30, 'is_active' => true]);
+        $diagnostic->specializations()->attach($area->id, ['is_primary' => true, 'sort_order' => 0]);
+        ServiceWebProfile::query()->create(['service_id' => $diagnostic->id, 'public_slug' => 'risonanza', 'short_description' => 'Esame', 'is_web_enabled' => true, 'is_diagnostic' => true]);
+        $aesthetic = Service::query()->create(['category_id' => null, 'display_name' => 'Biorivitalizzazione', 'canonical_name' => 'Biorivitalizzazione', 'slug' => 'biorivitalizzazione-master', 'default_duration_minutes' => 30, 'is_active' => true]);
+        ServiceWebProfile::query()->create(['service_id' => $aesthetic->id, 'public_slug' => 'biorivitalizzazione', 'is_web_enabled' => true, 'is_aesthetic_medicine' => true, 'aesthetic_category' => 'skin_quality']);
+        $hidden = Service::query()->create(['category_id' => null, 'display_name' => 'Nascosto', 'canonical_name' => 'Nascosto', 'slug' => 'nascosto-master', 'default_duration_minutes' => 30, 'is_active' => false]);
+        ServiceWebProfile::query()->create(['service_id' => $hidden->id, 'public_slug' => 'nascosto', 'is_web_enabled' => true, 'is_diagnostic' => true]);
+
+        $this->getJson('/api/v1/public/site-indexes/diagnostics_index?q=risonanza&filter=radiologia')->assertOk()
+            ->assertJsonPath('data.result_count', 1)->assertJsonPath('data.items.0.href', '/prestazioni/risonanza')
+            ->assertJsonPath('data.contact_cta.action', 'contact');
+        $this->getJson('/api/v1/public/site-indexes/aesthetic_medicine_index?filter=skin_quality')->assertOk()
+            ->assertJsonPath('data.result_count', 1)->assertJsonPath('data.items.0.aesthetic_category', 'skin_quality')
+            ->assertJsonPath('data.final_cta.action', 'booking')->assertJsonCount(4, 'data.available_filters');
+    }
+
+    #[Test]
     public function homepage_index_actions_gain_canonical_hrefs_only_for_published_indexes(): void
     {
-        $this->publishIndexes('medical_areas_index', 'equipe_index', 'checkups_index');
+        $this->publishIndexes('medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index');
         $home = Page::query()->create(['internal_key' => 'home-index-actions', 'slug' => 'home-index-actions', 'title' => 'Home test']);
-        foreach (['medical_areas', 'professionals', 'checkups'] as $order => $key) {
+        foreach (['medical_areas', 'professionals', 'checkups', 'diagnostics', 'aesthetic_medicine'] as $order => $key) {
             $home->sections()->create(['key' => $key, 'title' => $key, 'sort_order' => $order, 'is_active' => true, 'extra_json' => []]);
         }
 
@@ -146,6 +170,8 @@ class SiteIndexPageApiTest extends TestCase
         $this->assertSame('/aree-mediche', $sections['medical_areas']['data']['index_action']['href']);
         $this->assertSame('/equipe', $sections['professionals']['data']['index_action']['href']);
         $this->assertSame('/check-up', $sections['checkups']['data']['index_action']['href']);
+        $this->assertSame('/diagnostica', $sections['diagnostics']['data']['index_action']['href']);
+        $this->assertSame('/medicina-estetica', $sections['aesthetic_medicine']['data']['index_action']['href']);
 
         SiteIndexPage::query()->where('internal_key', 'checkups_index')->update(['published_at' => null]);
         $draftSections = collect(app(HomePagePublicProjection::class)->project($home->fresh(), Request::create('/'))['sections'])->keyBy('key');

@@ -28,6 +28,7 @@ class ServiceWebProfile extends Model
         'is_web_enabled',
         'is_diagnostic',
         'is_aesthetic_medicine',
+        'aesthetic_category',
         'list_sort_order',
         'seo_title',
         'local_seo_title',

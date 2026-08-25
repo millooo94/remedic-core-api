@@ -42,6 +42,7 @@ class UpsertServiceWebProfileRequest extends FormRequest
             'is_featured' => ['prohibited'],
             'is_diagnostic' => ['sometimes', 'boolean'],
             'is_aesthetic_medicine' => ['sometimes', 'boolean'],
+            'aesthetic_category' => ['nullable', Rule::in(['face_proportions', 'skin_quality', 'redness_dyschromia', 'body'])],
             'is_visit' => ['prohibited'],
             'is_bookable_online' => ['prohibited'],
             'booking' => ['prohibited'],
@@ -108,6 +109,12 @@ class UpsertServiceWebProfileRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator): void {
+            /** @var Service $service */
+            $service = $this->route('service');
+            $isAesthetic = $this->has('is_aesthetic_medicine') ? $this->boolean('is_aesthetic_medicine') : (bool) $service->webProfile?->is_aesthetic_medicine;
+            if ($this->filled('aesthetic_category') && ! $isAesthetic) {
+                $validator->errors()->add('aesthetic_category', 'La categoria Ã¨ disponibile solo per una Prestazione di medicina estetica.');
+            }
             $sections = collect($this->input('sections', []))
                 ->filter(fn (mixed $section): bool => is_array($section))
                 ->keyBy('key');
