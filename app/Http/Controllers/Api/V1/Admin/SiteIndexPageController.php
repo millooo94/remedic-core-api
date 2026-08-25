@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BlogPost;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\SiteIndexPage;
 use App\Services\CheckupPublicContentService;
+use App\Services\EditorialIndexProjectionService;
 use App\Services\MedicalAreaPublicService;
 use App\Services\SiteIndexPageInitializer;
 use App\Services\SiteIndexProjectionService;
@@ -15,7 +17,7 @@ use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private readonly MedicalAreaPublicService $areas, private readonly CheckupPublicContentService $checkups, private readonly SiteIndexProjectionService $projections) {}
+    public function __construct(private readonly MedicalAreaPublicService $areas, private readonly CheckupPublicContentService $checkups, private readonly SiteIndexProjectionService $projections, private readonly EditorialIndexProjectionService $editorial) {}
 
     public function index(SiteIndexPageInitializer $initializer)
     {
@@ -43,6 +45,16 @@ class SiteIndexPageController extends Controller
             abort_if(count($ids) !== count(array_unique($ids)), 422, 'Un professionista può essere selezionato una sola volta.');
             $eligible = ProfessionalPublicProfile::query()->effectivelyVisible()->whereIn('professional_id', $ids)->count();
             abort_unless($eligible === count($ids), 422, 'Sono selezionabili solo professionisti pubblicabili.');
+        }
+        if (in_array($siteIndexPage->internal_key, ['news_index', 'health_pills_index'], true)) {
+            $type = $siteIndexPage->internal_key === 'news_index' ? 'news' : 'health_pill';
+            $configuration = $data['configuration'] ?? $siteIndexPage->configuration ?? [];
+            foreach (['featured_post_id', 'secondary_post_id'] as $field) {
+                if (! empty($configuration[$field]) && ! BlogPost::query()->whereKey($configuration[$field])->where('content_type', $type)->exists()) {
+                    abort(422, 'Il contenuto selezionato non è compatibile con questa Index.');
+                }
+            }
+            abort_if($type === 'news' && ! empty($configuration['featured_post_id']) && $configuration['featured_post_id'] === $configuration['secondary_post_id'], 422, 'Featured e secondaria devono essere diverse.');
         }
         $siteIndexPage->fill(array_intersect_key($data, array_flip($allowed)))->save();
         if ($siteIndexPage->internal_key === 'aesthetic_medicine_index' && array_key_exists('faqs', $request->all())) {
@@ -84,6 +96,9 @@ class SiteIndexPageController extends Controller
         }
         if ($page->internal_key === 'aesthetic_medicine_index') {
             return $this->projections->adminAesthetics($page, request());
+        }
+        if (in_array($page->internal_key, ['news_index', 'health_pills_index'], true)) {
+            return $this->editorial->admin($page, request());
         }
         $profiles = ProfessionalPublicProfile::query()->effectivelyVisible()->with(['professional.specializations.webProfile'])->orderBy('sort_order')->orderBy('id')->get();
         $items = $profiles->map(function ($profile) use ($request) {

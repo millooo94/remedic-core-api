@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
+use App\Models\BlogPost;
 use App\Models\Checkup;
 use App\Models\CheckupWebProfile;
 use App\Models\FaqItem;
@@ -48,7 +49,7 @@ class SiteIndexPageApiTest extends TestCase
         $medical->update(['title' => 'Copy conservata']);
         $initializer->initialize();
 
-        $this->assertSame(5, SiteIndexPage::query()->count());
+        $this->assertSame(7, SiteIndexPage::query()->count());
         $this->assertSame('Copy conservata', $medical->fresh()->title);
         $this->assertSame(SiteIndexPageRegistry::KEYS, SiteIndexPage::query()->orderBy('id')->pluck('internal_key')->all());
         $this->assertFalse(SiteIndexPageRegistry::contains('arbitrary_index'));
@@ -57,6 +58,8 @@ class SiteIndexPageApiTest extends TestCase
         $this->assertSame('/check-up', SiteIndexPage::query()->where('internal_key', 'checkups_index')->value('canonical_url'));
         $this->assertSame('/diagnostica', SiteIndexPage::query()->where('internal_key', 'diagnostics_index')->value('canonical_url'));
         $this->assertSame('/medicina-estetica', SiteIndexPage::query()->where('internal_key', 'aesthetic_medicine_index')->value('canonical_url'));
+        $this->assertSame('/news', SiteIndexPage::query()->where('internal_key', 'news_index')->value('canonical_url'));
+        $this->assertSame('/pillole-di-salute', SiteIndexPage::query()->where('internal_key', 'health_pills_index')->value('canonical_url'));
         $this->assertSame($legacyPageCount, Page::query()->whereIn('slug', ['aree-mediche', 'equipe', 'check-up'])->count());
         $this->assertSame(0, Section::query()->where('sectionable_type', SiteIndexPage::class)->count());
         $this->assertSame(0, FaqItem::query()->where('faqable_type', SiteIndexPage::class)->count());
@@ -133,6 +136,23 @@ class SiteIndexPageApiTest extends TestCase
             ->assertJsonPath('data.items.0.duration_label', '30 min')
             ->assertJsonPath('data.items.0.included_services.0.href', '/prestazioni/ecg')
             ->assertJsonPath('data.final_cta.action', 'contact');
+    }
+
+    #[Test]
+    public function news_and_health_pill_indexes_project_published_blog_posts_with_canonical_hrefs(): void
+    {
+        $this->publishIndexes('news_index', 'health_pills_index');
+        $news = BlogPost::query()->create(['title' => 'Nuova tecnologia', 'slug' => 'nuova-tecnologia', 'content_type' => 'news', 'editorial_category' => 'technology', 'excerpt' => 'Aggiornamento', 'is_active' => true, 'published_at' => now()->subMinute()]);
+        BlogPost::query()->create(['title' => 'Pillola cuore', 'slug' => 'pillola-cuore', 'content_type' => 'health_pill', 'editorial_category' => 'cardiology', 'is_active' => true, 'published_at' => now()->subMinute()]);
+        BlogPost::query()->create(['title' => 'Bozza', 'slug' => 'bozza-news', 'content_type' => 'news', 'editorial_category' => 'technology', 'is_active' => true, 'published_at' => null]);
+
+        $this->getJson('/api/v1/public/site-indexes/news_index?q=tecnologia&category=technology')->assertOk()
+            ->assertJsonPath('data.result_count', 1)->assertJsonPath('data.featured.href', '/news/nuova-tecnologia');
+        $this->getJson('/api/v1/public/site-indexes/health_pills_index?category=cardiology')->assertOk()
+            ->assertJsonPath('data.items.0.href', '/pillole-di-salute/pillola-cuore');
+        $this->getJson('/api/v1/public/news/nuova-tecnologia')->assertOk()->assertJsonPath('data.href', '/news/nuova-tecnologia');
+        $this->getJson('/api/v1/public/pillole-di-salute/pillola-cuore')->assertOk()->assertJsonPath('data.href', '/pillole-di-salute/pillola-cuore');
+        $this->assertSame('Nuova tecnologia', $news->title);
     }
 
     #[Test]

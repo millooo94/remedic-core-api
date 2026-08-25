@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\SiteIndexPage;
 use App\Services\CheckupPublicContentService;
+use App\Services\EditorialIndexProjectionService;
 use App\Services\MedicalAreaPublicService;
 use App\Services\SiteIndexProjectionService;
 use App\Support\Media\PublicMediaUrl;
@@ -14,7 +15,7 @@ use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections) {}
+    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial) {}
 
     public function show(Request $request, string $key)
     {
@@ -27,6 +28,7 @@ class SiteIndexPageController extends Controller
             'checkups_index' => $this->checkups->query()->limit(6)->get()->map(fn ($checkup) => $this->checkups->indexItem($checkup, $request))->all(),
             'diagnostics_index' => $this->projections->diagnostics($page, $request),
             'aesthetic_medicine_index' => $this->projections->aesthetics($page, $request),
+            'news_index', 'health_pills_index' => $this->editorial->public($page, $request),
         };
         $data = is_array($projection) && array_key_exists('items', $projection) ? $projection : ['items' => $projection, 'result_count' => count($projection)];
         $data += ['available_areas' => $key === 'equipe_index' ? $this->availableAreas() : [], 'final_cta' => $key === 'checkups_index' ? ['action' => 'contact'] : null];

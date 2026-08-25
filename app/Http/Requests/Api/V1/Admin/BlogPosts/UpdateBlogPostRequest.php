@@ -3,8 +3,10 @@
 namespace App\Http\Requests\Api\V1\Admin\BlogPosts;
 
 use App\Enums\RobotsValue;
+use App\Models\BlogPost;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateBlogPostRequest extends FormRequest
 {
@@ -23,6 +25,7 @@ class UpdateBlogPostRequest extends FormRequest
             'subtitle' => ['nullable', 'string', 'max:255'],
             'category_label' => ['nullable', 'string', 'max:255'],
             'content_type' => ['nullable', Rule::in(['health_pill', 'news'])],
+            'editorial_category' => ['nullable', 'string', 'max:64'],
             'excerpt' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'cover_image' => ['nullable', 'string', 'max:255'],
@@ -56,5 +59,15 @@ class UpdateBlogPostRequest extends FormRequest
             'related_article_ids' => ['sometimes', 'array'],
             'related_article_ids.*' => ['required', 'integer', 'distinct', 'exists:blog_posts,id', Rule::notIn([$postId])],
         ];
+    }
+
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $category = $this->input('editorial_category');
+            if ($category !== null && ! array_key_exists($category, BlogPost::editorialCategories($this->input('content_type')))) {
+                $validator->errors()->add('editorial_category', 'La categoria editoriale non è valida per il tipo contenuto selezionato.');
+            }
+        }];
     }
 }

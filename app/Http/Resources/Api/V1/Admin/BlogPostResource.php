@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
+use App\Models\BlogPost;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,6 +17,8 @@ class BlogPostResource extends JsonResource
             'subtitle' => $this->subtitle,
             'category_label' => $this->category_label,
             'content_type' => $this->content_type,
+            'editorial_category' => $this->editorial_category,
+            'editorial_category_label' => BlogPost::editorialCategories($this->content_type)[$this->editorial_category] ?? null,
             'excerpt' => $this->excerpt,
             'intro_text' => $this->intro_text,
             'cover_image' => $this->cover_image,

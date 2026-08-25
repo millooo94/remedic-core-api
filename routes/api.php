@@ -56,7 +56,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
         Route::get('home', [PublicSiteController::class, 'home']);
         Route::get('site/home', [PublicSiteController::class, 'homePage']);
-        Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index']);
+        Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index', 'news_index', 'health_pills_index']);
+        Route::get('news/{slug}', [PublicSiteController::class, 'news']);
+        Route::get('pillole-di-salute/{slug}', [PublicSiteController::class, 'healthPill']);
         Route::get('search', [PublicSiteController::class, 'search']);
         Route::get('specializations', [PublicSiteController::class, 'specializations']);
         Route::get('specializations/{slug}', [PublicSiteController::class, 'specialization']);

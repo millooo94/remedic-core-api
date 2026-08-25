@@ -341,6 +341,23 @@ class SiteController extends Controller
         ]);
     }
 
+    public function news(Request $request, string $slug): JsonResponse
+    {
+        return $this->typedBlogPost($slug, 'news');
+    }
+
+    public function healthPill(Request $request, string $slug): JsonResponse
+    {
+        return $this->typedBlogPost($slug, 'health_pill');
+    }
+
+    private function typedBlogPost(string $slug, string $type): JsonResponse
+    {
+        $post = $this->blogPostsBaseQuery()->where('slug', $slug)->where('content_type', $type)->firstOrFail();
+
+        return response()->json(['data' => $this->mapBlogDetail($post)]);
+    }
+
     public function page(Request $request, string $slug): JsonResponse
     {
         $page = $this->pagesBaseQuery()
@@ -788,7 +805,7 @@ class SiteController extends Controller
     {
         return [
             'slug' => $post->slug,
-            'href' => '/blog/'.$post->slug,
+            'href' => $post->canonicalHref(),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label ?: 'Blog',
@@ -821,7 +838,7 @@ class SiteController extends Controller
 
         return [
             'slug' => $post->slug,
-            'href' => '/blog/'.$post->slug,
+            'href' => $post->canonicalHref(),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label ?: 'Blog',
@@ -849,6 +866,9 @@ class SiteController extends Controller
                 'answer' => $faq->answer,
             ])->values()->all(),
             'cover_image' => $post->cover_image,
+            'content_type' => $post->content_type,
+            'editorial_category' => $post->editorial_category,
+            'editorial_category_label' => BlogPost::editorialCategories($post->content_type)[$post->editorial_category] ?? null,
             'seo' => [
                 'title' => $post->seo_title,
                 'description' => $post->seo_description,

@@ -43,6 +43,8 @@ class HomePagePublicProjection
                 'checkups' => 'checkups_index',
                 'diagnostics' => 'diagnostics_index',
                 'aesthetic_medicine' => 'aesthetic_medicine_index',
+                'news' => 'news_index',
+                'health_pills' => 'health_pills_index',
                 default => null,
             }) {
                 $data['index_action'] = $this->indexAction($target);
@@ -94,7 +96,7 @@ class HomePagePublicProjection
         $ids = array_values(array_filter([(int) ($data['featured_blog_post_id'] ?? 0), ...array_map('intval', $data['secondary_blog_post_ids'] ?? [])]));
         $posts = ($data['selection_mode'] ?? 'automatic') === 'manual' ? $q->whereIn('id', $ids)->get()->sortBy(fn ($p) => array_search($p->id, $ids, true)) : $q->orderByDesc('published_at')->orderByDesc('id')->limit(3)->get();
 
-        return $posts->map(fn ($p) => ['id' => $p->id, 'title' => $p->title, 'slug' => $p->slug, 'href' => '/blog/'.$p->slug, 'subtitle' => $p->subtitle, 'category_label' => $p->category_label, 'excerpt' => $p->excerpt])->values()->all();
+        return $posts->map(fn ($p) => ['id' => $p->id, 'title' => $p->title, 'slug' => $p->slug, 'href' => $p->canonicalHref(), 'subtitle' => $p->subtitle, 'category_label' => $p->category_label, 'excerpt' => $p->excerpt])->values()->all();
     }
 
     private function partners(array $data, Request $request): array

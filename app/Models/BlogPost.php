@@ -22,6 +22,7 @@ class BlogPost extends Model
         'subtitle',
         'category_label',
         'content_type',
+        'editorial_category',
         'excerpt',
         'intro_text',
         'cover_image',
@@ -85,6 +86,28 @@ class BlogPost extends Model
     public function scopeHealthPills(Builder $query): Builder
     {
         return $query->where('content_type', 'health_pill');
+    }
+
+    public const NEWS_CATEGORIES = ['services' => 'Servizi', 'professionals' => 'Professionisti', 'initiatives' => 'Iniziative', 'technology' => 'Tecnologia', 'network' => 'Network', 'center' => 'Centro'];
+
+    public const HEALTH_PILL_CATEGORIES = ['nutrition' => 'Nutrizione', 'cardiology' => 'Cardiologia', 'wellness' => 'Benessere', 'prevention' => 'Prevenzione', 'respiration' => 'Respirazione'];
+
+    public static function editorialCategories(?string $contentType): array
+    {
+        return match ($contentType) {
+            'news' => self::NEWS_CATEGORIES,
+            'health_pill' => self::HEALTH_PILL_CATEGORIES,
+            default => [],
+        };
+    }
+
+    public function canonicalHref(): string
+    {
+        return match ($this->content_type) {
+            'news' => '/news/'.$this->slug,
+            'health_pill' => '/pillole-di-salute/'.$this->slug,
+            default => '/blog/'.$this->slug,
+        };
     }
 
     public function relatedServices(): BelongsToMany
