@@ -25,6 +25,10 @@ class Page extends Model
 
     public const WHY_CHOOSE_US_SLUG = 'perche-sceglierci';
 
+    public const PLUS_HEALTH_PROTOCOL_INTERNAL_KEY = 'plus_health_protocol';
+
+    public const PLUS_HEALTH_PROTOCOL_SLUG = 'protocollo-piu-salute';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

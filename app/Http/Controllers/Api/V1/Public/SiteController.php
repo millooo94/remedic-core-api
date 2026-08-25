@@ -908,7 +908,7 @@ class SiteController extends Controller
                     'body' => $section->content,
                 ];
 
-                foreach (['eyebrow', 'link_label', 'disclaimer'] as $key) {
+                foreach (['eyebrow', 'link_label', 'disclaimer', 'callout_eyebrow', 'callout_body'] as $key) {
                     if (array_key_exists($key, $extra)) {
                         $mapped[$key] = $extra[$key];
                     }
@@ -931,8 +931,14 @@ class SiteController extends Controller
                 if (isset($definition['actions'])) {
                     $mapped['actions'] = $definition['actions'];
                 }
-                if ($section->key === 'model_overview' || $section->key === 'three_reasons') {
+                if (in_array($section->key, ['model_overview', 'three_reasons', 'care_path_overview', 'person_first'], true)) {
                     $mapped['items'] = $extra['items'] ?? [];
+                }
+                if ($section->key === 'promise') {
+                    $mapped['values'] = $extra['values'] ?? [];
+                }
+                if ($section->key === 'four_pillars') {
+                    $mapped['pillars'] = $extra['pillars'] ?? [];
                 }
                 if ($section->key === 'patient_experiences') {
                     $mapped['testimonials'] = collect($extra['testimonials'] ?? [])

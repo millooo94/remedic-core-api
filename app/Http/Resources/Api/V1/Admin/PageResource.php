@@ -81,7 +81,7 @@ class PageResource extends JsonResource
 
         $extra = $section->extra_json ?? [];
         $data = ['body' => $section->content];
-        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer'] as $key) {
+        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body'] as $key) {
             if (array_key_exists($key, $extra)) {
                 $data[$key] = $extra[$key];
             }

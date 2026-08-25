@@ -116,7 +116,7 @@ class PageContentService
         }
 
         $extra = $section->extra_json ?? [];
-        foreach (['eyebrow', 'link_label', 'image_alt', 'disclaimer'] as $key) {
+        foreach (['eyebrow', 'link_label', 'image_alt', 'disclaimer', 'callout_eyebrow', 'callout_body'] as $key) {
             if (array_key_exists($key, $data)) {
                 $extra[$key] = $data[$key] === null ? null : trim((string) $data[$key]);
             }
@@ -134,6 +134,12 @@ class PageContentService
         }
         if (array_key_exists('testimonials', $data)) {
             $extra['testimonials'] = $this->normalizeTestimonials($data['testimonials'], $index);
+        }
+        if (array_key_exists('values', $data)) {
+            $extra['values'] = $this->normalizeProtocolValues($data['values'], $index);
+        }
+        if (array_key_exists('pillars', $data)) {
+            $extra['pillars'] = $this->normalizeProtocolPillars($data['pillars'], $index);
         }
 
         return [
@@ -161,6 +167,21 @@ class PageContentService
             };
         }
 
+        if ($internalKey === PageSectionRegistry::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY) {
+            return match ($sectionKey) {
+                'hero' => ['eyebrow', 'body', 'image_alt'],
+                'promise' => ['eyebrow', 'body', 'values'],
+                'four_pillars' => ['eyebrow', 'body', 'pillars'],
+                'care_path_overview' => ['body', 'items'],
+                'active_listening', 'personalized_care_plan', 'clinical_technology' => ['body', 'image_alt'],
+                'patient_education' => ['body', 'callout_eyebrow', 'callout_body'],
+                'person_first' => ['eyebrow', 'body', 'image_alt', 'items'],
+                'method_statement' => ['eyebrow', 'body'],
+                'orientation_cta' => ['body'],
+                default => [],
+            };
+        }
+
         return match ($sectionKey) {
             'hero' => ['eyebrow', 'body', 'image_alt'],
             'intro' => ['body'],
@@ -176,6 +197,16 @@ class PageContentService
     {
         if (! is_array($items)) {
             throw ValidationException::withMessages(["sections.{$index}.data.items" => 'Gli elementi non sono validi.']);
+        }
+
+        if ($sectionKey === 'care_path_overview') {
+            return $this->normalizeFixedCarePathItems($items, $index);
+        }
+
+        if ($sectionKey === 'person_first') {
+            if (count($items) !== 3) {
+                throw ValidationException::withMessages(["sections.{$index}.data.items" => 'La sezione prevede esattamente tre punti ordinabili.']);
+            }
         }
 
         $hasIcon = $sectionKey === 'three_reasons';
@@ -196,6 +227,83 @@ class PageContentService
         }
 
         return $normalized;
+    }
+
+    /** @return list<array{semantic_key: string, label: string, description: string}> */
+    private function normalizeProtocolValues(mixed $values, int $index): array
+    {
+        return $this->normalizeFixedSemanticRows($values, $index, 'values', ['rapidity', 'professionalism', 'accessibility', 'humanity'], ['label', 'description']);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function normalizeProtocolPillars(mixed $pillars, int $index): array
+    {
+        $expected = ['rapidity', 'professionalism', 'accessibility', 'humanity'];
+        $labels = ['Rapidità', 'Professionalità', 'Accessibilità', 'Umanità'];
+        if (! is_array($pillars) || array_values(array_map(fn ($pillar) => is_array($pillar) ? $pillar['semantic_key'] ?? null : null, $pillars)) !== $expected) {
+            throw ValidationException::withMessages(["sections.{$index}.data.pillars" => 'I quattro pannelli hanno chiavi e ordine fissi.']);
+        }
+
+        $normalized = [];
+        foreach (array_values($pillars) as $pillarIndex => $pillar) {
+            $unknown = array_diff(array_keys($pillar), ['semantic_key', 'label', 'detail_eyebrow', 'detail_title', 'detail_description', 'bullets']);
+            if ($unknown !== []) {
+                throw ValidationException::withMessages(["sections.{$index}.data.pillars.{$pillarIndex}" => 'Il pannello contiene campi non consentiti.']);
+            }
+            if (! isset($pillar['label'], $pillar['detail_description']) || $pillar['label'] !== $labels[$pillarIndex] || ! is_array($pillar['bullets'] ?? null)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.pillars.{$pillarIndex}" => 'Label, descrizione e bullet list sono obbligatorie.']);
+            }
+            $normalized[] = [
+                'semantic_key' => $expected[$pillarIndex],
+                'label' => $labels[$pillarIndex],
+                'detail_eyebrow' => isset($pillar['detail_eyebrow']) ? trim((string) $pillar['detail_eyebrow']) : null,
+                'detail_title' => isset($pillar['detail_title']) ? trim((string) $pillar['detail_title']) : null,
+                'detail_description' => trim((string) $pillar['detail_description']),
+                'bullets' => array_values(array_map(fn ($bullet) => trim((string) $bullet), $pillar['bullets'])),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /** @return list<array<string, string>> */
+    private function normalizeFixedCarePathItems(mixed $items, int $index): array
+    {
+        $expected = ['active_listening', 'personalized_care_plan', 'clinical_technology', 'patient_education'];
+        $allowedIcons = ['message', 'clipboard', 'microscope', 'info'];
+        if (! is_array($items) || array_values(array_map(fn ($item) => is_array($item) ? $item['semantic_key'] ?? null : null, $items)) !== $expected) {
+            throw ValidationException::withMessages(["sections.{$index}.data.items" => 'I quattro passaggi hanno chiavi e ordine fissi.']);
+        }
+
+        return array_map(function (array $item, int $itemIndex) use ($expected, $allowedIcons, $index): array {
+            $unknown = array_diff(array_keys($item), ['semantic_key', 'title', 'description', 'icon_key']);
+            if ($unknown !== [] || ! isset($item['title'], $item['description'], $item['icon_key']) || ! in_array($item['icon_key'], $allowedIcons, true)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.items.{$itemIndex}" => 'Il passaggio contiene dati non consentiti.']);
+            }
+
+            return [
+                'semantic_key' => $expected[$itemIndex],
+                'title' => trim((string) $item['title']),
+                'description' => trim((string) $item['description']),
+                'icon_key' => (string) $item['icon_key'],
+            ];
+        }, array_values($items), array_keys(array_values($items)));
+    }
+
+    /** @return list<array{semantic_key: string, label: string, description: string}> */
+    private function normalizeFixedSemanticRows(mixed $rows, int $index, string $field, array $expected, array $editable): array
+    {
+        if (! is_array($rows) || array_values(array_map(fn ($row) => is_array($row) ? $row['semantic_key'] ?? null : null, $rows)) !== $expected) {
+            throw ValidationException::withMessages(["sections.{$index}.data.{$field}" => 'Le chiavi e l’ordine dei valori sono fissi.']);
+        }
+
+        return array_map(function (array $row, int $rowIndex) use ($expected, $editable, $field, $index): array {
+            if (array_diff(array_keys($row), array_merge(['semantic_key'], $editable)) !== [] || ! isset($row['label'], $row['description'])) {
+                throw ValidationException::withMessages(["sections.{$index}.data.{$field}.{$rowIndex}" => 'Il valore contiene dati non consentiti.']);
+            }
+
+            return ['semantic_key' => $expected[$rowIndex], 'label' => trim((string) $row['label']), 'description' => trim((string) $row['description'])];
+        }, array_values($rows), array_keys(array_values($rows)));
     }
 
     /** @return list<array<string, mixed>> */

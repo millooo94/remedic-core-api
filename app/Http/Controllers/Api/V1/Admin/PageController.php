@@ -158,6 +158,7 @@ class PageController extends Controller
             $payload['internal_key'] = match ($payload['slug'] ?? null) {
                 Page::CENTER_SLUG => Page::CENTER_INTERNAL_KEY,
                 Page::WHY_CHOOSE_US_SLUG => Page::WHY_CHOOSE_US_INTERNAL_KEY,
+                Page::PLUS_HEALTH_PROTOCOL_SLUG => Page::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY,
                 default => (string) ($payload['slug'] ?? ''),
             };
         }
