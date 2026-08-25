@@ -14,6 +14,7 @@ use App\Models\Service;
 use App\Models\SiteSetting;
 use App\Models\SpecializationWebProfile;
 use App\Services\CheckupPublicContentService;
+use App\Services\ContactCenterDataResolver;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
@@ -29,6 +30,7 @@ class SiteController extends Controller
         private readonly MedicalAreaPublicService $medicalAreaContent,
         private readonly ServicePublicContentService $serviceContent,
         private readonly CheckupPublicContentService $checkupContent,
+        private readonly ContactCenterDataResolver $contactCenterData,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -481,6 +483,11 @@ class SiteController extends Controller
                 'google_maps_url' => $mapsUrl,
             ],
             'opening_hours' => $openingHours,
+            'parking' => filled($settings->parking_address) ? [
+                'label' => $settings->parking_label,
+                'address' => $settings->parking_address,
+                'description' => $settings->parking_description,
+            ] : null,
             'social' => [
                 'facebook_url' => $settings->facebook_url,
                 'instagram_url' => $settings->instagram_url,
@@ -534,6 +541,11 @@ class SiteController extends Controller
             'linkedin_url' => $settings->linkedin_url,
             'whatsapp_number' => $settings->whatsapp_number,
             'opening_hours_flat' => $openingHours,
+            'parking' => filled($settings->parking_address) ? [
+                'label' => $settings->parking_label,
+                'address' => $settings->parking_address,
+                'description' => $settings->parking_description,
+            ] : null,
             'logo_url' => $logoUrl,
             'vat_number' => $settings->vat_number,
             'legal_company_name' => $settings->legal_company_name,
@@ -939,6 +951,17 @@ class SiteController extends Controller
                 }
                 if ($section->key === 'four_pillars') {
                     $mapped['pillars'] = $extra['pillars'] ?? [];
+                }
+                if ((string) $page->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts') {
+                    $mapped = [
+                        'key' => $section->key,
+                        'title' => $section->title,
+                        'data' => [
+                            'intro' => $section->content,
+                            'action' => ['type' => 'contact'],
+                            'center' => $this->contactCenterData->resolve(SiteSetting::current()),
+                        ],
+                    ];
                 }
                 if ($section->key === 'patient_experiences') {
                     $mapped['testimonials'] = collect($extra['testimonials'] ?? [])

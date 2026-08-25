@@ -19,6 +19,7 @@ class CenterProfileService
         'google_place_id', 'latitude', 'longitude', 'google_maps_url', 'opening_hours', 'timezone',
         'facebook_url', 'instagram_url', 'linkedin_url', 'primary_city', 'primary_area',
         'served_areas', 'served_territory', 'area_served_text', 'google_review_url',
+        'parking_label', 'parking_address', 'parking_description',
     ];
 
     public function current(): SiteSetting
@@ -53,6 +54,9 @@ class CenterProfileService
             ...Arr::only($payload['social'] ?? [], ['facebook_url', 'instagram_url', 'linkedin_url']),
             ...Arr::only($payload['territory'] ?? [], ['primary_city', 'primary_area', 'served_areas', 'served_territory', 'area_served_text']),
             'google_review_url' => data_get($payload, 'links.google_review_url'),
+            'parking_label' => data_get($payload, 'parking.label'),
+            'parking_address' => data_get($payload, 'parking.address'),
+            'parking_description' => data_get($payload, 'parking.description'),
         ];
 
         $flat = Arr::only($flat, self::CENTER_FIELDS);

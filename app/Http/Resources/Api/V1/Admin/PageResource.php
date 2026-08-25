@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
+use App\Models\SiteSetting;
+use App\Services\ContactCenterDataResolver;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\Request;
@@ -80,7 +82,9 @@ class PageResource extends JsonResource
         }
 
         $extra = $section->extra_json ?? [];
-        $data = ['body' => $section->content];
+        $data = (string) $this->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts'
+            ? ['intro' => $section->content, 'action' => ['type' => 'contact'], 'center' => app(ContactCenterDataResolver::class)->resolve(SiteSetting::current())]
+            : ['body' => $section->content];
         foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body'] as $key) {
             if (array_key_exists($key, $extra)) {
                 $data[$key] = $extra[$key];

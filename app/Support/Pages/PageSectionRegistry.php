@@ -13,6 +13,8 @@ final class PageSectionRegistry
 
     public const PLUS_HEALTH_PROTOCOL_INTERNAL_KEY = 'plus_health_protocol';
 
+    public const CONTACT_INTERNAL_KEY = 'contact';
+
     public const CENTER_SECTION_KEYS = [
         'hero', 'intro', 'coordinated_care', 'continuity', 'why_remedic', 'plus_health_protocol', 'orientation_cta',
     ];
@@ -24,6 +26,8 @@ final class PageSectionRegistry
     public const PLUS_HEALTH_PROTOCOL_SECTION_KEYS = [
         'hero', 'promise', 'four_pillars', 'care_path_overview', 'active_listening', 'personalized_care_plan', 'clinical_technology', 'patient_education', 'person_first', 'method_statement', 'orientation_cta',
     ];
+
+    public const CONTACT_SECTION_KEYS = ['hero', 'location_and_contacts', 'orientation_cta'];
 
     /**
      * @var array<string, array<string, array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}>>
@@ -61,6 +65,11 @@ final class PageSectionRegistry
             'method_statement' => ['label' => 'Più Salute', 'summary' => 'Dichiarazione del metodo.', 'editor' => 'protocol-method-statement', 'default_sort_order' => 9, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'protocol-orientation-cta', 'default_sort_order' => 10, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
         ],
+        self::CONTACT_INTERNAL_KEY => [
+            'hero' => ['label' => 'Hero', 'summary' => 'Introduzione e immagine editoriale della pagina.', 'editor' => 'contact-hero', 'default_sort_order' => 0, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
+            'location_and_contacts' => ['label' => 'Informazioni e sede', 'summary' => 'Copy editoriale e dati derivati dal Centro.', 'editor' => 'contact-location-and-contacts', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'contact-orientation-cta', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
+        ],
     ];
 
     /** @return array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}|null */
@@ -94,7 +103,7 @@ final class PageSectionRegistry
     public static function missingDefaults(Page $page): array
     {
         $internalKey = (string) $page->internal_key;
-        if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY], true)) {
+        if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY, self::CONTACT_INTERNAL_KEY], true)) {
             return [];
         }
 
@@ -103,6 +112,7 @@ final class PageSectionRegistry
         $defaults = match ($internalKey) {
             self::CENTER_INTERNAL_KEY => self::centerDefaults(),
             self::WHY_CHOOSE_US_INTERNAL_KEY => self::whyChooseUsDefaults(),
+            self::CONTACT_INTERNAL_KEY => self::contactDefaults(),
             default => self::plusHealthProtocolDefaults(),
         };
 
@@ -166,6 +176,16 @@ final class PageSectionRegistry
             ['key' => 'person_first', 'title' => 'La persona al centro, non la singola prestazione', 'content' => 'Ogni percorso parte da una persona con esigenze, domande e tempi diversi. Per questo il Protocollo Più Salute mette in relazione competenza, ascolto, strumenti e continuità.', 'extra_json' => ['eyebrow' => 'IL PUNTO DI PARTENZA', 'image_path' => null, 'image_alt' => null, 'items' => [['title' => 'Ascoltare', 'description' => 'Comprendere prima di orientare.'], ['title' => 'Coordinare', 'description' => 'Mettere in relazione competenze e informazioni quando serve.'], ['title' => 'Accompagnare', 'description' => 'Dare chiarezza ai passaggi successivi.']]], 'sort_order' => 8, 'is_active' => true],
             ['key' => 'method_statement', 'title' => 'Quattro valori. Un metodo. Una persona al centro.', 'content' => 'Professionalità, rapidità, accessibilità e umanità guidano il modo in cui Remedic costruisce il percorso. Il Protocollo Più Salute dà a questi valori una struttura concreta.', 'extra_json' => ['eyebrow' => 'PIÙ SALUTE'], 'sort_order' => 9, 'is_active' => true],
             ['key' => 'orientation_cta', 'title' => 'Parliamo del tuo percorso', 'content' => 'Contattaci se hai bisogno di capire quale visita, esame o percorso può essere più adatto alla tua esigenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 10, 'is_active' => true],
+        ];
+    }
+
+    /** @return list<array{key: string, title: string, content: string, extra_json: array<string, mixed>, sort_order: int, is_active: bool}> */
+    private static function contactDefaults(): array
+    {
+        return [
+            ['key' => 'hero', 'title' => 'Contatti', 'content' => 'Tutte le informazioni per contattare Remedic e raggiungere il centro.', 'extra_json' => ['eyebrow' => 'CONTATTI', 'image_path' => null, 'image_alt' => null], 'sort_order' => 0, 'is_active' => true],
+            ['key' => 'location_and_contacts', 'title' => 'Informazioni e sede', 'content' => 'Consulta i recapiti e gli orari del centro, oppure scegli l’azione più utile per te.', 'extra_json' => [], 'sort_order' => 1, 'is_active' => true],
+            ['key' => 'orientation_cta', 'title' => 'Cerchi una visita o un esame?', 'content' => 'Prenota online oppure contattaci per ricevere assistenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 2, 'is_active' => true],
         ];
     }
 

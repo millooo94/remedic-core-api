@@ -59,6 +59,10 @@ class UpdateCenterSettingRequest extends FormRequest
             'territory.area_served_text' => ['nullable', 'string', 'max:5000'],
             'links' => ['required', 'array'],
             'links.google_review_url' => $url,
+            'parking' => ['nullable', 'array'],
+            'parking.label' => $nullableString,
+            'parking.address' => $nullableString,
+            'parking.description' => ['nullable', 'string', 'max:5000'],
         ];
     }
 }

@@ -29,6 +29,10 @@ class Page extends Model
 
     public const PLUS_HEALTH_PROTOCOL_SLUG = 'protocollo-piu-salute';
 
+    public const CONTACT_INTERNAL_KEY = 'contact';
+
+    public const CONTACT_SLUG = 'contatti';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

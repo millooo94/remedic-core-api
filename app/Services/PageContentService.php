@@ -144,7 +144,7 @@ class PageContentService
 
         return [
             'title' => array_key_exists('title', $payload) ? $payload['title'] : $section->title,
-            'content' => array_key_exists('body', $data) ? $data['body'] : $section->content,
+            'content' => array_key_exists('intro', $data) ? $data['intro'] : (array_key_exists('body', $data) ? $data['body'] : $section->content),
             'extra_json' => $extra,
             'sort_order' => $payload['sort_order'] ?? $section->sort_order,
             'is_active' => $payload['is_active'] ?? $section->is_active,
@@ -177,6 +177,15 @@ class PageContentService
                 'patient_education' => ['body', 'callout_eyebrow', 'callout_body'],
                 'person_first' => ['eyebrow', 'body', 'image_alt', 'items'],
                 'method_statement' => ['eyebrow', 'body'],
+                'orientation_cta' => ['body'],
+                default => [],
+            };
+        }
+
+        if ($internalKey === PageSectionRegistry::CONTACT_INTERNAL_KEY) {
+            return match ($sectionKey) {
+                'hero' => ['eyebrow', 'body', 'image_alt'],
+                'location_and_contacts' => ['intro'],
                 'orientation_cta' => ['body'],
                 default => [],
             };

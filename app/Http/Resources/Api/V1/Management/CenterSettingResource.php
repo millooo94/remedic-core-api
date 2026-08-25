@@ -59,6 +59,11 @@ class CenterSettingResource extends JsonResource
                 'area_served_text' => $this->area_served_text,
             ],
             'links' => ['google_review_url' => $this->google_review_url],
+            'parking' => [
+                'label' => $this->parking_label,
+                'address' => $this->parking_address,
+                'description' => $this->parking_description,
+            ],
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
         ];
     }

@@ -67,6 +67,9 @@ class SiteSetting extends Model
         'google_place_id',
         'timezone',
         'served_territory',
+        'parking_label',
+        'parking_address',
+        'parking_description',
     ];
 
     protected function casts(): array
