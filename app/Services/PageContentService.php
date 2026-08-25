@@ -194,10 +194,10 @@ class PageContentService
     private function homeSectionAttributes(Section $section, array $payload, array $data, int $index): array
     {
         $defaults = HomePageRegistry::defaults($section->key);
-        $unknown = array_diff(array_keys($data), array_keys($defaults));
-        if ($unknown !== []) {
-            throw ValidationException::withMessages(["sections.{$index}.data" => 'Il payload Homepage contiene campi non consentiti.']);
-        }
+        // The typed Angular editor shares a strongly typed form shell with the
+        // other closed pages. Ignore fields belonging to another editor family;
+        // only registered fields for this specific Homepage section persist.
+        $data = array_intersect_key($data, $defaults);
         $extra = $section->extra_json ?? [];
         foreach ($data as $key => $value) {
             $extra[$key] = $value;
