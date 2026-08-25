@@ -95,18 +95,26 @@ final class PageSectionRegistry
     /** @return array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}|null */
     public static function definition(string $internalKey, string $sectionKey): ?array
     {
+        if (LegalDocumentRegistry::isLegal($internalKey)) {
+            return LegalDocumentRegistry::definitions($internalKey)[$sectionKey] ?? null;
+        }
+
         return self::DEFINITIONS[$internalKey][$sectionKey] ?? null;
     }
 
     /** @return array<string, array{label: string, summary: string, editor: string, default_sort_order: int, capabilities: list<string>, media_slot?: string, target_internal_key?: string, actions?: list<string>}> */
     public static function definitions(string $internalKey): array
     {
+        if (LegalDocumentRegistry::isLegal($internalKey)) {
+            return LegalDocumentRegistry::definitions($internalKey);
+        }
+
         return self::DEFINITIONS[$internalKey] ?? [];
     }
 
     public static function hasDefinitionsFor(string $internalKey): bool
     {
-        return array_key_exists($internalKey, self::DEFINITIONS);
+        return LegalDocumentRegistry::isLegal($internalKey) || array_key_exists($internalKey, self::DEFINITIONS);
     }
 
     public static function canCreate(string $internalKey, string $sectionKey): bool
@@ -123,6 +131,9 @@ final class PageSectionRegistry
     public static function missingDefaults(Page $page): array
     {
         $internalKey = (string) $page->internal_key;
+        if (LegalDocumentRegistry::isLegal($internalKey)) {
+            return LegalDocumentRegistry::missingDefaults($page);
+        }
         if (! in_array($internalKey, [self::CENTER_INTERNAL_KEY, self::WHY_CHOOSE_US_INTERNAL_KEY, self::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY, self::CONTACT_INTERNAL_KEY, self::CONVENTIONS_NETWORK_INTERNAL_KEY, self::CAREERS_INTERNAL_KEY], true)) {
             return [];
         }

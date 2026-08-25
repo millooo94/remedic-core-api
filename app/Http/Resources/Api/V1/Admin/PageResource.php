@@ -7,6 +7,7 @@ use App\Models\SiteSetting;
 use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -84,6 +85,13 @@ class PageResource extends JsonResource
         }
 
         $extra = $section->extra_json ?? [];
+        if (LegalDocumentRegistry::isLegal((string) $this->internal_key)) {
+            $data = $section->key === LegalDocumentRegistry::HERO_KEY
+                ? ['eyebrow' => $extra['eyebrow'] ?? null, 'body' => $section->content, 'last_updated_on' => $extra['last_updated_on'] ?? null]
+                : ['blocks' => $extra['blocks'] ?? []];
+
+            return [...$base, 'data' => $data];
+        }
         $data = (string) $this->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts'
             ? ['intro' => $section->content, 'action' => ['type' => 'contact'], 'center' => app(ContactCenterDataResolver::class)->resolve(SiteSetting::current())]
             : ['body' => $section->content];

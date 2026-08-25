@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FaqItem;
 use App\Models\Page;
 use App\Models\Section;
+use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
@@ -106,6 +107,10 @@ class PageContentService
             ]);
         }
 
+        if (LegalDocumentRegistry::isLegal((string) $page->internal_key)) {
+            return $this->legalSectionAttributes($section, $payload, $data, $index);
+        }
+
         $allowedData = $this->allowedData((string) $page->internal_key, $section->key);
 
         $unknownData = array_diff(array_keys($data), $allowedData);
@@ -155,6 +160,87 @@ class PageContentService
             'sort_order' => $payload['sort_order'] ?? $section->sort_order,
             'is_active' => $payload['is_active'] ?? $section->is_active,
         ];
+    }
+
+    /** @param array<string,mixed> $payload @param array<string,mixed> $data @return array<string,mixed> */
+    private function legalSectionAttributes(Section $section, array $payload, array $data, int $index): array
+    {
+        $hero = $section->key === LegalDocumentRegistry::HERO_KEY;
+        $allowed = $hero ? ['eyebrow', 'body', 'last_updated_on'] : ['blocks'];
+        if (array_diff(array_keys($data), $allowed) !== []) {
+            throw ValidationException::withMessages(["sections.{$index}.data" => 'Il payload legale contiene campi non consentiti.']);
+        }
+        $extra = $section->extra_json ?? [];
+        if ($hero) {
+            $extra['eyebrow'] = trim((string) ($data['eyebrow'] ?? $extra['eyebrow'] ?? ''));
+            $extra['last_updated_on'] = $data['last_updated_on'] ?? $extra['last_updated_on'] ?? null;
+
+            return ['title' => $payload['title'] ?? $section->title, 'content' => $data['body'] ?? $section->content, 'extra_json' => $extra, 'sort_order' => 0, 'is_active' => true];
+        }
+        if (array_key_exists('blocks', $data)) {
+            $extra['blocks'] = $this->normalizeLegalBlocks($data['blocks'], $index);
+        }
+
+        return ['title' => $payload['title'] ?? $section->title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $payload['sort_order'] ?? $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function normalizeLegalBlocks(mixed $blocks, int $index): array
+    {
+        if (! is_array($blocks)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.blocks" => 'I blocchi legali non sono validi.']);
+        }
+
+        return array_map(function ($block, $blockIndex) use ($index): array {
+            if (! is_array($block) || ! in_array($block['type'] ?? null, ['paragraph', 'subheading', 'bullet_list'], true)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Tipo di blocco legale non consentito.']);
+            }
+            if (($block['type'] ?? null) === 'bullet_list') {
+                return ['type' => 'bullet_list', 'items' => array_values(array_map(fn ($item) => trim((string) $item), $block['items'] ?? []))];
+            }
+
+            return ['type' => (string) $block['type'], 'parts' => $this->normalizeLegalParts($block['parts'] ?? [], $index, $blockIndex)];
+        }, array_values($blocks), array_keys(array_values($blocks)));
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function normalizeLegalParts(mixed $parts, int $index, int $blockIndex): array
+    {
+        if (! is_array($parts)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}.parts" => 'Le parti del blocco non sono valide.']);
+        }
+
+        return array_map(function ($part) use ($index, $blockIndex): array {
+            if (! is_array($part) || ! in_array($part['type'] ?? null, ['text', 'internal_reference', 'center_reference', 'external_reference'], true)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Riferimento legale non consentito.']);
+            }
+            if ($part['type'] === 'text') {
+                return ['type' => 'text', 'text' => trim((string) ($part['text'] ?? ''))];
+            }
+            if ($part['type'] === 'internal_reference') {
+                $target = (string) ($part['target'] ?? '');
+                if (! in_array($target, ['privacy', 'cookie', 'terms', 'contact'], true)) {
+                    throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Riferimento interno legale non consentito.']);
+                }
+
+                return ['type' => 'internal_reference', 'target' => $target];
+            }
+            if ($part['type'] === 'center_reference') {
+                $field = (string) ($part['field'] ?? '');
+                if (! in_array($field, ['email', 'phone', 'full_address'], true)) {
+                    throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Riferimento del centro non consentito.']);
+                }
+
+                return ['type' => 'center_reference', 'field' => $field];
+            }
+
+            $href = $part['href'] ?? null;
+            if (filled($href) && (! is_string($href) || ! filter_var($href, FILTER_VALIDATE_URL) || ! in_array(parse_url($href, PHP_URL_SCHEME), ['http', 'https'], true))) {
+                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'URL esterno legale non valido.']);
+            }
+
+            return ['type' => 'external_reference', 'label' => trim((string) ($part['label'] ?? '')), 'href' => $href ?: null];
+        }, array_values($parts));
     }
 
     /** @return list<string> */

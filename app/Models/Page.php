@@ -41,6 +41,10 @@ class Page extends Model
 
     public const CAREERS_SLUG = 'lavora-con-noi';
 
+    public const TERMS_OF_SERVICE_INTERNAL_KEY = 'terms_of_service';
+
+    public const TERMS_OF_SERVICE_SLUG = 'termini-di-servizio';
+
     public const LEGACY_CHECKUP_SLUGS = [
         'check-up',
         'check-up-donna',

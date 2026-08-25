@@ -17,9 +17,11 @@ use App\Models\SpecializationWebProfile;
 use App\Services\CheckupPublicContentService;
 use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
+use App\Services\LegalDocumentPublicProjection;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +36,7 @@ class SiteController extends Controller
         private readonly CheckupPublicContentService $checkupContent,
         private readonly ContactCenterDataResolver $contactCenterData,
         private readonly ConventionPartnerPublicProjection $conventionPartners,
+        private readonly LegalDocumentPublicProjection $legalDocuments,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -852,6 +855,16 @@ class SiteController extends Controller
     private function mapPageDetail(Page $page): array
     {
         $defaultOgImagePath = SiteSetting::current()->default_og_image_path;
+        $isLegal = LegalDocumentRegistry::isLegal((string) $page->internal_key);
+        $sections = PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
+            ? $this->mapTypedPageSections($page)
+            : $page->sections->map(fn (Section $section): array => [
+                'key' => $section->key,
+                'title' => $section->title,
+                'subtitle' => $section->subtitle,
+                'content' => $section->content,
+                'extra_json' => $section->extra_json,
+            ])->values()->all();
 
         return [
             'internal_key' => $page->internal_key,
@@ -863,15 +876,11 @@ class SiteController extends Controller
             'hero_image_url' => $this->resolveMediaPathOrUrl($page->hero_image_path, request()),
             'hero_image_alt' => $page->hero_image_alt,
             'faq_enabled' => (bool) $page->faq_enabled,
-            'sections' => PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
-                ? $this->mapTypedPageSections($page)
-                : $page->sections->map(fn (Section $section): array => [
-                    'key' => $section->key,
-                    'title' => $section->title,
-                    'subtitle' => $section->subtitle,
-                    'content' => $section->content,
-                    'extra_json' => $section->extra_json,
-                ])->values()->all(),
+            'sections' => $sections,
+            'toc' => $isLegal ? array_values(array_map(
+                fn (array $section): array => ['key' => $section['key'], 'title' => $section['title'], 'href' => '#'.$section['anchor']],
+                array_filter($sections, fn (array $section): bool => ($section['key'] ?? null) !== LegalDocumentRegistry::HERO_KEY)
+            )) : [],
             'faq' => $page->faq_enabled
                 ? $page->faqs->map(fn (FaqItem $faq): array => [
                     'question' => $faq->question,
@@ -906,6 +915,11 @@ class SiteController extends Controller
     /** @return list<array<string, mixed>> */
     private function mapTypedPageSections(Page $page): array
     {
+        if (LegalDocumentRegistry::isLegal((string) $page->internal_key)) {
+            $sections = $page->sections->filter(fn (Section $section): bool => $section->is_active)->values();
+
+            return $sections->map(fn (Section $section): array => $this->legalDocuments->section($page, $section))->all();
+        }
         $targets = Page::query()
             ->active()
             ->published()

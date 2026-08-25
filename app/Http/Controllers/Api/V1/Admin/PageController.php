@@ -162,6 +162,7 @@ class PageController extends Controller
                 Page::CONTACT_SLUG => Page::CONTACT_INTERNAL_KEY,
                 Page::CONVENTIONS_NETWORK_SLUG => Page::CONVENTIONS_NETWORK_INTERNAL_KEY,
                 Page::CAREERS_SLUG => Page::CAREERS_INTERNAL_KEY,
+                Page::TERMS_OF_SERVICE_SLUG => Page::TERMS_OF_SERVICE_INTERNAL_KEY,
                 default => (string) ($payload['slug'] ?? ''),
             };
         }
