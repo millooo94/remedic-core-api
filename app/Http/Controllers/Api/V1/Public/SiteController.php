@@ -1032,7 +1032,7 @@ class SiteController extends Controller
                     }
                     if ($section->key === 'application') {
                         $privacySlug = $targets->get('privacy');
-                        $mapped = ['key' => 'application', 'title' => $section->title, 'data' => ['body' => $section->content, 'action' => ['type' => 'open_application_form'], 'privacy' => ['text' => $extra['privacy_text'] ?? null, 'target_internal_key' => 'privacy', 'href' => $privacySlug ? '/'.$privacySlug : null], 'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get()->map(fn (ApplicationType $type) => ['id' => $type->id, 'name' => $type->name])->all()]];
+                        $mapped = ['key' => 'application', 'title' => $section->title, 'data' => ['body' => $section->content, 'action' => ['type' => 'open_application_form'], 'privacy' => ['text' => $extra['privacy_text'] ?? null, 'target_internal_key' => 'privacy', 'href' => $privacySlug ? '/'.$privacySlug : null], 'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get()->map(fn (ApplicationType $type) => ['key' => $type->key, 'label' => $type->name])->all()]];
                     }
                 }
                 if ((string) $page->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts') {

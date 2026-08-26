@@ -15,6 +15,7 @@ final readonly class InternalNotificationAction
         'settings' => '/settings',
         'profile' => '/profile',
         'web_admin' => '/admin',
+        'career_applications' => '/applications',
     ];
 
     /** @param array<string, scalar> $params */

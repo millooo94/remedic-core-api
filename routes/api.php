@@ -104,7 +104,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('redirects/resolve', [PublicSiteController::class, 'resolveRedirect']);
         Route::get('pages/{slug}', [PublicSiteController::class, 'page']);
         Route::get('application-types', [ApplicationTypeController::class, 'publicIndex']);
-        Route::post('job-applications', [JobApplicationController::class, 'storePublic'])->middleware('throttle:5,1');
+        Route::post('career-applications', [JobApplicationController::class, 'storePublic'])->middleware('throttle:career-applications');
         Route::post('newsletter/subscribe', [NewsletterSubscriptionController::class, 'subscribe'])->middleware('throttle:newsletter-subscribe');
         Route::get('newsletter/confirm', [NewsletterSubscriptionController::class, 'confirm'])->middleware('throttle:10,1')->name('newsletter.confirm');
         Route::get('newsletter/unsubscribe/{publicId}', [NewsletterSubscriptionController::class, 'unsubscribe'])
@@ -150,11 +150,14 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('application-types')->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value)->group(function (): void {
             Route::post('reorder', [ApplicationTypeController::class, 'reorder']);
         });
-        Route::apiResource('application-types', ApplicationTypeController::class)->except(['show'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
-        Route::get('job-applications', [JobApplicationController::class, 'index'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
-        Route::get('job-applications/{jobApplication}', [JobApplicationController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
-        Route::patch('job-applications/{jobApplication}/status', [JobApplicationController::class, 'updateStatus'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
-        Route::get('job-applications/{jobApplication}/cv', [JobApplicationController::class, 'downloadCv'])->middleware('permission:'.AdminPermission::MANAGE_APPLICATIONS->value);
+        Route::apiResource('application-types', ApplicationTypeController::class)->except(['show'])->middleware('permission:'.AdminPermission::MANAGE_CAREER_APPLICATIONS->value);
+        Route::get('career-applications/summary', [JobApplicationController::class, 'summary'])->middleware('permission:'.AdminPermission::VIEW_CAREER_APPLICATIONS->value);
+        Route::get('career-applications/settings', [JobApplicationController::class, 'settings'])->middleware('permission:'.AdminPermission::VIEW_CAREER_APPLICATIONS->value);
+        Route::put('career-applications/settings', [JobApplicationController::class, 'settings'])->middleware('permission:'.AdminPermission::MANAGE_CAREER_APPLICATIONS->value);
+        Route::get('career-applications', [JobApplicationController::class, 'index'])->middleware('permission:'.AdminPermission::VIEW_CAREER_APPLICATIONS->value);
+        Route::get('career-applications/{jobApplication:public_id}', [JobApplicationController::class, 'show'])->middleware('permission:'.AdminPermission::VIEW_CAREER_APPLICATIONS->value);
+        Route::patch('career-applications/{jobApplication:public_id}/status', [JobApplicationController::class, 'updateStatus'])->middleware('permission:'.AdminPermission::MANAGE_CAREER_APPLICATIONS->value);
+        Route::get('career-applications/{jobApplication:public_id}/cv', [JobApplicationController::class, 'downloadCv'])->middleware('permission:'.AdminPermission::VIEW_CAREER_APPLICATIONS->value);
         Route::prefix('conventions')
             ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value)
             ->group(function (): void {

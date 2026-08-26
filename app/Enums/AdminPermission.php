@@ -14,7 +14,10 @@ enum AdminPermission: string
     case MANAGE_EVENTS = 'manage events';
     case MANAGE_CAMPAIGNS = 'manage campaigns';
     case MANAGE_CONVENTIONS = 'manage conventions';
+    // The legacy permission is kept for the existing type-management surface.
     case MANAGE_APPLICATIONS = 'manage applications';
+    case VIEW_CAREER_APPLICATIONS = 'view career applications';
+    case MANAGE_CAREER_APPLICATIONS = 'manage career applications';
     case MANAGE_BLOG_POSTS = 'manage blog posts';
     case MANAGE_REDIRECTS = 'manage redirects';
     case MANAGE_SETTINGS = 'manage settings';

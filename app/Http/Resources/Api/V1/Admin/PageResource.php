@@ -122,7 +122,7 @@ class PageResource extends JsonResource
                     'body' => $section->content,
                     'privacy_text' => $extra['privacy_text'] ?? null,
                     'action' => ['type' => 'open_application_form'],
-                    'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get(['id', 'name'])->map(fn (ApplicationType $type) => ['id' => $type->id, 'name' => $type->name])->all(),
+                    'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get(['key', 'name'])->map(fn (ApplicationType $type) => ['key' => $type->key, 'label' => $type->name])->all(),
                 ],
                 default => ['body' => $section->content],
             };

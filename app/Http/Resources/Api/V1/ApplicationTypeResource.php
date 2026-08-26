@@ -9,6 +9,12 @@ class ApplicationTypeResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        return ['id' => $this->id, 'name' => $this->name, 'is_active' => (bool) $this->is_active, 'sort_order' => (int) $this->sort_order];
+        return [
+            'public_id' => $this->public_id,
+            'key' => $this->key,
+            'name' => $this->name,
+            'is_active' => (bool) $this->is_active,
+            'sort_order' => (int) $this->sort_order,
+        ];
     }
 }

@@ -14,6 +14,7 @@ class ApplicationSetting extends Model
 
     protected $fillable = [
         'reminder_email',
+        'career_recipient_email',
         'quick_percentages',
         'general_preferences',
         'updated_by',

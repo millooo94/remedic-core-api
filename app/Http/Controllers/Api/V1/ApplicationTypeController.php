@@ -52,12 +52,12 @@ class ApplicationTypeController extends Controller
 
     public function reorder(Request $request): AnonymousResourceCollection
     {
-        $data = $request->validate(['ids' => ['required', 'array'], 'ids.*' => ['required', 'integer', 'distinct', 'exists:application_types,id']]);
-        if (count($data['ids']) !== ApplicationType::count()) {
+        $data = $request->validate(['public_ids' => ['required', 'array'], 'public_ids.*' => ['required', 'uuid', 'distinct', 'exists:application_types,public_id']]);
+        if (count($data['public_ids']) !== ApplicationType::count()) {
             throw ValidationException::withMessages(['ids' => 'L’ordinamento deve includere tutti i tipi.']);
         }
-        foreach ($data['ids'] as $order => $id) {
-            ApplicationType::whereKey($id)->update(['sort_order' => $order]);
+        foreach ($data['public_ids'] as $order => $publicId) {
+            ApplicationType::query()->where('public_id', $publicId)->update(['sort_order' => $order]);
         }
 
         return ApplicationTypeResource::collection(ApplicationType::query()->publicOrder()->get());
