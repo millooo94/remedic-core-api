@@ -139,6 +139,15 @@ class ApplicationsAndCareersApiTest extends TestCase
         Storage::disk('local')->assertExists($application->cv_path);
         Mail::assertSent(CareerApplicationInternalMail::class, fn (CareerApplicationInternalMail $mail): bool => $mail->hasTo('hr@example.test'));
 
+        foreach ([['curriculum.doc', 'application/msword'], ['curriculum.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']] as [$filename, $mimeType]) {
+            $this->withServerVariables(['REMOTE_ADDR' => $filename === 'curriculum.doc' ? '192.0.2.3' : '192.0.2.4'])
+                ->post('/api/v1/public/career-applications', [
+                    ...$this->submissionPayload($type, ['email' => $filename.'@example.test']),
+                    'cv' => UploadedFile::fake()->create($filename, 120, $mimeType),
+                ], ['Accept' => 'application/json'])
+                ->assertCreated();
+        }
+
         $payload = ['first_name' => 'Ada', 'last_name' => 'Rossi', 'email' => 'invalid@example.test', 'application_type' => $type->key, 'message' => 'too short'];
         $this->postJson('/api/v1/public/career-applications', $payload)->assertUnprocessable()->assertJsonValidationErrors(['privacy_consent', 'message']);
         RateLimiter::clear('career-application:127.0.0.1');
