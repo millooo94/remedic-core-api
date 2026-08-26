@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRec
 use App\Http\Controllers\Api\V1\Admin\ConsentServiceController as AdminConsentServiceController;
 use App\Http\Controllers\Api\V1\Admin\HomePageController as AdminHomePageController;
 use App\Http\Controllers\Api\V1\Admin\MedicalAreaController as AdminMedicalAreaController;
+use App\Http\Controllers\Api\V1\Admin\NewsletterSubscriberController as AdminNewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
@@ -39,6 +40,7 @@ use App\Http\Controllers\Api\V1\JobApplicationController;
 use App\Http\Controllers\Api\V1\Management\CenterSettingController as ManagementCenterSettingController;
 use App\Http\Controllers\Api\V1\MarketingCampaignController;
 use App\Http\Controllers\Api\V1\MarketingSegmentController;
+use App\Http\Controllers\Api\V1\NewsletterSubscriptionController;
 use App\Http\Controllers\Api\V1\PatientController;
 use App\Http\Controllers\Api\V1\PerformanceRecordController;
 use App\Http\Controllers\Api\V1\PerformanceRecordExportController;
@@ -90,6 +92,11 @@ Route::prefix('v1')->group(function (): void {
         Route::get('pages/{slug}', [PublicSiteController::class, 'page']);
         Route::get('application-types', [ApplicationTypeController::class, 'publicIndex']);
         Route::post('job-applications', [JobApplicationController::class, 'storePublic'])->middleware('throttle:5,1');
+        Route::post('newsletter/subscribe', [NewsletterSubscriptionController::class, 'subscribe'])->middleware('throttle:newsletter-subscribe');
+        Route::get('newsletter/confirm', [NewsletterSubscriptionController::class, 'confirm'])->middleware('throttle:10,1')->name('newsletter.confirm');
+        Route::get('newsletter/unsubscribe/{publicId}', [NewsletterSubscriptionController::class, 'unsubscribe'])
+            ->middleware('signed')
+            ->name('newsletter.unsubscribe');
     });
 
     Route::prefix('auth')->group(function (): void {
@@ -341,6 +348,10 @@ Route::prefix('v1')->group(function (): void {
                 Route::apiResource('consent-preference-changes', AdminConsentPreferenceChangeController::class)
                     ->only(['index', 'show'])
                     ->middleware('permission:'.AdminPermission::VIEW_CONSENT_RECORDS->value);
+                Route::get('newsletter-subscribers', [AdminNewsletterSubscriberController::class, 'index'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);
+                Route::get('newsletter-subscribers/{newsletterSubscriber:public_id}', [AdminNewsletterSubscriberController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);
                 Route::get('site-settings', [AdminSiteSettingController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SETTINGS->value);
                 Route::put('site-settings', [AdminSiteSettingController::class, 'update'])

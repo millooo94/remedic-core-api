@@ -6,10 +6,13 @@ use App\Models\ExpenseRecord;
 use App\Observers\ExpenseRecordObserver;
 use App\Support\TestingDatabaseGuard;
 use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Env;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Symfony\Component\Console\Input\ArgvInput;
@@ -46,6 +49,9 @@ class AppServiceProvider extends ServiceProvider
         Carbon::setLocale(config('app.locale', 'it'));
         JsonResource::withoutWrapping();
         ExpenseRecord::observe(ExpenseRecordObserver::class);
+
+        RateLimiter::for('newsletter-subscribe', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by('newsletter:'.$request->ip()));
 
         VerifyEmail::createUrlUsing(function (object $notifiable): string {
             return URL::temporarySignedRoute(
