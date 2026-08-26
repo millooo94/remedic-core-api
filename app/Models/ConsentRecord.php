@@ -2,10 +2,8 @@
 
 namespace App\Models;
 
-use App\Enums\ConsentCategoryKey;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
@@ -14,20 +12,15 @@ class ConsentRecord extends Model
     use HasFactory;
 
     protected $fillable = [
-        'consent_uuid',
-        'consent_policy_version_id',
-        'locale',
-        'source',
+        'public_id',
+        'management_token_hash',
+        'configuration_version',
         'necessary',
         'preferences',
-        'analytics',
+        'statistics',
         'marketing',
         'consented_at',
-        'withdrawn_at',
-        'rejected_at',
-        'user_agent',
-        'ip_hash',
-        'consent_version_snapshot',
+        'last_updated_at',
     ];
 
     protected static function booted(): void
@@ -35,6 +28,10 @@ class ConsentRecord extends Model
         static::creating(function (self $record): void {
             if (! filled($record->consent_uuid)) {
                 $record->consent_uuid = (string) Str::uuid();
+            }
+
+            if (! filled($record->public_id)) {
+                $record->public_id = (string) Str::uuid();
             }
 
             $record->necessary = true;
@@ -46,52 +43,16 @@ class ConsentRecord extends Model
         return [
             'necessary' => 'boolean',
             'preferences' => 'boolean',
-            'analytics' => 'boolean',
+            'statistics' => 'boolean',
             'marketing' => 'boolean',
             'consented_at' => 'datetime',
-            'withdrawn_at' => 'datetime',
-            'rejected_at' => 'datetime',
-            'consent_version_snapshot' => 'array',
+            'last_updated_at' => 'datetime',
+            'configuration_version' => 'integer',
         ];
     }
 
-    public function policyVersion(): BelongsTo
+    public function events(): HasMany
     {
-        return $this->belongsTo(ConsentPolicyVersion::class, 'consent_policy_version_id');
-    }
-
-    public function changes(): HasMany
-    {
-        return $this->hasMany(ConsentPreferenceChange::class, 'consent_record_id')->latest('id');
-    }
-
-    /**
-     * @return array<string, bool>
-     */
-    public function categoryPreferences(): array
-    {
-        return [
-            ConsentCategoryKey::NECESSARY->value => true,
-            ConsentCategoryKey::PREFERENCES->value => (bool) $this->preferences,
-            ConsentCategoryKey::ANALYTICS->value => (bool) $this->analytics,
-            ConsentCategoryKey::MARKETING->value => (bool) $this->marketing,
-        ];
-    }
-
-    public function status(): string
-    {
-        if ($this->withdrawn_at !== null) {
-            return 'withdrawn';
-        }
-
-        if ($this->rejected_at !== null && ! $this->preferences && ! $this->analytics && ! $this->marketing) {
-            return 'rejected_all';
-        }
-
-        if ($this->preferences && $this->analytics && $this->marketing) {
-            return 'accepted_all';
-        }
-
-        return 'customized';
+        return $this->hasMany(ConsentEvent::class)->orderBy('occurred_at');
     }
 }

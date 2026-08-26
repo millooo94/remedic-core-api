@@ -4,11 +4,8 @@ use App\Enums\AdminPermission;
 use App\Http\Controllers\Api\V1\Admin\AdminWebCheckupController;
 use App\Http\Controllers\Api\V1\Admin\AdminWebServiceController;
 use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostController;
-use App\Http\Controllers\Api\V1\Admin\ConsentCategoryController as AdminConsentCategoryController;
-use App\Http\Controllers\Api\V1\Admin\ConsentPolicyVersionController as AdminConsentPolicyVersionController;
-use App\Http\Controllers\Api\V1\Admin\ConsentPreferenceChangeController as AdminConsentPreferenceChangeController;
+use App\Http\Controllers\Api\V1\Admin\ConsentConfigurationController as AdminConsentConfigurationController;
 use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
-use App\Http\Controllers\Api\V1\Admin\ConsentServiceController as AdminConsentServiceController;
 use App\Http\Controllers\Api\V1\Admin\HomePageController as AdminHomePageController;
 use App\Http\Controllers\Api\V1\Admin\MedicalAreaController as AdminMedicalAreaController;
 use App\Http\Controllers\Api\V1\Admin\NewsletterSubscriberController as AdminNewsletterSubscriberController;
@@ -51,6 +48,7 @@ use App\Http\Controllers\Api\V1\ProfessionalStatementController;
 use App\Http\Controllers\Api\V1\ProfessionalTimeBlockController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PromotionController;
+use App\Http\Controllers\Api\V1\Public\ConsentController as PublicConsentController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\Public\SiteIndexPageController as PublicSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Public\SiteNavigationController as PublicSiteNavigationController;
@@ -64,6 +62,10 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::prefix('public')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
+        Route::get('consent/configuration', [PublicConsentController::class, 'configuration']);
+        Route::post('consents', [PublicConsentController::class, 'store'])->middleware('throttle:consent-mutations');
+        Route::get('consents/{publicId}', [PublicConsentController::class, 'show']);
+        Route::match(['put', 'patch'], 'consents/{publicId}', [PublicConsentController::class, 'update'])->middleware('throttle:consent-mutations');
         Route::get('navigation', [PublicSiteNavigationController::class, 'show']);
         Route::get('site/popup', [PublicSitePopupController::class, 'show']);
         Route::get('home', [PublicSiteController::class, 'home']);
@@ -336,17 +338,15 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::patch('equipe/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
-                Route::apiResource('consent-categories', AdminConsentCategoryController::class)
+                Route::get('consent-configuration', [AdminConsentConfigurationController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
-                Route::apiResource('consent-services', AdminConsentServiceController::class)
+                Route::put('consent-configuration', [AdminConsentConfigurationController::class, 'update'])
                     ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
-                Route::apiResource('consent-policy-versions', AdminConsentPolicyVersionController::class)
+                Route::post('consent-configuration/publish-version', [AdminConsentConfigurationController::class, 'publishNewVersion'])
                     ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
-                Route::apiResource('consent-records', AdminConsentRecordController::class)
-                    ->only(['index', 'show'])
+                Route::get('consent-records', [AdminConsentRecordController::class, 'index'])
                     ->middleware('permission:'.AdminPermission::VIEW_CONSENT_RECORDS->value);
-                Route::apiResource('consent-preference-changes', AdminConsentPreferenceChangeController::class)
-                    ->only(['index', 'show'])
+                Route::get('consent-records/{consentRecord:public_id}', [AdminConsentRecordController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::VIEW_CONSENT_RECORDS->value);
                 Route::get('newsletter-subscribers', [AdminNewsletterSubscriberController::class, 'index'])
                     ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);

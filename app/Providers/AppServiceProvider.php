@@ -52,6 +52,8 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('newsletter-subscribe', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('newsletter:'.$request->ip()));
+        RateLimiter::for('consent-mutations', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('consent:'.$request->ip()));
 
         VerifyEmail::createUrlUsing(function (object $notifiable): string {
             return URL::temporarySignedRoute(

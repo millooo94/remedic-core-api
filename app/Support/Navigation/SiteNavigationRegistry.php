@@ -38,7 +38,7 @@ final class SiteNavigationRegistry
         'privacy' => 'Privacy Policy', 'cookie_policy' => 'Cookie Policy', 'terms_of_service' => 'Termini di servizio',
         'medical_areas_index' => 'Aree mediche', 'equipe_index' => 'Equipe', 'checkups_index' => 'Check-up e prevenzione',
         'diagnostics_index' => 'Diagnostica', 'aesthetic_medicine_index' => 'Medicina estetica', 'news_index' => 'News e aggiornamenti',
-        'health_pills_index' => 'Pillole di salute', 'booking' => 'Prenota ora', 'reserved_area' => 'Area riservata',
+        'health_pills_index' => 'Pillole di salute', 'booking' => 'Prenota ora', 'reserved_area' => 'Area riservata', 'cookie_preferences' => 'Gestisci preferenze cookie',
     ];
 
     public static function defaults(): array

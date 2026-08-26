@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 
 class SiteNavigationProjectionService
 {
-    public function __construct(private readonly ContactCenterDataResolver $centerData, private readonly MedicalAreaPublicService $areas) {}
+    public function __construct(private readonly ContactCenterDataResolver $centerData, private readonly MedicalAreaPublicService $areas, private readonly ConsentConfigurationInitializer $consentConfiguration) {}
 
     /** @return array<string, mixed> */
     public function admin(SiteNavigation $navigation, Request $request): array
@@ -99,11 +99,14 @@ class SiteNavigationProjectionService
             ->values()->all();
     }
 
-    /** @return array{href: ?string, publication_state: string, is_public: bool} */
+    /** @return array{href: ?string, publication_state: string, is_public: bool, action?: string} */
     public function target(string $key): array
     {
+        if ($key === 'cookie_preferences') {
+            return ['href' => null, 'publication_state' => 'action', 'is_public' => (bool) $this->consentConfiguration->initialize()->is_enabled, 'action' => 'cookie_preferences'];
+        }
         if (in_array($key, ['booking', 'reserved_area'], true)) {
-            return ['href' => null, 'publication_state' => 'action', 'is_public' => true];
+            return ['href' => null, 'publication_state' => 'action', 'is_public' => true, 'action' => $key];
         }
         if (str_ends_with($key, '_index')) {
             $page = SiteIndexPage::query()->where('internal_key', $key)->first();
@@ -244,6 +247,9 @@ class SiteNavigationProjectionService
 
             return $resolved['href'] ? ['target' => $target, 'label' => $label, 'href' => $resolved['href']] : null;
         })->filter()->values()->all();
+        if ($this->target('cookie_preferences')['is_public']) {
+            $legalLinks[] = ['target' => 'cookie_preferences', 'label' => SiteNavigationRegistry::TARGETS['cookie_preferences'], 'action' => 'cookie_preferences'];
+        }
 
         return ['brand' => ['description' => $footer['brand_description'], 'booking' => ['action' => 'booking', 'label' => $footer['booking_label']]], 'columns' => $columns, 'center' => $center, 'legal' => ['year' => now()->year, 'legal_company_name' => $center['legal_company_name'], 'vat_number' => $center['vat_number'], 'links' => $legalLinks], 'social' => $center['social']];
     }

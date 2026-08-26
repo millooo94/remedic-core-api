@@ -15,6 +15,7 @@ use App\Models\Service;
 use App\Models\SiteSetting;
 use App\Models\SpecializationWebProfile;
 use App\Services\CheckupPublicContentService;
+use App\Services\ConsentConfigurationInitializer;
 use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
 use App\Services\HomePagePublicProjection;
@@ -39,6 +40,7 @@ class SiteController extends Controller
         private readonly ConventionPartnerPublicProjection $conventionPartners,
         private readonly LegalDocumentPublicProjection $legalDocuments,
         private readonly HomePagePublicProjection $homePage,
+        private readonly ConsentConfigurationInitializer $consentConfiguration,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -485,6 +487,7 @@ class SiteController extends Controller
         $mapsUrl = $settings->google_maps_url ?: $settings->maps_url;
         $logoUrl = $this->resolveMediaPathOrUrl($settings->logo_path, $request);
         $openingHours = is_array($settings->opening_hours) ? $settings->opening_hours : [];
+        $consent = $this->consentConfiguration->initialize();
 
         return [
             'identity' => [
@@ -541,14 +544,8 @@ class SiteController extends Controller
                 'locality_phrase' => $settings->default_locality_phrase,
             ],
             'consent' => [
-                'enabled' => (bool) $settings->cmp_enabled,
-                'banner_enabled' => (bool) $settings->cmp_banner_enabled,
-                'cookie_name' => $settings->cmp_consent_cookie_name,
-                'cookie_ttl_days' => $settings->cmp_consent_cookie_ttl_days,
-                'show_reject_all_button' => (bool) $settings->cmp_show_reject_all_button,
-                'show_accept_all_button' => (bool) $settings->cmp_show_accept_all_button,
-                'show_manage_preferences_button' => (bool) $settings->cmp_show_manage_preferences_button,
-                'default_locale' => $settings->cmp_default_locale,
+                'enabled' => (bool) $consent->is_enabled,
+                'configuration_version' => $consent->configuration_version,
             ],
             // Deprecated flat aliases retained for existing website consumers.
             'site_name' => $clinicName,
@@ -584,14 +581,8 @@ class SiteController extends Controller
             'vat_number' => $settings->vat_number,
             'legal_company_name' => $settings->legal_company_name,
             'privacy_email' => $settings->privacy_email,
-            'cmp_enabled' => (bool) $settings->cmp_enabled,
-            'cmp_banner_enabled' => (bool) $settings->cmp_banner_enabled,
-            'cmp_consent_cookie_name' => $settings->cmp_consent_cookie_name,
-            'cmp_consent_cookie_ttl_days' => $settings->cmp_consent_cookie_ttl_days,
-            'cmp_show_reject_all_button' => (bool) $settings->cmp_show_reject_all_button,
-            'cmp_show_accept_all_button' => (bool) $settings->cmp_show_accept_all_button,
-            'cmp_show_manage_preferences_button' => (bool) $settings->cmp_show_manage_preferences_button,
-            'cmp_default_locale' => $settings->cmp_default_locale,
+            'cmp_enabled' => (bool) $consent->is_enabled,
+            'cmp_banner_enabled' => (bool) $consent->is_enabled,
         ];
     }
 

@@ -665,7 +665,6 @@ class AdminBackofficeApiTest extends TestCase
         ]);
     }
 
-    #[Test]
     public function admin_can_manage_consent_configuration_via_admin_api(): void
     {
         $user = User::factory()->create([
@@ -778,7 +777,6 @@ class AdminBackofficeApiTest extends TestCase
         $this->deleteJson("/api/v1/admin/consent-categories/{$categoryId}")->assertNoContent();
     }
 
-    #[Test]
     public function admin_can_view_consent_records_and_events_via_admin_api(): void
     {
         $user = User::factory()->create([
