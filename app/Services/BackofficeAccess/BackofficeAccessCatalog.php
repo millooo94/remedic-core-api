@@ -54,6 +54,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_USERS->value,
                 AdminPermission::PUBLISH_CONTENT->value,
                 AdminPermission::MANAGE_SEO_FIELDS->value,
+                AdminPermission::MANAGE_SEARCH->value,
             ],
             AdminRole::EDITOR->value => [
                 AdminPermission::VIEW_BACKOFFICE->value,
@@ -70,6 +71,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
                 AdminPermission::MANAGE_SITE_POPUP->value,
                 AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value,
+                AdminPermission::MANAGE_SEARCH->value,
             ],
             AdminRole::SEO_MANAGER->value => [
                 AdminPermission::VIEW_BACKOFFICE->value,
@@ -90,6 +92,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_CONSENT_CONFIGURATION->value,
                 AdminPermission::PUBLISH_CONTENT->value,
                 AdminPermission::MANAGE_SEO_FIELDS->value,
+                AdminPermission::MANAGE_SEARCH->value,
             ],
         ];
     }

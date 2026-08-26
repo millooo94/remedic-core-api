@@ -27,6 +27,7 @@ enum AdminPermission: string
     case MANAGE_USERS = 'manage users';
     case PUBLISH_CONTENT = 'publish content';
     case MANAGE_SEO_FIELDS = 'manage seo fields';
+    case MANAGE_SEARCH = 'manage search';
 
     /**
      * @return list<string>

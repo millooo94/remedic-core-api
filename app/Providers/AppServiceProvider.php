@@ -2,8 +2,26 @@
 
 namespace App\Providers;
 
+use App\Models\BlogPost;
+use App\Models\Checkup;
+use App\Models\CheckupWebProfile;
+use App\Models\ContentTranslation;
 use App\Models\ExpenseRecord;
+use App\Models\FaqItem;
+use App\Models\FaqItemTranslation;
+use App\Models\Page;
+use App\Models\Professional;
+use App\Models\ProfessionalPublicProfile;
+use App\Models\Section;
+use App\Models\SectionTranslation;
+use App\Models\Service;
+use App\Models\ServiceWebProfile;
+use App\Models\SiteIndexPage;
+use App\Models\SiteIndexPageTranslation;
+use App\Models\Specialization;
+use App\Models\SpecializationWebProfile;
 use App\Observers\ExpenseRecordObserver;
+use App\Observers\PublicSearchObserver;
 use App\Support\TestingDatabaseGuard;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -49,6 +67,9 @@ class AppServiceProvider extends ServiceProvider
         Carbon::setLocale(config('app.locale', 'it'));
         JsonResource::withoutWrapping();
         ExpenseRecord::observe(ExpenseRecordObserver::class);
+        foreach ([Page::class, SiteIndexPage::class, SpecializationWebProfile::class, ServiceWebProfile::class, ProfessionalPublicProfile::class, CheckupWebProfile::class, BlogPost::class, ContentTranslation::class, Section::class, FaqItem::class, SectionTranslation::class, FaqItemTranslation::class, SiteIndexPageTranslation::class, Specialization::class, Service::class, Professional::class, Checkup::class] as $model) {
+            $model::observe(PublicSearchObserver::class);
+        }
 
         RateLimiter::for('newsletter-subscribe', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('newsletter:'.$request->ip()));

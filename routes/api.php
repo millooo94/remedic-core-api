@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Admin\NewsletterSubscriberController as AdminNew
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
+use App\Http\Controllers\Api\V1\Admin\SearchSynonymGroupController;
 use App\Http\Controllers\Api\V1\Admin\SeoConfigurationController as AdminSeoConfigurationController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageController as AdminSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageMediaController as AdminSiteIndexPageMediaController;
@@ -53,6 +54,7 @@ use App\Http\Controllers\Api\V1\ProfessionalTimeBlockController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PromotionController;
 use App\Http\Controllers\Api\V1\Public\ConsentController as PublicConsentController;
+use App\Http\Controllers\Api\V1\Public\SearchController as PublicSearchController;
 use App\Http\Controllers\Api\V1\Public\SeoController as PublicSeoController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\Public\SiteIndexPageController as PublicSiteIndexPageController;
@@ -81,7 +83,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index', 'news_index', 'health_pills_index']);
         Route::get('news/{slug}', [PublicSiteController::class, 'news']);
         Route::get('pillole-di-salute/{slug}', [PublicSiteController::class, 'healthPill']);
-        Route::get('search', [PublicSiteController::class, 'search']);
+        Route::get('search', PublicSearchController::class)->middleware('throttle:60,1');
         Route::get('specializations', [PublicSiteController::class, 'specializations']);
         Route::get('specializations/{slug}', [PublicSiteController::class, 'specialization']);
         Route::get('aree-mediche', [PublicSiteController::class, 'medicalAreas']);
@@ -313,6 +315,9 @@ Route::prefix('v1')->group(function (): void {
                 Route::post('site-popup/image', [AdminSitePopupMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::delete('site-popup/image', [AdminSitePopupMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::post('site-popup/republish', [AdminSitePopupController::class, 'republish'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::apiResource('search-synonym-groups', SearchSynonymGroupController::class)
+                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SEARCH->value);
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
                 Route::apiResource('pages', AdminPageController::class)
