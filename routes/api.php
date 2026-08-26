@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\V1\ProfessionalController;
 use App\Http\Controllers\Api\V1\ProfessionalStatementController;
 use App\Http\Controllers\Api\V1\ProfessionalTimeBlockController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\Api\V1\PromotionController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\Public\SiteIndexPageController as PublicSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Public\SiteNavigationController as PublicSiteNavigationController;
@@ -174,6 +175,12 @@ Route::prefix('v1')->group(function (): void {
         });
         Route::apiResource('checkups', CheckupController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+        Route::prefix('promotions')->middleware('permission:'.AdminPermission::MANAGE_PROMOTIONS->value)->group(function (): void {
+            Route::get('targets', [PromotionController::class, 'targets']);
+            Route::post('{promotion}/restore', [PromotionController::class, 'restore']);
+        });
+        Route::apiResource('promotions', PromotionController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_PROMOTIONS->value);
         Route::get('patients/options', [PatientController::class, 'options']);
         Route::post('patients/import', [PatientController::class, 'import']);
         Route::apiResource('patients', PatientController::class);
