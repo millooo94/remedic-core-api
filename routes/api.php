@@ -204,12 +204,18 @@ Route::prefix('v1')->group(function (): void {
             ->parameters(['professional-time-blocks' => 'professionalTimeBlock'])
             ->except(['show'])
             ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
-        Route::post('marketing-segments/preview', [MarketingSegmentController::class, 'preview']);
-        Route::get('marketing-segments/{marketingSegment}/campaign-preview', [MarketingSegmentController::class, 'campaignPreview']);
-        Route::apiResource('marketing-segments', MarketingSegmentController::class);
-        Route::post('marketing-campaigns/{marketingCampaign}/send-test', [MarketingCampaignController::class, 'sendTest']);
-        Route::post('marketing-campaigns/{marketingCampaign}/launch', [MarketingCampaignController::class, 'launch']);
-        Route::apiResource('marketing-campaigns', MarketingCampaignController::class);
+        Route::prefix('marketing-segments')->middleware('permission:'.AdminPermission::MANAGE_CAMPAIGNS->value)->group(function (): void {
+            Route::post('preview', [MarketingSegmentController::class, 'preview']);
+            Route::get('{marketingSegment}/campaign-preview', [MarketingSegmentController::class, 'campaignPreview']);
+        });
+        Route::apiResource('marketing-segments', MarketingSegmentController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_CAMPAIGNS->value);
+        Route::prefix('marketing-campaigns')->middleware('permission:'.AdminPermission::MANAGE_CAMPAIGNS->value)->group(function (): void {
+            Route::post('{marketingCampaign}/send-test', [MarketingCampaignController::class, 'sendTest']);
+            Route::post('{marketingCampaign}/launch', [MarketingCampaignController::class, 'launch']);
+        });
+        Route::apiResource('marketing-campaigns', MarketingCampaignController::class)
+            ->middleware('permission:'.AdminPermission::MANAGE_CAMPAIGNS->value);
         Route::get('performance-records/export/preview', [PerformanceRecordExportController::class, 'preview']);
         Route::get('performance-records/export/pdf', [PerformanceRecordExportController::class, 'pdf']);
         Route::get('performance-records/export/xlsx', [PerformanceRecordExportController::class, 'excel']);

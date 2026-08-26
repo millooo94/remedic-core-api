@@ -2,19 +2,36 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use App\Models\MarketingCampaign;
 use App\Models\MarketingSegment;
 use App\Models\Patient;
 use App\Models\User;
+use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class MarketingCampaignApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(BackofficeAccessSeeder::class);
+    }
+
+    #[Test]
+    public function it_requires_the_dedicated_campaign_permission(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $this->getJson('/api/v1/marketing-campaigns')->assertForbidden();
+    }
 
     #[Test]
     public function it_creates_manual_segments_with_unique_normalized_numbers(): void
@@ -253,6 +270,8 @@ class MarketingCampaignApiTest extends TestCase
 
     private function actingAsAdmin(): void
     {
-        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+        Sanctum::actingAs($user);
     }
 }

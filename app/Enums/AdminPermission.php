@@ -12,6 +12,7 @@ enum AdminPermission: string
     case MANAGE_DOCTORS = 'manage doctors';
     case MANAGE_PROMOTIONS = 'manage promotions';
     case MANAGE_EVENTS = 'manage events';
+    case MANAGE_CAMPAIGNS = 'manage campaigns';
     case MANAGE_CONVENTIONS = 'manage conventions';
     case MANAGE_APPLICATIONS = 'manage applications';
     case MANAGE_BLOG_POSTS = 'manage blog posts';
