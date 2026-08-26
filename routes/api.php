@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\V1\ConventionPartnerController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\EntityMediaController;
+use App\Http\Controllers\Api\V1\EventController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseRecordController;
 use App\Http\Controllers\Api\V1\ExpenseTemplateController;
@@ -181,6 +182,11 @@ Route::prefix('v1')->group(function (): void {
         });
         Route::apiResource('promotions', PromotionController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_PROMOTIONS->value);
+        Route::prefix('events')->middleware('permission:'.AdminPermission::MANAGE_EVENTS->value)->group(function (): void {
+            Route::get('lookups', [EventController::class, 'lookups']);
+            Route::post('{event}/restore', [EventController::class, 'restore']);
+        });
+        Route::apiResource('events', EventController::class)->middleware('permission:'.AdminPermission::MANAGE_EVENTS->value);
         Route::get('patients/options', [PatientController::class, 'options']);
         Route::post('patients/import', [PatientController::class, 'import']);
         Route::apiResource('patients', PatientController::class);
