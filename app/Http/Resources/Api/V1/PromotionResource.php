@@ -40,7 +40,7 @@ class PromotionResource extends JsonResource
             'validity_basis' => $this->validity_basis?->value,
             'lifecycle_status' => $this->lifecycleStatus(),
             'is_active' => (bool) $this->is_active,
-            'is_effectively_available' => ! $this->trashed() && $this->lifecycleStatus() === 'active' && $targetOperational,
+            'is_effectively_available' => $this->isEffectivelyAvailable(),
             'internal_notes' => $this->internal_notes,
             'is_archived' => $this->trashed(),
             'created_at' => $this->created_at?->toIso8601String(),

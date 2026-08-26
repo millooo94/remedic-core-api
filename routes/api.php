@@ -276,6 +276,7 @@ Route::prefix('v1')->group(function (): void {
                 Route::post('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'storeAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::delete('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroyAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::get('site-popup', [AdminSitePopupController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::get('site-popup/sources', [AdminSitePopupController::class, 'sources'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::put('site-popup', [AdminSitePopupController::class, 'update'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::post('site-popup/image', [AdminSitePopupMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::delete('site-popup/image', [AdminSitePopupMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);

@@ -56,4 +56,9 @@ class Promotion extends Model
 
         return $this->checkup !== null && $this->checkup->isOperationallyAvailable();
     }
+
+    public function isEffectivelyAvailable(): bool
+    {
+        return ! $this->trashed() && $this->lifecycleStatus() === 'active' && $this->targetIsOperational();
+    }
 }

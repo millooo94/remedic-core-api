@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
+use App\Models\Event;
 use App\Models\Page;
+use App\Models\Promotion;
+use App\Models\Service;
 use App\Models\SiteIndexPage;
 use App\Models\SitePopup;
 use App\Models\User;
@@ -91,13 +94,47 @@ class SitePopupApiTest extends TestCase
         $this->actingAsWebAdmin();
         $this->save(['is_active' => true, 'title' => 'Campagna', 'primary_cta_label' => 'Prenota', 'primary_cta_target' => 'booking']);
         $this->post('/api/v1/admin/site-popup/image', ['file' => UploadedFile::fake()->image('popup.jpg')])->assertOk()->assertJsonPath('data.image_url', fn (string $url): bool => str_contains($url, 'site-popup/image'));
-        $before = SitePopup::query()->firstOrFail()->only(['title', 'is_active', 'primary_cta_label', 'primary_cta_target', 'campaign_version', 'image_path']);
+        $before = SitePopup::query()->firstOrFail()->only(['title', 'is_active', 'primary_cta_label', 'primary_cta_target', 'campaign_version', 'image_path', 'source_type', 'promotion_id', 'event_id']);
         $this->postJson('/api/v1/admin/site-popup/republish')->assertOk()->assertJsonPath('data.campaign_version', 2)->assertJsonPath('data.title', 'Campagna');
         $after = SitePopup::query()->firstOrFail();
         $this->assertSame($before['title'], $after->title);
         $this->assertSame($before['image_path'], $after->image_path);
+        $this->assertSame($before['source_type']->value, $after->source_type->value);
         $this->assertSame(2, $after->campaign_version);
         $this->deleteJson('/api/v1/admin/site-popup/image')->assertOk()->assertJsonPath('data.image_url', null);
+    }
+
+    #[Test]
+    public function popup_sources_are_validated_and_promotion_data_is_resolved_at_runtime(): void
+    {
+        $this->actingAsWebAdmin();
+        $service = Service::query()->create(['display_name' => 'Visita Laser', 'canonical_name' => 'Visita Laser', 'slug' => 'visita-laser', 'importo_prestazione' => 200, 'is_active' => true]);
+        $promotion = Promotion::query()->create(['name' => 'Promo Laser', 'service_id' => $service->id, 'promotional_price' => 150, 'start_at' => now()->subHour(), 'end_at' => now()->addDay(), 'validity_basis' => 'booking_date', 'is_active' => true]);
+
+        $this->save(['is_active' => true, 'source_type' => 'promotion', 'promotion_id' => null])->assertUnprocessable();
+        $this->save(['is_active' => true, 'source_type' => 'promotion', 'promotion_id' => $promotion->id, 'event_id' => 12])->assertUnprocessable();
+        $this->save(['is_active' => true, 'source_type' => 'promotion', 'promotion_id' => $promotion->id, 'title' => null, 'body' => null])
+            ->assertJsonPath('data.source.type', 'promotion')->assertJsonPath('data.source_is_effectively_available', true);
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data.source.data.name', 'Promo Laser')->assertJsonPath('data.source.data.promotional_price', '150.00')->assertJsonMissingPath('data.source.data.internal_notes');
+        $promotion->update(['promotional_price' => 120]);
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data.source.data.promotional_price', '120.00');
+        $promotion->delete();
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data', null);
+        $this->getJson('/api/v1/admin/site-popup')->assertJsonPath('data.source.data.is_archived', true);
+    }
+
+    #[Test]
+    public function event_source_is_safe_runtime_content_and_uses_popup_permission_lookups(): void
+    {
+        $this->actingAsWebAdmin();
+        $event = Event::query()->create(['name' => 'Open Day', 'event_type' => 'open_day', 'operational_status' => 'confirmed', 'start_at' => now()->subHour(), 'end_at' => now()->addDay(), 'location_type' => 'online', 'online_url' => 'https://meet.example.test/secret', 'registration_required' => true, 'registration_mode' => 'external_url', 'external_registration_url' => 'https://register.example.test/secret', 'participation_price' => 20, 'internal_notes' => 'Riservato']);
+
+        $this->save(['is_active' => true, 'source_type' => 'event', 'event_id' => $event->id, 'title' => null, 'body' => null])
+            ->assertJsonPath('data.source.type', 'event')->assertJsonPath('data.source_is_effectively_available', true);
+        $this->getJson('/api/v1/admin/site-popup/sources')->assertOk()->assertJsonPath('data.events.0.name', 'Open Day');
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data.source.data.location_summary.label', 'Online')->assertJsonMissingPath('data.source.data.online_url')->assertJsonMissingPath('data.source.data.external_registration_url')->assertJsonMissingPath('data.source.data.internal_notes');
+        $event->update(['operational_status' => 'cancelled']);
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data', null);
     }
 
     private function save(array $overrides = [])
@@ -110,7 +147,7 @@ class SitePopupApiTest extends TestCase
         $popup = SitePopup::query()->first();
 
         return [...[
-            'is_active' => $popup?->is_active ?? false, 'start_at' => $popup?->start_at?->toIso8601String(), 'end_at' => $popup?->end_at?->toIso8601String(),
+            'is_active' => $popup?->is_active ?? false, 'source_type' => $popup?->source_type?->value ?? 'manual', 'promotion_id' => $popup?->promotion_id, 'event_id' => $popup?->event_id, 'start_at' => $popup?->start_at?->toIso8601String(), 'end_at' => $popup?->end_at?->toIso8601String(),
             'eyebrow' => $popup?->eyebrow, 'title' => $popup?->title, 'body' => $popup?->body,
             'primary_cta_label' => $popup?->primary_cta_label, 'primary_cta_target' => $popup?->primary_cta_target,
             'secondary_cta_label' => $popup?->secondary_cta_label, 'secondary_cta_target' => $popup?->secondary_cta_target,

@@ -55,4 +55,9 @@ class Event extends Model
     {
         return $this->registration_required && $this->operational_status !== EventOperationalStatus::CANCELLED && $this->temporalStatus() !== 'ended' && ($this->registration_deadline === null || $this->registration_deadline->gte(now()));
     }
+
+    public function isEffectivelyAvailable(): bool
+    {
+        return ! $this->trashed() && $this->operational_status === EventOperationalStatus::CONFIRMED && $this->temporalStatus() !== 'ended';
+    }
 }

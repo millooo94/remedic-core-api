@@ -34,7 +34,7 @@ class EventController extends Controller
             $q->where('name', 'like', '%'.$f['search'].'%');
         }
 
-return response()->json(['data' => $q->with($this->relations())->orderByDesc('start_at')->get()->map(fn (Event $e) => $this->data($e))->values()]);
+        return response()->json(['data' => $q->with($this->relations())->orderByDesc('start_at')->get()->map(fn (Event $e) => $this->data($e))->values()]);
     }
 
     public function show(Event $event)
@@ -107,6 +107,6 @@ return response()->json(['data' => $q->with($this->relations())->orderByDesc('st
 
     private function data(Event $e): array
     {
-        return ['id' => $e->id, 'name' => $e->name, 'event_type' => $e->event_type->value, 'operational_status' => $e->operational_status->value, 'temporal_status' => $e->temporalStatus(), 'is_effectively_available' => ! $e->trashed() && $e->operational_status === EventOperationalStatus::CONFIRMED && $e->temporalStatus() !== 'ended', 'start_at' => $e->start_at->toIso8601String(), 'end_at' => $e->end_at->toIso8601String(), 'location_type' => $e->location_type->value, 'external_venue_name' => $e->external_venue_name, 'external_venue_address' => $e->external_venue_address, 'online_url' => $e->online_url, 'registration_required' => $e->registration_required, 'registration_deadline' => $e->registration_deadline?->toIso8601String(), 'registration_mode' => $e->registration_mode->value, 'external_registration_url' => $e->external_registration_url, 'is_registration_open' => $e->isRegistrationOpen(), 'capacity' => $e->capacity, 'participation_price' => $e->participation_price, 'cancellation_reason' => $e->cancellation_reason, 'internal_notes' => $e->internal_notes, 'is_archived' => $e->trashed(), 'relations' => collect($this->relations())->mapWithKeys(fn ($k) => [$k => $e->$k->map(fn ($x) => ['id' => $x->id, 'name' => $x->full_name ?? $x->display_name ?? $x->name, 'is_active' => $x->is_active])->values()])->all()];
+        return ['id' => $e->id, 'name' => $e->name, 'event_type' => $e->event_type->value, 'operational_status' => $e->operational_status->value, 'temporal_status' => $e->temporalStatus(), 'is_effectively_available' => $e->isEffectivelyAvailable(), 'start_at' => $e->start_at->toIso8601String(), 'end_at' => $e->end_at->toIso8601String(), 'location_type' => $e->location_type->value, 'external_venue_name' => $e->external_venue_name, 'external_venue_address' => $e->external_venue_address, 'online_url' => $e->online_url, 'registration_required' => $e->registration_required, 'registration_deadline' => $e->registration_deadline?->toIso8601String(), 'registration_mode' => $e->registration_mode->value, 'external_registration_url' => $e->external_registration_url, 'is_registration_open' => $e->isRegistrationOpen(), 'capacity' => $e->capacity, 'participation_price' => $e->participation_price, 'cancellation_reason' => $e->cancellation_reason, 'internal_notes' => $e->internal_notes, 'is_archived' => $e->trashed(), 'relations' => collect($this->relations())->mapWithKeys(fn ($k) => [$k => $e->$k->map(fn ($x) => ['id' => $x->id, 'name' => $x->full_name ?? $x->display_name ?? $x->name, 'is_active' => $x->is_active])->values()])->all()];
     }
 }
