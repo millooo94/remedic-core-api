@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Enums\SupportedLocale;
+use App\Models\CheckupWebProfile;
 use App\Models\ContentTranslation;
+use App\Models\ServiceWebProfile;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -49,7 +51,7 @@ class LocalizedContentResolver
         }
 
         $copy = clone $owner;
-        $map = ['slug' => 'slug', 'public_slug' => 'slug', 'short_bio' => 'short_description', 'bio_content' => 'body'];
+        $map = ['slug' => $owner instanceof ServiceWebProfile || $owner instanceof CheckupWebProfile ? 'public_slug' : 'slug', 'public_slug' => 'slug', 'short_bio' => 'short_description', 'bio_content' => 'body'];
         foreach (['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'] as $field) {
             if ($translation->{$field} !== null) {
                 $copy->setAttribute($map[$field] ?? $field, $translation->{$field});

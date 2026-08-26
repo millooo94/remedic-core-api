@@ -65,7 +65,7 @@ final class PublicSearchService
             $score += 10000;
         }
         if (in_array($title, $terms, true) && $title !== $query) {
-            $score += 4000;
+            $score += 1500;
         }
         if (str_starts_with($title, $query)) {
             $score += 3000;
