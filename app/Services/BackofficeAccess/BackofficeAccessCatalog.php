@@ -44,6 +44,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SETTINGS->value,
                 AdminPermission::MANAGE_CENTER_SETTINGS->value,
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
+                AdminPermission::MANAGE_SITE_POPUP->value,
                 AdminPermission::MANAGE_CONSENT_CONFIGURATION->value,
                 AdminPermission::VIEW_CONSENT_RECORDS->value,
                 AdminPermission::MANAGE_USERS->value,
@@ -60,6 +61,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_APPLICATIONS->value,
                 AdminPermission::MANAGE_BLOG_POSTS->value,
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
+                AdminPermission::MANAGE_SITE_POPUP->value,
             ],
             AdminRole::SEO_MANAGER->value => [
                 AdminPermission::VIEW_BACKOFFICE->value,
@@ -73,6 +75,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_REDIRECTS->value,
                 AdminPermission::MANAGE_SETTINGS->value,
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
+                AdminPermission::MANAGE_SITE_POPUP->value,
                 AdminPermission::MANAGE_CONSENT_CONFIGURATION->value,
                 AdminPermission::PUBLISH_CONTENT->value,
                 AdminPermission::MANAGE_SEO_FIELDS->value,

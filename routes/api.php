@@ -18,6 +18,8 @@ use App\Http\Controllers\Api\V1\Admin\SiteIndexPageController as AdminSiteIndexP
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageMediaController as AdminSiteIndexPageMediaController;
 use App\Http\Controllers\Api\V1\Admin\SiteNavigationController as AdminSiteNavigationController;
 use App\Http\Controllers\Api\V1\Admin\SiteNavigationMediaController as AdminSiteNavigationMediaController;
+use App\Http\Controllers\Api\V1\Admin\SitePopupController as AdminSitePopupController;
+use App\Http\Controllers\Api\V1\Admin\SitePopupMediaController as AdminSitePopupMediaController;
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\ApplicationTypeController;
@@ -48,6 +50,7 @@ use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\Public\SiteIndexPageController as PublicSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Public\SiteNavigationController as PublicSiteNavigationController;
+use App\Http\Controllers\Api\V1\Public\SitePopupController as PublicSitePopupController;
 use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SettingsController;
@@ -58,6 +61,7 @@ Route::prefix('v1')->group(function (): void {
     Route::prefix('public')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
         Route::get('navigation', [PublicSiteNavigationController::class, 'show']);
+        Route::get('site/popup', [PublicSitePopupController::class, 'show']);
         Route::get('home', [PublicSiteController::class, 'home']);
         Route::get('site/home', [PublicSiteController::class, 'homePage']);
         Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index', 'news_index', 'health_pills_index']);
@@ -252,6 +256,11 @@ Route::prefix('v1')->group(function (): void {
                 Route::delete('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::post('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'storeAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::delete('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroyAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::get('site-popup', [AdminSitePopupController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::put('site-popup', [AdminSitePopupController::class, 'update'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::post('site-popup/image', [AdminSitePopupMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::delete('site-popup/image', [AdminSitePopupMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::post('site-popup/republish', [AdminSitePopupController::class, 'republish'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
                 Route::apiResource('pages', AdminPageController::class)

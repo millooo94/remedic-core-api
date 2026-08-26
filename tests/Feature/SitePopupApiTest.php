@@ -1,0 +1,126 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Enums\AdminRole;
+use App\Enums\UserRole;
+use App\Models\Page;
+use App\Models\SiteIndexPage;
+use App\Models\SitePopup;
+use App\Models\User;
+use App\Services\SitePopupInitializer;
+use Database\Seeders\BackofficeAccessSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Test;
+use Spatie\Permission\Models\Role;
+use Tests\TestCase;
+
+class SitePopupApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(BackofficeAccessSeeder::class);
+    }
+
+    #[Test]
+    public function initializer_is_a_missing_only_inactive_singleton(): void
+    {
+        $initializer = app(SitePopupInitializer::class);
+        $popup = $initializer->initialize();
+        $popup->update(['title' => 'Conservato', 'is_active' => false]);
+        $initializer->initialize();
+
+        $this->assertSame(1, SitePopup::query()->count());
+        $this->assertSame('Conservato', SitePopup::query()->firstOrFail()->title);
+        $this->assertSame(1, $popup->campaign_version);
+    }
+
+    #[Test]
+    public function admin_requires_its_granular_permission_and_validates_its_closed_schema(): void
+    {
+        $this->getJson('/api/v1/admin/site-popup')->assertUnauthorized();
+        $this->actingAsWebAdmin();
+        $this->getJson('/api/v1/admin/site-popup')->assertOk()->assertJsonPath('data.status', 'inactive')->assertJsonPath('data.campaign_version', 1);
+        $this->putJson('/api/v1/admin/site-popup', ['is_active' => false, 'start_at' => null, 'end_at' => null, 'eyebrow' => null, 'title' => null, 'body' => null, 'primary_cta_label' => null, 'primary_cta_target' => null, 'secondary_cta_label' => null, 'secondary_cta_target' => null, 'unknown' => true])->assertUnprocessable();
+        $this->putJson('/api/v1/admin/site-popup', $this->payload(['is_active' => true]))->assertUnprocessable();
+        $this->putJson('/api/v1/admin/site-popup', $this->payload(['start_at' => now()->addDay()->toIso8601String(), 'end_at' => now()->addHour()->toIso8601String()]))->assertUnprocessable();
+        $this->putJson('/api/v1/admin/site-popup', $this->payload(['primary_cta_label' => 'Vai']))->assertUnprocessable();
+        $this->putJson('/api/v1/admin/site-popup', $this->payload(['primary_cta_label' => 'Vai', 'primary_cta_target' => 'non-esiste']))->assertUnprocessable();
+    }
+
+    #[Test]
+    public function derived_statuses_and_public_eligibility_are_safe(): void
+    {
+        $this->actingAsWebAdmin();
+        $this->getJson('/api/v1/public/site/popup')->assertOk()->assertJsonPath('data', null);
+        $this->save(['is_active' => true, 'title' => 'Sempre'])->assertJsonPath('data.status', 'active');
+        $this->getJson('/api/v1/public/site/popup')->assertOk()->assertJsonPath('data.title', 'Sempre')->assertJsonMissingPath('data.is_active');
+        $this->save(['start_at' => now()->addHour()->toIso8601String()])->assertJsonPath('data.status', 'scheduled');
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data', null);
+        $this->save(['start_at' => now()->subHour()->toIso8601String(), 'end_at' => now()->addHour()->toIso8601String()])->assertJsonPath('data.status', 'active');
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data.campaign_version', 1);
+        $this->save(['end_at' => now()->subMinute()->toIso8601String()])->assertJsonPath('data.status', 'expired');
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data', null);
+        $this->save(['is_active' => false, 'end_at' => null])->assertJsonPath('data.status', 'inactive');
+    }
+
+    #[Test]
+    public function semantic_ctas_preserve_unpublished_configuration_and_omit_only_public_links(): void
+    {
+        $this->actingAsWebAdmin();
+        Page::query()->create(['internal_key' => 'center', 'title' => 'Centro', 'slug' => 'centro', 'is_active' => true, 'published_at' => now()->subMinute()]);
+        SiteIndexPage::query()->create(['internal_key' => 'news_index', 'title' => 'News', 'slug' => 'news', 'is_active' => false]);
+        $this->save(['is_active' => true, 'title' => 'Popup', 'primary_cta_label' => 'Centro', 'primary_cta_target' => 'center', 'secondary_cta_label' => 'News', 'secondary_cta_target' => 'news_index'])
+            ->assertJsonPath('data.primary_cta.href', '/centro')
+            ->assertJsonPath('data.secondary_cta.publication_state', 'suspended');
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data.primary_cta.href', '/centro')->assertJsonPath('data.secondary_cta', null);
+        $this->save(['secondary_cta_label' => 'Prenota', 'secondary_cta_target' => 'booking']);
+        $this->getJson('/api/v1/public/site/popup')->assertJsonPath('data.secondary_cta.action', 'booking');
+    }
+
+    #[Test]
+    public function republish_changes_only_campaign_version_and_media_is_managed(): void
+    {
+        Storage::fake('public');
+        $this->actingAsWebAdmin();
+        $this->save(['is_active' => true, 'title' => 'Campagna', 'primary_cta_label' => 'Prenota', 'primary_cta_target' => 'booking']);
+        $this->post('/api/v1/admin/site-popup/image', ['file' => UploadedFile::fake()->image('popup.jpg')])->assertOk()->assertJsonPath('data.image_url', fn (string $url): bool => str_contains($url, 'site-popup/image'));
+        $before = SitePopup::query()->firstOrFail()->only(['title', 'is_active', 'primary_cta_label', 'primary_cta_target', 'campaign_version', 'image_path']);
+        $this->postJson('/api/v1/admin/site-popup/republish')->assertOk()->assertJsonPath('data.campaign_version', 2)->assertJsonPath('data.title', 'Campagna');
+        $after = SitePopup::query()->firstOrFail();
+        $this->assertSame($before['title'], $after->title);
+        $this->assertSame($before['image_path'], $after->image_path);
+        $this->assertSame(2, $after->campaign_version);
+        $this->deleteJson('/api/v1/admin/site-popup/image')->assertOk()->assertJsonPath('data.image_url', null);
+    }
+
+    private function save(array $overrides = [])
+    {
+        return $this->putJson('/api/v1/admin/site-popup', $this->payload($overrides));
+    }
+
+    private function payload(array $overrides = []): array
+    {
+        $popup = SitePopup::query()->first();
+
+        return [...[
+            'is_active' => $popup?->is_active ?? false, 'start_at' => $popup?->start_at?->toIso8601String(), 'end_at' => $popup?->end_at?->toIso8601String(),
+            'eyebrow' => $popup?->eyebrow, 'title' => $popup?->title, 'body' => $popup?->body,
+            'primary_cta_label' => $popup?->primary_cta_label, 'primary_cta_target' => $popup?->primary_cta_target,
+            'secondary_cta_label' => $popup?->secondary_cta_label, 'secondary_cta_target' => $popup?->secondary_cta_target,
+        ], ...$overrides];
+    }
+
+    private function actingAsWebAdmin(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+        Sanctum::actingAs($user);
+    }
+}
