@@ -49,6 +49,8 @@ class CenterSettingResource extends JsonResource
             'social' => [
                 'facebook_url' => $this->facebook_url,
                 'instagram_url' => $this->instagram_url,
+                'tiktok_url' => $this->tiktok_url,
+                'youtube_url' => $this->youtube_url,
                 'linkedin_url' => $this->linkedin_url,
             ],
             'territory' => [

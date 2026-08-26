@@ -523,6 +523,8 @@ class SiteController extends Controller
             'social' => [
                 'facebook_url' => $settings->facebook_url,
                 'instagram_url' => $settings->instagram_url,
+                'tiktok_url' => $settings->tiktok_url,
+                'youtube_url' => $settings->youtube_url,
                 'linkedin_url' => $settings->linkedin_url,
             ],
             'territory' => [

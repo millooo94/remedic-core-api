@@ -17,7 +17,7 @@ class CenterProfileService
         'clinic_address', 'clinic_street_name', 'clinic_street_number', 'clinic_postal_code',
         'clinic_city', 'clinic_province', 'clinic_region', 'clinic_country_name', 'clinic_country',
         'google_place_id', 'latitude', 'longitude', 'google_maps_url', 'opening_hours', 'timezone',
-        'facebook_url', 'instagram_url', 'linkedin_url', 'primary_city', 'primary_area',
+        'facebook_url', 'instagram_url', 'tiktok_url', 'youtube_url', 'linkedin_url', 'primary_city', 'primary_area',
         'served_areas', 'served_territory', 'area_served_text', 'google_review_url',
         'parking_label', 'parking_address', 'parking_description',
     ];
@@ -51,7 +51,7 @@ class CenterProfileService
             'google_maps_url' => data_get($payload, 'address.google_maps_url'),
             'opening_hours' => $payload['opening_hours'] ?? null,
             'timezone' => data_get($payload, 'opening_hours.timezone', 'Europe/Rome'),
-            ...Arr::only($payload['social'] ?? [], ['facebook_url', 'instagram_url', 'linkedin_url']),
+            ...Arr::only($payload['social'] ?? [], ['facebook_url', 'instagram_url', 'tiktok_url', 'youtube_url', 'linkedin_url']),
             ...Arr::only($payload['territory'] ?? [], ['primary_city', 'primary_area', 'served_areas', 'served_territory', 'area_served_text']),
             'google_review_url' => data_get($payload, 'links.google_review_url'),
             'parking_label' => data_get($payload, 'parking.label'),

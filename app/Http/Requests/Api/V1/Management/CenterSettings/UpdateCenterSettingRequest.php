@@ -49,6 +49,8 @@ class UpdateCenterSettingRequest extends FormRequest
             'social' => ['required', 'array'],
             'social.facebook_url' => $url,
             'social.instagram_url' => $url,
+            'social.tiktok_url' => $url,
+            'social.youtube_url' => $url,
             'social.linkedin_url' => $url,
             'territory' => ['required', 'array'],
             'territory.primary_city' => $nullableString,

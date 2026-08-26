@@ -37,6 +37,8 @@ class SiteSetting extends Model
         'default_locality_phrase',
         'facebook_url',
         'instagram_url',
+        'tiktok_url',
+        'youtube_url',
         'linkedin_url',
         'whatsapp_number',
         'logo_path',

@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as Adm
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageController as AdminSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageMediaController as AdminSiteIndexPageMediaController;
+use App\Http\Controllers\Api\V1\Admin\SiteNavigationController as AdminSiteNavigationController;
+use App\Http\Controllers\Api\V1\Admin\SiteNavigationMediaController as AdminSiteNavigationMediaController;
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\ApplicationTypeController;
@@ -45,6 +47,7 @@ use App\Http\Controllers\Api\V1\ProfessionalTimeBlockController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\Public\SiteIndexPageController as PublicSiteIndexPageController;
+use App\Http\Controllers\Api\V1\Public\SiteNavigationController as PublicSiteNavigationController;
 use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SettingsController;
@@ -54,6 +57,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::prefix('public')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
+        Route::get('navigation', [PublicSiteNavigationController::class, 'show']);
         Route::get('home', [PublicSiteController::class, 'home']);
         Route::get('site/home', [PublicSiteController::class, 'homePage']);
         Route::get('site-indexes/{key}', [PublicSiteIndexPageController::class, 'show'])->whereIn('key', ['medical_areas_index', 'equipe_index', 'checkups_index', 'diagnostics_index', 'aesthetic_medicine_index', 'news_index', 'health_pills_index']);
@@ -239,6 +243,15 @@ Route::prefix('v1')->group(function (): void {
                 Route::put('index-pages/{siteIndexPage}', [AdminSiteIndexPageController::class, 'update'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::post('index-pages/{siteIndexPage}/media/{slot}', [AdminSiteIndexPageMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::delete('index-pages/{siteIndexPage}/media/{slot}', [AdminSiteIndexPageMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::get('site-navigation', [AdminSiteNavigationController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::put('site-navigation/header', [AdminSiteNavigationController::class, 'updateHeader'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::put('site-navigation/center-mega-menu', [AdminSiteNavigationController::class, 'updateCenterMegaMenu'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::put('site-navigation/medical-areas-mega-menu', [AdminSiteNavigationController::class, 'updateMedicalAreasMegaMenu'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::put('site-navigation/footer', [AdminSiteNavigationController::class, 'updateFooter'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::post('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::delete('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::post('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'storeAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::delete('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroyAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
                 Route::apiResource('pages', AdminPageController::class)
