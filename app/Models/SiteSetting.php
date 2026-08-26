@@ -9,6 +9,11 @@ class SiteSetting extends Model
 {
     use HasFactory;
 
+    protected $attributes = [
+        'seo_indexing_enabled' => true,
+        'seo_sitemap_enabled' => true,
+    ];
+
     protected $fillable = [
         'legacy_backend_id',
         'site_name',
@@ -43,6 +48,8 @@ class SiteSetting extends Model
         'whatsapp_number',
         'logo_path',
         'default_og_image_path',
+        'seo_indexing_enabled',
+        'seo_sitemap_enabled',
         'opening_hours',
         'vat_number',
         'legal_company_name',
@@ -82,6 +89,8 @@ class SiteSetting extends Model
             'served_areas' => 'array',
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',
+            'seo_indexing_enabled' => 'boolean',
+            'seo_sitemap_enabled' => 'boolean',
             'cmp_enabled' => 'boolean',
             'cmp_banner_enabled' => 'boolean',
             'cmp_consent_cookie_ttl_days' => 'integer',

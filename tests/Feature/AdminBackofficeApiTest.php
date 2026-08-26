@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AdminPermission;
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use App\Models\ConsentPolicyVersion;
@@ -359,6 +360,7 @@ class AdminBackofficeApiTest extends TestCase
             'role' => UserRole::Admin,
         ]);
         $user->assignRole(Role::findByName(AdminRole::SEO_MANAGER->value, 'web'));
+        $user->givePermissionTo(AdminPermission::MANAGE_REDIRECTS->value);
 
         Sanctum::actingAs($user);
 
@@ -380,10 +382,10 @@ class AdminBackofficeApiTest extends TestCase
         $this->putJson("/api/v1/admin/redirects/{$redirectId}", [
             'from_path' => '/vecchia-pagina',
             'to_path' => 'https://example.com/destinazione',
-            'http_code' => 308,
+            'http_code' => 302,
             'is_active' => false,
         ])->assertOk()
-            ->assertJsonPath('http_code', 308)
+            ->assertJsonPath('http_code', 302)
             ->assertJsonPath('is_active', false);
 
         $this->deleteJson("/api/v1/admin/redirects/{$redirectId}")
@@ -475,10 +477,10 @@ class AdminBackofficeApiTest extends TestCase
 
         $this->getJson('/api/v1/public/redirects/resolve?path=%2Fvecchio-percorso')
             ->assertOk()
-            ->assertJsonPath('data.from_path', '/vecchio-percorso')
-            ->assertJsonPath('data.to_path', '/nuovo-percorso')
-            ->assertJsonPath('data.http_code', 301)
-            ->assertJsonPath('data.is_automatic', false);
+            ->assertJsonPath('data.matched', true)
+            ->assertJsonPath('data.destination', '/nuovo-percorso')
+            ->assertJsonPath('data.status_code', 301)
+            ->assertJsonMissingPath('data.source_id');
     }
 
     #[Test]

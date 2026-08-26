@@ -72,12 +72,17 @@ class Redirect extends Model
     public static function normalizePathValue(string $value): string
     {
         $path = trim($value);
-
-        if ($path === '' || $path === '/') {
+        if ($path === '' || str_contains($path, '?') || str_contains($path, '#') || preg_match('#^[a-z][a-z0-9+.-]*:#i', $path)) {
             return '/';
         }
 
-        return '/'.ltrim($path, '/');
+        if ($path === '/') {
+            return '/';
+        }
+
+        $path = preg_replace('#/{2,}#', '/', '/'.ltrim($path, '/')) ?: '/';
+
+        return $path === '/' ? '/' : rtrim($path, '/');
     }
 
     public static function normalizeTargetValue(string $value): string
@@ -88,10 +93,23 @@ class Redirect extends Model
             return '/';
         }
 
-        if (filter_var($target, FILTER_VALIDATE_URL)) {
-            return $target;
+        if (self::isExternalTarget($target)) {
+            $parts = parse_url($target);
+            $path = isset($parts['path']) ? self::normalizePathValue($parts['path']) : '/';
+
+            return strtolower((string) $parts['scheme']).'://'.strtolower((string) $parts['host'])
+                .(isset($parts['port']) ? ':'.$parts['port'] : '').$path
+                .(isset($parts['query']) ? '?'.$parts['query'] : '');
         }
 
         return self::normalizePathValue($target);
+    }
+
+    public static function isExternalTarget(string $value): bool
+    {
+        $parts = parse_url(trim($value));
+
+        return is_array($parts) && isset($parts['scheme'], $parts['host'])
+            && in_array(strtolower((string) $parts['scheme']), ['http', 'https'], true);
     }
 }

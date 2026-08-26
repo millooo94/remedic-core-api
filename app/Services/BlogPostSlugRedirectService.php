@@ -15,7 +15,7 @@ class BlogPostSlugRedirectService
             Redirect::SOURCE_TYPE_BLOG_POST,
             $post->id,
             '/blog/'.$previousSlug,
-            '/blog/'.$currentSlug,
+            $post->canonicalHref(),
         );
     }
 }

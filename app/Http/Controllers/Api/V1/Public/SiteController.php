@@ -21,6 +21,7 @@ use App\Services\ConventionPartnerPublicProjection;
 use App\Services\HomePagePublicProjection;
 use App\Services\LegalDocumentPublicProjection;
 use App\Services\MedicalAreaPublicService;
+use App\Services\PublicSeoResolver;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Pages\LegalDocumentRegistry;
@@ -41,6 +42,7 @@ class SiteController extends Controller
         private readonly LegalDocumentPublicProjection $legalDocuments,
         private readonly HomePagePublicProjection $homePage,
         private readonly ConsentConfigurationInitializer $consentConfiguration,
+        private readonly PublicSeoResolver $seo,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -100,8 +102,19 @@ class SiteController extends Controller
     public function homePage(Request $request): JsonResponse
     {
         $page = Page::query()->where('internal_key', Page::HOME_INTERNAL_KEY)->active()->published()->firstOrFail();
+        $data = $this->homePage->project($page, $request);
+        $data['seo'] = $this->seo->resolve([
+            'title' => $page->title,
+            'description' => $page->excerpt ?: $page->intro_text,
+            'seo_title' => $page->seo_title,
+            'seo_description' => $page->seo_description,
+            'robots' => $page->robots,
+            'og_title' => $page->og_title,
+            'og_description' => $page->og_description,
+            'image_url' => $this->resolveMediaPathOrUrl($page->og_image_path ?: $page->hero_image_path, $request),
+        ], '/', $request);
 
-        return response()->json(['data' => $this->homePage->project($page, $request)]);
+        return response()->json(['data' => $data]);
     }
 
     public function search(Request $request): JsonResponse
@@ -384,20 +397,11 @@ class SiteController extends Controller
             ->where('from_path', $path)
             ->first();
 
-        if ($redirect === null) {
-            return response()->json([
-                'data' => null,
-            ], 404);
-        }
-
         return response()->json([
-            'data' => [
-                'from_path' => $redirect->from_path,
-                'to_path' => $redirect->to_path,
-                'http_code' => (int) $redirect->http_code,
-                'is_automatic' => (bool) $redirect->is_automatic,
-                'source_type' => $redirect->source_type,
-                'source_id' => $redirect->source_id !== null ? (int) $redirect->source_id : null,
+            'data' => $redirect === null ? ['matched' => false] : [
+                'matched' => true,
+                'destination' => $redirect->to_path,
+                'status_code' => (int) $redirect->http_code,
             ],
         ]);
     }
@@ -673,14 +677,17 @@ class SiteController extends Controller
             'available_services' => array_map(fn (array $service): string => $service['name'], $services),
             'sections' => $this->mapEquipeSections($professional, $profile, $request),
             'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
-            'seo' => [
-                'title' => $profile?->seo_title,
-                'description' => $profile?->seo_description,
-                'h1' => $profile?->seo_h1,
-                'canonical_url' => $profile?->canonical_url,
-                'robots' => $profile?->robots?->value ?? $profile?->robots,
+            'seo' => [...$this->seo->resolve([
+                'title' => $this->resolveProfessionalDisplayName($professional, $profile),
+                'description' => $profile?->short_bio,
+                'seo_title' => $profile?->seo_title,
+                'seo_description' => $profile?->seo_description,
+                'robots' => $profile?->robots,
                 'og_title' => $profile?->og_title,
                 'og_description' => $profile?->og_description,
+                'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
+            ], '/equipe/'.$profile?->slug, $request),
+                'h1' => $profile?->seo_h1,
             ],
         ];
     }
@@ -862,14 +869,17 @@ class SiteController extends Controller
             'content_type' => $post->content_type,
             'editorial_category' => $post->editorial_category,
             'editorial_category_label' => BlogPost::editorialCategories($post->content_type)[$post->editorial_category] ?? null,
-            'seo' => [
-                'title' => $post->seo_title,
-                'description' => $post->seo_description,
-                'h1' => $post->seo_h1,
-                'canonical_url' => $post->canonical_url,
-                'robots' => $post->robots?->value ?? $post->robots,
+            'seo' => [...$this->seo->resolve([
+                'title' => $post->title,
+                'description' => $post->excerpt ?: $post->intro_text,
+                'seo_title' => $post->seo_title,
+                'seo_description' => $post->seo_description,
+                'robots' => $post->robots,
                 'og_title' => $post->og_title,
                 'og_description' => $post->og_description,
+                'image_url' => $this->resolveMediaPathOrUrl($post->cover_image, request()),
+            ], $post->canonicalHref(), request(), in_array($post->content_type, ['news', 'health_pill'], true) ? 'article' : 'website'),
+                'h1' => $post->seo_h1,
             ],
         ];
     }
@@ -909,27 +919,19 @@ class SiteController extends Controller
                     'answer' => $faq->answer,
                 ])->values()->all()
                 : [],
-            'seo' => [
-                'title' => $page->seo_title,
-                'description' => $page->seo_description,
-                'h1' => $page->seo_h1,
-                'canonical_url' => $page->canonical_url,
-                'robots' => $page->robots?->value ?? $page->robots,
+            'seo' => [...$this->seo->resolve([
+                'title' => $page->title,
+                'description' => $page->excerpt ?: $page->intro_text,
+                'seo_title' => $page->seo_title,
+                'seo_description' => $page->seo_description,
+                'robots' => $page->robots,
                 'og_title' => $page->og_title,
                 'og_description' => $page->og_description,
-                'og_image_url' => $this->resolveMediaPathOrUrl(
-                    $page->og_image_path ?: $page->hero_image_path ?: $defaultOgImagePath,
-                    request()
-                ),
+                'image_url' => $this->resolveMediaPathOrUrl($page->og_image_path ?: $page->hero_image_path ?: $defaultOgImagePath, request()),
+            ], $page->canonical_url ?: '/'.$page->slug, request()),
+                'h1' => $page->seo_h1,
                 'twitter_title' => $page->twitter_title,
                 'twitter_description' => $page->twitter_description,
-                'twitter_image_url' => $this->resolveMediaPathOrUrl(
-                    $page->twitter_image_path ?: $page->og_image_path ?: $page->hero_image_path ?: $defaultOgImagePath,
-                    request()
-                ),
-                'author' => $page->meta_author,
-                'creator' => $page->meta_creator,
-                'keywords' => $page->meta_keywords,
             ],
         ];
     }

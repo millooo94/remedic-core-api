@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\Admin\NewsletterSubscriberController as AdminNew
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
+use App\Http\Controllers\Api\V1\Admin\SeoConfigurationController as AdminSeoConfigurationController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageController as AdminSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Admin\SiteIndexPageMediaController as AdminSiteIndexPageMediaController;
 use App\Http\Controllers\Api\V1\Admin\SiteNavigationController as AdminSiteNavigationController;
@@ -49,6 +50,7 @@ use App\Http\Controllers\Api\V1\ProfessionalTimeBlockController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PromotionController;
 use App\Http\Controllers\Api\V1\Public\ConsentController as PublicConsentController;
+use App\Http\Controllers\Api\V1\Public\SeoController as PublicSeoController;
 use App\Http\Controllers\Api\V1\Public\SiteController as PublicSiteController;
 use App\Http\Controllers\Api\V1\Public\SiteIndexPageController as PublicSiteIndexPageController;
 use App\Http\Controllers\Api\V1\Public\SiteNavigationController as PublicSiteNavigationController;
@@ -62,6 +64,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::prefix('public')->group(function (): void {
         Route::get('site-settings', [PublicSiteController::class, 'settings']);
+        Route::get('seo', [PublicSeoController::class, 'configuration']);
+        Route::get('seo/robots', [PublicSeoController::class, 'robots']);
+        Route::get('seo/sitemap', [PublicSeoController::class, 'sitemap']);
         Route::get('consent/configuration', [PublicConsentController::class, 'configuration']);
         Route::post('consents', [PublicConsentController::class, 'store'])->middleware('throttle:consent-mutations');
         Route::get('consents/{publicId}', [PublicConsentController::class, 'show']);
@@ -302,6 +307,14 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::apiResource('redirects', AdminRedirectController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_REDIRECTS->value);
+                Route::get('seo', [AdminSeoConfigurationController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SEO_FIELDS->value);
+                Route::put('seo', [AdminSeoConfigurationController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SEO_FIELDS->value);
+                Route::post('seo/social-image', [AdminSeoConfigurationController::class, 'uploadSocialImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SEO_FIELDS->value);
+                Route::delete('seo/social-image', [AdminSeoConfigurationController::class, 'deleteSocialImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SEO_FIELDS->value);
                 Route::get('aree-mediche', [AdminMedicalAreaController::class, 'index'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::get('aree-mediche/{specialization}', [AdminMedicalAreaController::class, 'show'])

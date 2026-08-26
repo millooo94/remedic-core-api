@@ -89,15 +89,20 @@ class CheckupPublicContentService
             ->map(fn ($section) => $this->section($section, $checkup, $profile, $included, $professionals, $faqs, $related, $request))
             ->filter()->values()->all();
 
-        $seo = [
-            'title' => $profile->seo_title, 'local_title' => $profile->local_seo_title,
-            'description' => $profile->seo_description, 'local_description' => $profile->local_seo_description,
+        $seo = [...app(PublicSeoResolver::class)->resolve([
+            'title' => $checkup->display_name,
+            'description' => $profile->short_description,
+            'seo_title' => $profile->seo_title,
+            'seo_description' => $profile->seo_description,
+            'robots' => $profile->robots,
+            'og_title' => $profile->og_title,
+            'og_description' => $profile->og_description,
+            'image_url' => PublicMediaUrl::fromPublicDisk($checkup->featured_image_path, $request),
+        ], '/check-up/'.$profile->public_slug, $request),
+            'local_title' => $profile->local_seo_title,
+            'local_description' => $profile->local_seo_description,
             'h1' => $profile->seo_h1, 'local_h1' => $profile->local_seo_h1,
             'is_local_enabled' => (bool) $profile->is_local_seo_enabled,
-            'canonical_url' => $profile->canonical_url,
-            'robots' => $profile->robots?->value ?? $profile->robots,
-            'og_title' => $profile->og_title, 'og_description' => $profile->og_description,
-            'og_image_url' => PublicMediaUrl::fromPublicDisk($checkup->featured_image_path, $request),
         ];
 
         return [

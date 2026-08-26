@@ -83,7 +83,6 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_CONVENTIONS->value,
                 AdminPermission::MANAGE_APPLICATIONS->value,
                 AdminPermission::MANAGE_BLOG_POSTS->value,
-                AdminPermission::MANAGE_REDIRECTS->value,
                 AdminPermission::MANAGE_SETTINGS->value,
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
                 AdminPermission::MANAGE_SITE_POPUP->value,

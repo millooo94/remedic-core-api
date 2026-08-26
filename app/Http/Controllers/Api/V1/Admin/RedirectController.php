@@ -8,11 +8,14 @@ use App\Http\Requests\Api\V1\Admin\Redirects\StoreRedirectRequest;
 use App\Http\Requests\Api\V1\Admin\Redirects\UpdateRedirectRequest;
 use App\Http\Resources\Api\V1\Admin\RedirectResource;
 use App\Models\Redirect;
+use App\Services\RedirectInvariantService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class RedirectController extends Controller
 {
+    public function __construct(private readonly RedirectInvariantService $invariants) {}
+
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
         $query = Redirect::query();
@@ -49,6 +52,11 @@ class RedirectController extends Controller
 
     public function store(StoreRedirectRequest $request): RedirectResource
     {
+        $this->invariants->assertValid(
+            (string) $request->validated('from_path'),
+            (string) $request->validated('to_path'),
+            (bool) $request->boolean('is_active', true),
+        );
         $redirect = Redirect::create([
             ...$request->validated(),
             'is_automatic' => false,
@@ -66,6 +74,12 @@ class RedirectController extends Controller
 
     public function update(UpdateRedirectRequest $request, Redirect $redirect): RedirectResource
     {
+        $this->invariants->assertValid(
+            (string) $request->validated('from_path'),
+            (string) $request->validated('to_path'),
+            (bool) $request->boolean('is_active', true),
+            $redirect->id,
+        );
         $redirect->update($request->validated());
 
         return new RedirectResource($redirect->fresh());

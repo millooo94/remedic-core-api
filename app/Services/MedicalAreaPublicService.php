@@ -122,19 +122,21 @@ class MedicalAreaPublicService
         return [
             ...$this->listItem($profile, $request),
             'sections' => $sections,
-            'seo' => [
-                'title' => $profile->seo_title,
+            'seo' => [...app(PublicSeoResolver::class)->resolve([
+                'title' => $master->name,
+                'description' => $profile->short_description,
+                'seo_title' => $profile->seo_title,
+                'seo_description' => $profile->seo_description,
+                'robots' => $profile->robots,
+                'og_title' => $profile->og_title,
+                'og_description' => $profile->og_description,
+                'image_url' => PublicMediaUrl::fromPublicDisk($master->featured_image_path, $request),
+            ], '/aree-mediche/'.$profile->slug, $request),
                 'local_title' => $profile->local_seo_title,
-                'description' => $profile->seo_description,
                 'local_description' => $profile->local_seo_description,
                 'h1' => $profile->seo_h1,
                 'local_h1' => $profile->local_seo_h1,
                 'is_local_enabled' => (bool) $profile->is_local_seo_enabled,
-                'canonical_url' => $profile->canonical_url,
-                'robots' => $profile->robots?->value ?? $profile->robots,
-                'og_title' => $profile->og_title,
-                'og_description' => $profile->og_description,
-                'og_image_url' => PublicMediaUrl::fromPublicDisk($master->featured_image_path, $request),
             ],
         ];
     }

@@ -8,6 +8,7 @@ use App\Models\SiteIndexPage;
 use App\Services\CheckupPublicContentService;
 use App\Services\EditorialIndexProjectionService;
 use App\Services\MedicalAreaPublicService;
+use App\Services\PublicSeoResolver;
 use App\Services\SiteIndexProjectionService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\SiteIndexes\SiteIndexPageRegistry;
@@ -15,7 +16,7 @@ use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial) {}
+    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo) {}
 
     public function show(Request $request, string $key)
     {
@@ -42,7 +43,7 @@ class SiteIndexPageController extends Controller
             $data['final_cta'] = ['action' => 'booking'];
         }
 
-        return response()->json(['data' => ['internal_key' => $key, 'canonical_url' => $page->canonical_url, 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => ['title' => $page->seo_title, 'description' => $page->seo_description, 'h1' => $page->seo_h1, 'canonical_url' => $page->canonical_url, 'robots' => $page->robots], ...$data]]);
+        return response()->json(['data' => ['internal_key' => $key, 'canonical_url' => $page->canonical_url, 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $page->canonical_url ?: '/'.$page->slug, $request), 'h1' => $page->seo_h1], ...$data]]);
     }
 
     private function content(SiteIndexPage $page): array
