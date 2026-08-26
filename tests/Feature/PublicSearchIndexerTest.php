@@ -123,6 +123,14 @@ class PublicSearchIndexerTest extends TestCase
         app(PublicSearchIndexer::class)->reindex($checkupProfile->fresh());
 
         $this->assertDatabaseHas('search_documents', ['source_type' => CheckupWebProfile::class, 'source_id' => $checkupProfile->id, 'locale' => 'en', 'href' => '/en/check-ups/english-check-up', 'title' => 'English check-up']);
+
+        $profile->translations()->where('locale', 'en')->firstOrFail()->update(['slug' => 'renamed-english-service']);
+        app(PublicSearchIndexer::class)->reindex($profile->fresh());
+        $this->assertDatabaseHas('search_documents', ['source_type' => ServiceWebProfile::class, 'source_id' => $profile->id, 'locale' => 'en', 'href' => '/en/services/renamed-english-service']);
+
+        $profile->update(['is_web_enabled' => false]);
+        app(PublicSearchIndexer::class)->reindex($profile->fresh());
+        $this->assertDatabaseMissing('search_documents', ['source_type' => ServiceWebProfile::class, 'source_id' => $profile->id]);
     }
 
     private function page(string $title, string $slug): Page
