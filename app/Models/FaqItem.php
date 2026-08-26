@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\SynchronizesLocalizedStructure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class FaqItem extends Model
 {
     use HasFactory;
+    use SynchronizesLocalizedStructure;
 
     protected $fillable = [
         'legacy_backend_id',
@@ -45,5 +48,10 @@ class FaqItem extends Model
     public function faqable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    public function translations(): HasMany
+    {
+        return $this->hasMany(FaqItemTranslation::class);
     }
 }

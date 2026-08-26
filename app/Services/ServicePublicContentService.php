@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\ProfessionalPublicProfile;
 use App\Models\Service;
 use App\Models\ServiceWebProfile;
+use App\Models\SpecializationWebProfile;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Services\PrimarySpecializationResolver;
 use App\Support\Services\ServiceSectionDefinition;
@@ -14,12 +16,15 @@ class ServicePublicContentService
 {
     public function query(): Builder
     {
-        return Service::query()
+        $locale = app(PublicLocaleResolver::class)->resolve(request());
+        $query = Service::query()
             ->effectivelyVisible()
             ->with([
-                'webProfile.sections' => fn ($query) => $query->active()->ordered(),
-                'webProfile.faqs' => fn ($query) => $query->active()->ordered(),
+                'webProfile.translations',
+                'webProfile.sections' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'webProfile.faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
                 'specializations.webProfile',
+                'specializations.webProfile.translations',
                 'professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
@@ -29,6 +34,7 @@ class ServicePublicContentService
                     ->orderBy('public_sort_order')
                     ->orderBy('id'),
                 'professionalServices.professional.publicProfile',
+                'professionalServices.professional.publicProfile.translations',
                 'professionalServices.professional.specializations',
             ])
             ->orderBy(
@@ -39,16 +45,19 @@ class ServicePublicContentService
             )
             ->orderBy('display_name')
             ->orderBy('id');
+
+        return $query->whereHas('webProfile', fn (Builder $profiles) => app(LocalizedContentResolver::class)->publicTranslations($profiles, $locale));
     }
 
     public function listItem(Service $service, Request $request): array
     {
-        $profile = $service->webProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($service->webProfile, $locale) ?? abort(404);
         $primary = app(PrimarySpecializationResolver::class)->resolve($service);
 
         return [
             'slug' => $profile->public_slug,
-            'name' => $service->publicLabel(),
+            'name' => $profile->localizedTranslation?->title ?: $service->publicLabel(),
             'short_description' => $profile->short_description ?: '',
             'price' => $service->importo_prestazione,
             'duration_minutes' => $service->default_duration_minutes,
@@ -61,11 +70,14 @@ class ServicePublicContentService
 
     public function detail(Service $service, Request $request): array
     {
-        $profile = $service->webProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($service->webProfile, $locale) ?? abort(404);
+        abort_unless(app(LocalizedContentResolver::class)->hasCompleteStructure($profile, $locale), 404);
         $primary = app(PrimarySpecializationResolver::class)->resolve($service);
         $professionals = $service->professionalServices
             ->filter(fn ($link) => $link->professional?->publicProfile !== null)
             ->map(fn ($link) => $this->professional($link->professional, $request))
+            ->filter()
             ->values();
         $areas = $service->specializations
             ->map(fn ($area) => $this->publicArea($area, $request))
@@ -87,7 +99,7 @@ class ServicePublicContentService
 
         return [
             'slug' => $profile->public_slug,
-            'name' => $service->publicLabel(),
+            'name' => $this->localizedTitle($profile, $service->publicLabel()),
             'short_description' => $profile->short_description ?: '',
             'price' => $service->importo_prestazione,
             'duration_minutes' => $service->default_duration_minutes,
@@ -98,7 +110,7 @@ class ServicePublicContentService
             'professionals' => $professionals->all(),
             'sections' => $sections,
             'seo' => [...app(PublicSeoResolver::class)->resolve([
-                'title' => $service->publicLabel(),
+                'title' => $this->localizedTitle($profile, $service->publicLabel()),
                 'description' => $profile->short_description,
                 'seo_title' => $profile->seo_title,
                 'seo_description' => $profile->seo_description,
@@ -106,7 +118,7 @@ class ServicePublicContentService
                 'og_title' => $profile->og_title,
                 'og_description' => $profile->og_description,
                 'image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
-            ], '/prestazioni/'.$profile->public_slug, $request),
+            ], app(LocalizedRouteRegistry::class)->path('services', $locale, $profile->public_slug), $request),
                 'local_title' => $profile->local_seo_title,
                 'local_description' => $profile->local_seo_description,
                 'h1' => $profile->seo_h1,
@@ -161,7 +173,7 @@ class ServicePublicContentService
         $data = match ($section->key) {
             'hero' => [
                 'eyebrow' => 'PRESTAZIONE',
-                'name' => $service->publicLabel(),
+                'name' => $this->localizedTitle($profile, $service->publicLabel()),
                 'short_description' => $profile->short_description,
                 'price' => $service->importo_prestazione,
                 'duration_minutes' => $service->default_duration_minutes,
@@ -205,28 +217,42 @@ class ServicePublicContentService
         if ($area === null || ! $area->is_active || $profile === null || ! $profile->is_web_enabled) {
             return null;
         }
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($profile, $locale);
+        if ($profile === null) {
+            return null;
+        }
 
         return [
-            'name' => $area->name,
+            'name' => $this->localizedTitle($profile, $area->name),
             'slug' => $profile->slug,
-            'href' => '/aree-mediche/'.$profile->slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('medical_areas', $locale, $profile->slug),
             'icon_url' => PublicMediaUrl::fromPublicDisk($area->icon_path, $request),
         ];
     }
 
-    private function professional($professional, Request $request): array
+    private function professional($professional, Request $request): ?array
     {
-        $profile = $professional->publicProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($professional->publicProfile, $locale);
+        if ($profile === null) {
+            return null;
+        }
         $primary = $professional->specializations
             ->sortBy(fn ($area) => [($area->pivot?->is_primary ?? false) ? 0 : 1, $area->pivot?->sort_order ?? PHP_INT_MAX, $area->id])
             ->first();
 
         return [
             'slug' => $profile->slug,
-            'name' => trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
+            'name' => $this->localizedTitle($profile, trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name])))),
             'short_bio' => $profile->short_bio ?: '',
             'specialization' => $primary?->name,
             'image_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path ?: $profile->profile_image_path, $request),
         ];
+    }
+
+    private function localizedTitle(ServiceWebProfile|SpecializationWebProfile|ProfessionalPublicProfile $profile, string $fallback): string
+    {
+        return $profile->localizedTranslation?->title ?: $fallback;
     }
 }

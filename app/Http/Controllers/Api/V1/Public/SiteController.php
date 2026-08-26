@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Public;
 
+use App\Enums\SupportedLocale;
 use App\Http\Controllers\Controller;
 use App\Models\ApplicationType;
 use App\Models\BlogPost;
@@ -20,7 +21,9 @@ use App\Services\ContactCenterDataResolver;
 use App\Services\ConventionPartnerPublicProjection;
 use App\Services\HomePagePublicProjection;
 use App\Services\LegalDocumentPublicProjection;
+use App\Services\LocalizedContentResolver;
 use App\Services\MedicalAreaPublicService;
+use App\Services\PublicLocaleResolver;
 use App\Services\PublicSeoResolver;
 use App\Services\ServicePublicContentService;
 use App\Support\Media\PublicMediaUrl;
@@ -43,10 +46,13 @@ class SiteController extends Controller
         private readonly HomePagePublicProjection $homePage,
         private readonly ConsentConfigurationInitializer $consentConfiguration,
         private readonly PublicSeoResolver $seo,
+        private readonly PublicLocaleResolver $locales,
+        private readonly LocalizedContentResolver $localized,
     ) {}
 
     public function settings(Request $request): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $settings = SiteSetting::current();
         $specializations = $this->medicalAreaContent->query()
             ->limit(7)
@@ -55,14 +61,14 @@ class SiteController extends Controller
         return response()->json([
             'data' => [
                 'settings' => $this->mapSiteSettings($settings, $request),
-                'navigation' => [
+                'navigation' => $locale === SupportedLocale::IT ? [
                     ['label' => 'Chi siamo', 'href' => '/chi-siamo'],
                     ['label' => 'Aree mediche', 'href' => '/aree-mediche'],
                     ['label' => 'Equipe', 'href' => '/equipe'],
                     ['label' => 'Blog', 'href' => '/blog'],
                     ['label' => 'Contatti', 'href' => '/contatti'],
-                ],
-                'footer_navigation' => [
+                ] : [],
+                'footer_navigation' => $locale === SupportedLocale::IT ? [
                     ['label' => 'Chi siamo', 'href' => '/chi-siamo'],
                     ['label' => 'Aree mediche', 'href' => '/aree-mediche'],
                     ['label' => 'Prestazioni', 'href' => '/prestazioni'],
@@ -70,7 +76,7 @@ class SiteController extends Controller
                     ['label' => 'Medicina estetica', 'href' => '/medicina-estetica'],
                     ['label' => 'Blog', 'href' => '/blog'],
                     ['label' => 'Contatti', 'href' => '/contatti'],
-                ],
+                ] : [],
                 'footer_specializations' => $specializations->map(fn (SpecializationWebProfile $profile): array => [
                     'label' => $profile->specialization->name,
                     'href' => '/aree-mediche/'.$profile->slug,
@@ -81,6 +87,7 @@ class SiteController extends Controller
 
     public function home(Request $request): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $specializations = $this->medicalAreaContent->query()->limit(8)->get();
         $services = $this->servicesBaseQuery()->limit(7)->get();
 
@@ -94,15 +101,19 @@ class SiteController extends Controller
                 'specializations' => $specializations->map(fn (SpecializationWebProfile $profile): array => $this->medicalAreaContent->listItem($profile, $request))->values()->all(),
                 'services' => $services->map(fn (Service $service): array => $this->serviceContent->legacyListItem($service, $request))->values()->all(),
                 'professionals' => $professionals,
-                'blog_posts' => $blogPosts->map(fn (BlogPost $post): array => $this->mapBlogListItem($post))->values()->all(),
+                'blog_posts' => $blogPosts->map(fn (BlogPost $post): array => $this->mapBlogListItem($this->localized->project($post, $locale) ?? abort(404)))->values()->all(),
             ],
         ]);
     }
 
     public function homePage(Request $request): JsonResponse
     {
-        $page = Page::query()->where('internal_key', Page::HOME_INTERNAL_KEY)->active()->published()->firstOrFail();
+        $locale = $this->locales->resolve($request);
+        $page = Page::query()->with(['translations', 'sections.translations', 'faqs.translations'])->where('internal_key', Page::HOME_INTERNAL_KEY)->active()->published()->firstOrFail();
+        $page = $this->localized->project($page, $locale) ?? abort(404);
+        abort_unless($this->localized->hasCompleteStructure($page, $locale), 404);
         $data = $this->homePage->project($page, $request);
+        $data['locale'] = $locale->value;
         $data['seo'] = $this->seo->resolve([
             'title' => $page->title,
             'description' => $page->excerpt ?: $page->intro_text,
@@ -214,8 +225,9 @@ class SiteController extends Controller
 
     public function specialization(Request $request, string $slug): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $profile = $this->medicalAreaContent->query()
-            ->where('slug', $slug)
+            ->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where('slug', $slug), fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))
             ->firstOrFail();
 
         return response()->json([
@@ -236,7 +248,8 @@ class SiteController extends Controller
 
     public function medicalArea(Request $request, string $slug): JsonResponse
     {
-        $profile = $this->medicalAreaContent->query()->where('slug', $slug)->firstOrFail();
+        $locale = $this->locales->resolve($request);
+        $profile = $this->medicalAreaContent->query()->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where('slug', $slug), fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))->firstOrFail();
 
         return response()->json(['data' => $this->medicalAreaContent->detail($profile, $request)]);
     }
@@ -271,10 +284,11 @@ class SiteController extends Controller
 
     public function service(Request $request, string $slug): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $service = $this->servicesBaseQuery()
-            ->where(fn (Builder $query) => $query
+            ->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where(fn (Builder $inner) => $inner
                 ->where('slug', $slug)
-                ->orWhereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $slug)))
+                ->orWhereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $slug))), fn (Builder $query) => $query->whereHas('webProfile.translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))
             ->firstOrFail();
 
         return response()->json([
@@ -284,8 +298,9 @@ class SiteController extends Controller
 
     public function prestazione(Request $request, string $slug): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $service = $this->servicesBaseQuery()
-            ->whereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $slug))
+            ->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->whereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $slug)), fn (Builder $query) => $query->whereHas('webProfile.translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))
             ->firstOrFail();
 
         return response()->json(['data' => $this->serviceContent->detail($service, $request)]);
@@ -302,8 +317,9 @@ class SiteController extends Controller
 
     public function checkup(Request $request, string $publicSlug): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $checkup = $this->checkupContent->query()
-            ->whereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $publicSlug))
+            ->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->whereHas('webProfile', fn (Builder $profile) => $profile->where('public_slug', $publicSlug)), fn (Builder $query) => $query->whereHas('webProfile.translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $publicSlug)))
             ->firstOrFail();
 
         return response()->json(['data' => $this->checkupContent->detail($checkup, $request)]);
@@ -320,8 +336,9 @@ class SiteController extends Controller
 
     public function professional(Request $request, string $slug): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $profile = $this->professionalProfilesBaseQuery()
-            ->where('slug', $slug)
+            ->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where('slug', $slug), fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))
             ->firstOrFail();
 
         return response()->json([
@@ -331,6 +348,7 @@ class SiteController extends Controller
 
     public function blogPosts(Request $request): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $limit = $this->resolveLimit($request, 50);
         $query = $this->blogPostsBaseQuery();
 
@@ -341,18 +359,19 @@ class SiteController extends Controller
         $posts = $query->limit($limit)->get();
 
         return response()->json([
-            'data' => $posts->map(fn (BlogPost $post): array => $this->mapBlogListItem($post))->values()->all(),
+            'data' => $posts->map(fn (BlogPost $post): array => $this->mapBlogListItem($this->localized->project($post, $locale) ?? abort(404)))->values()->all(),
         ]);
     }
 
     public function blogPost(Request $request, string $slug): JsonResponse
     {
+        $locale = $this->locales->resolve($request);
         $post = $this->blogPostsBaseQuery()
-            ->where('slug', $slug)
+            ->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where('slug', $slug), fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))
             ->firstOrFail();
 
         return response()->json([
-            'data' => $this->mapBlogDetail($post),
+            'data' => $this->mapBlogDetail($this->localized->project($post, $locale) ?? abort(404)),
         ]);
     }
 
@@ -368,23 +387,26 @@ class SiteController extends Controller
 
     private function typedBlogPost(string $slug, string $type): JsonResponse
     {
-        $post = $this->blogPostsBaseQuery()->where('slug', $slug)->where('content_type', $type)->firstOrFail();
+        $locale = $this->locales->resolve(request());
+        $post = $this->blogPostsBaseQuery()->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where('slug', $slug), fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))->where('content_type', $type)->firstOrFail();
 
-        return response()->json(['data' => $this->mapBlogDetail($post)]);
+        return response()->json(['data' => $this->mapBlogDetail($this->localized->project($post, $locale) ?? abort(404))]);
     }
 
     public function page(Request $request, string $slug): JsonResponse
     {
-        $page = $this->pagesBaseQuery()
-            ->where(function (Builder $query) use ($slug): void {
-                $query
-                    ->where('slug', $slug)
-                    ->orWhere('internal_key', $slug);
-            })
+        $locale = $this->locales->resolve($request);
+        $page = $this->pagesBaseQuery($locale)
+            ->when($locale === SupportedLocale::IT,
+                fn (Builder $query) => $query->where('slug', $slug),
+                fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)),
+            )
             ->firstOrFail();
+        $page = $this->localized->project($page, $locale) ?? abort(404);
+        abort_unless($this->localized->hasCompleteStructure($page, $locale), 404);
 
         return response()->json([
-            'data' => $this->mapPageDetail($page),
+            'data' => [...$this->mapPageDetail($page), 'locale' => $locale->value, 'available_locales' => $this->localized->availableLocales($page)],
         ]);
     }
 
@@ -418,8 +440,10 @@ class SiteController extends Controller
 
     private function professionalProfilesBaseQuery(): Builder
     {
-        return ProfessionalPublicProfile::query()
+        $locale = $this->locales->resolve(request());
+        $query = ProfessionalPublicProfile::query()
             ->with([
+                'translations',
                 'sections' => fn ($query) => $query->active()->ordered(),
                 'professional' => fn ($query) => $query->where('is_active', true),
                 'professional.specializations' => fn ($query) => $query
@@ -450,14 +474,18 @@ class SiteController extends Controller
             ->effectivelyVisible()
             ->orderBy('sort_order')
             ->orderBy('slug');
+
+        return $this->localized->publicTranslations($query, $locale);
     }
 
     private function blogPostsBaseQuery(): Builder
     {
+        $locale = $this->locales->resolve(request());
         $query = BlogPost::query()
             ->with([
-                'sections' => fn ($query) => $query->active()->ordered(),
-                'faqs' => fn ($query) => $query->active()->ordered(),
+                'translations',
+                'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
                 'relatedServices.webProfile',
                 'relatedArticles',
             ])
@@ -470,19 +498,22 @@ class SiteController extends Controller
             $query->orderByDesc('is_featured');
         }
 
-        return $query;
+        return $this->localized->publicTranslations($query, $locale);
     }
 
-    private function pagesBaseQuery(): Builder
+    private function pagesBaseQuery(?SupportedLocale $locale = null): Builder
     {
-        return Page::query()
+        $query = Page::query()
             ->with([
-                'sections' => fn ($query) => $query->active()->ordered(),
-                'faqs' => fn ($query) => $query->active()->ordered(),
+                'translations',
+                'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
             ])
             ->active()
             ->published()
             ->orderBy('title');
+
+        return $locale === null ? $query : $this->localized->publicTranslations($query, $locale);
     }
 
     private function mapSiteSettings(SiteSetting $settings, Request $request): array
@@ -634,6 +665,8 @@ class SiteController extends Controller
 
     private function mapProfessionalDetail(ProfessionalPublicProfile $profile, Request $request): array
     {
+        $profile = $this->localized->project($profile, $this->locales->resolve($request)) ?? abort(404);
+
         return $this->mapProfessionalDetailFromProfessional($profile->professional, $request, $profile);
     }
 
@@ -1065,10 +1098,12 @@ class SiteController extends Controller
 
     private function listProfessionalItems(Request $request, int $limit): array
     {
+        $locale = $this->locales->resolve($request);
+
         return $this->professionalProfilesBaseQuery()
             ->limit($limit)
             ->get()
-            ->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($profile, $request))
+            ->map(fn (ProfessionalPublicProfile $profile): array => $this->mapProfessionalListItem($this->localized->project($profile, $locale) ?? abort(404), $request))
             ->values()
             ->all();
     }

@@ -3,11 +3,20 @@
 namespace App\Models;
 
 use App\Enums\SitePopupSourceType;
+use App\Models\Concerns\SynchronizesLocalizedSingleton;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SitePopup extends Model
 {
+    use SynchronizesLocalizedSingleton;
+
+    public function translations(): HasMany
+    {
+        return $this->hasMany(SitePopupTranslation::class);
+    }
+
     protected $fillable = [
         'is_active', 'source_type', 'promotion_id', 'event_id', 'start_at', 'end_at', 'eyebrow', 'title', 'body', 'image_path',
         'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target',

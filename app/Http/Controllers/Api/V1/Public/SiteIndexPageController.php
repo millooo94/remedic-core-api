@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api\V1\Public;
 
+use App\Enums\SupportedLocale;
 use App\Http\Controllers\Controller;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\SiteIndexPage;
 use App\Services\CheckupPublicContentService;
 use App\Services\EditorialIndexProjectionService;
+use App\Services\LocalizedRouteRegistry;
 use App\Services\MedicalAreaPublicService;
+use App\Services\PublicLocaleResolver;
 use App\Services\PublicSeoResolver;
 use App\Services\SiteIndexProjectionService;
 use App\Support\Media\PublicMediaUrl;
@@ -16,13 +19,19 @@ use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo) {}
+    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo, private PublicLocaleResolver $locales, private LocalizedRouteRegistry $routes) {}
 
     public function show(Request $request, string $key)
     {
         abort_unless(SiteIndexPageRegistry::contains($key), 404);
+        $locale = $this->locales->resolve($request);
 
-        $page = SiteIndexPage::query()->where('internal_key', $key)->active()->published()->firstOrFail();
+        $page = SiteIndexPage::query()->with('translations')->where('internal_key', $key)->active()->published()->firstOrFail();
+        $translation = $page->translations->firstWhere('locale', $locale);
+        abort_if($locale->value !== 'it' && ! $translation?->isPubliclyAvailable(), 404);
+        if ($translation !== null) {
+            $page->forceFill($translation->only(['title', 'slug', 'content', 'seo_title', 'seo_description', 'seo_h1']));
+        }
         $projection = match ($key) {
             'medical_areas_index' => $this->areas->query()->when($request->filled('q'), fn ($q) => $q->whereHas('specialization', fn ($s) => $s->where('name', 'like', '%'.$request->q.'%')))->get()->map(fn ($area) => $this->areaItem($area, $request))->all(),
             'equipe_index' => $this->professionals($request),
@@ -43,7 +52,9 @@ class SiteIndexPageController extends Controller
             $data['final_cta'] = ['action' => 'booking'];
         }
 
-        return response()->json(['data' => ['internal_key' => $key, 'canonical_url' => $page->canonical_url, 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $page->canonical_url ?: '/'.$page->slug, $request), 'h1' => $page->seo_h1], ...$data]]);
+        $canonicalPath = $this->canonicalPath($key, $locale, $page->slug);
+
+        return response()->json(['data' => ['locale' => $locale->value, 'internal_key' => $key, 'title' => $page->title, 'slug' => $page->slug, 'canonical_url' => $canonicalPath, 'available_locales' => $this->availableLocales($page), 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $canonicalPath, $request), 'h1' => $page->seo_h1], ...$data]]);
     }
 
     private function content(SiteIndexPage $page): array
@@ -98,5 +109,29 @@ class SiteIndexPageController extends Controller
     private function media(SiteIndexPage $page, Request $request): array
     {
         return ['hero_video_url' => PublicMediaUrl::fromPublicDisk($page->hero_video_path, $request), 'hero_poster_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path, $request), 'intro_split_image_url' => PublicMediaUrl::fromPublicDisk($page->intro_split_image_path, $request)];
+    }
+
+    private function canonicalPath(string $key, SupportedLocale $locale, string $slug): string
+    {
+        $route = match ($key) {
+            'medical_areas_index' => 'medical_areas',
+            'equipe_index' => 'team',
+            'checkups_index' => 'checkups',
+            'diagnostics_index' => 'diagnostics',
+            'aesthetic_medicine_index' => 'aesthetic_medicine',
+            'news_index' => 'news',
+            'health_pills_index' => 'health_tips',
+        };
+
+        return $this->routes->path($route, $locale);
+    }
+
+    private function availableLocales(SiteIndexPage $page): array
+    {
+        return $page->translations->filter(fn ($translation): bool => $translation->isPubliclyAvailable())
+            ->map(fn ($translation) => $translation->locale->value)
+            ->sortBy(fn (string $locale): int => array_search($locale, ['it', 'en', 'es', 'fr'], true))
+            ->values()
+            ->all();
     }
 }

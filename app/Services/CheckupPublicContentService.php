@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\SupportedLocale;
 use App\Models\Checkup;
 use App\Models\CheckupWebProfile;
 use App\Support\Checkups\CheckupSectionDefinition;
@@ -14,10 +15,12 @@ class CheckupPublicContentService
 {
     public function query(): Builder
     {
-        return Checkup::query()->effectivelyVisible()->with([
-            'webProfile.sections' => fn ($query) => $query->active()->ordered(),
-            'webProfile.faqs' => fn ($query) => $query->active()->ordered(),
-            'items.service.webProfile', 'items.service.specializations.webProfile',
+        $locale = app(PublicLocaleResolver::class)->resolve(request());
+        $query = Checkup::query()->effectivelyVisible()->with([
+            'webProfile.translations',
+            'webProfile.sections' => fn ($query) => $query->active()->ordered()->with('translations'),
+            'webProfile.faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
+            'items.service.webProfile', 'items.service.webProfile.translations', 'items.service.specializations.webProfile', 'items.service.specializations.webProfile.translations',
             'items.service.professionalServices' => fn ($query) => $query
                 ->where('is_active', true)->where('is_visible_public', true)
                 ->whereHas('professional', fn (Builder $professional) => $professional
@@ -25,19 +28,23 @@ class CheckupPublicContentService
                     ->whereHas('publicProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true)))
                 ->orderBy('public_sort_order')->orderBy('id'),
             'items.service.professionalServices.professional.publicProfile',
+            'items.service.professionalServices.professional.publicProfile.translations',
             'items.service.professionalServices.professional.specializations',
         ])->orderBy(CheckupWebProfile::query()->select('list_sort_order')
             ->whereColumn('checkup_web_profiles.checkup_id', 'checkups.id')->limit(1))
             ->orderBy('display_name')->orderBy('id');
+
+        return $query->whereHas('webProfile', fn (Builder $profiles) => app(LocalizedContentResolver::class)->publicTranslations($profiles, $locale));
     }
 
     public function listItem(Checkup $checkup, Request $request): array
     {
-        $profile = $checkup->webProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($checkup->webProfile, $locale) ?? abort(404);
 
         return [
             'slug' => $profile->public_slug,
-            'name' => $checkup->display_name,
+            'name' => $profile->localizedTranslation?->title ?: $checkup->display_name,
             'category_label' => $profile->category_label,
             'short_description' => $profile->short_description ?: '',
             'price' => $checkup->price_amount,
@@ -51,14 +58,15 @@ class CheckupPublicContentService
 
     public function indexItem(Checkup $checkup, Request $request): array
     {
-        $profile = $checkup->webProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($checkup->webProfile, $locale) ?? abort(404);
         $slug = $profile->public_slug;
 
         return [
             ...$this->listItem($checkup, $request),
             'id' => $checkup->id,
             'public_slug' => $slug,
-            'href' => '/check-up/'.$slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('checkups', $locale, $slug),
             'anchor' => 'checkup-'.$slug,
             'display_name' => $checkup->display_name,
             'image_url' => PublicMediaUrl::fromPublicDisk($checkup->featured_image_path, $request),
@@ -70,13 +78,15 @@ class CheckupPublicContentService
 
     public function detail(Checkup $checkup, Request $request): array
     {
-        $profile = $checkup->webProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($checkup->webProfile, $locale) ?? abort(404);
+        abort_unless(app(LocalizedContentResolver::class)->hasCompleteStructure($profile, $locale), 404);
         $included = $this->includedServices($checkup, $request);
         $areas = $checkup->items->flatMap(fn ($item) => $item->service?->specializations ?? [])
-            ->unique('id')->map(fn ($area) => $this->area($area, $request))->values();
+            ->unique('id')->map(fn ($area) => $this->area($area, $request))->filter()->values();
         $professionals = $checkup->items->flatMap(fn ($item) => $item->service?->professionalServices ?? [])
             ->map(fn ($link) => $link->professional)->filter()->unique('id')
-            ->map(fn ($professional) => $this->professional($professional, $request))->values();
+            ->map(fn ($professional) => $this->professional($professional, $request))->filter()->values();
         $faqs = $profile->faqs->map(fn ($faq) => [
             'question' => $faq->question, 'answer' => $faq->answer,
             'is_structured_data' => (bool) $faq->is_structured_data,
@@ -90,7 +100,7 @@ class CheckupPublicContentService
             ->filter()->values()->all();
 
         $seo = [...app(PublicSeoResolver::class)->resolve([
-            'title' => $checkup->display_name,
+            'title' => $profile->localizedTranslation?->title ?: $checkup->display_name,
             'description' => $profile->short_description,
             'seo_title' => $profile->seo_title,
             'seo_description' => $profile->seo_description,
@@ -98,7 +108,7 @@ class CheckupPublicContentService
             'og_title' => $profile->og_title,
             'og_description' => $profile->og_description,
             'image_url' => PublicMediaUrl::fromPublicDisk($checkup->featured_image_path, $request),
-        ], '/check-up/'.$profile->public_slug, $request),
+        ], app(LocalizedRouteRegistry::class)->path('checkups', $locale, $profile->public_slug), $request),
             'local_title' => $profile->local_seo_title,
             'local_description' => $profile->local_seo_description,
             'h1' => $profile->seo_h1, 'local_h1' => $profile->local_seo_h1,
@@ -107,7 +117,7 @@ class CheckupPublicContentService
 
         return [
             'checkup' => [
-                'id' => $checkup->id, 'name' => $checkup->display_name,
+                'id' => $checkup->id, 'name' => $profile->localizedTranslation?->title ?: $checkup->display_name,
                 'price' => $checkup->price_amount, 'duration_minutes' => $checkup->indicative_duration_minutes,
                 'operationally_active' => (bool) $checkup->is_active,
                 'operationally_available' => $checkup->isOperationallyAvailable(),
@@ -131,7 +141,7 @@ class CheckupPublicContentService
     {
         $data = match ($section->key) {
             'hero' => [
-                'eyebrow' => $profile->category_label ?: 'CHECK-UP', 'name' => $checkup->display_name,
+                'eyebrow' => $profile->category_label ?: 'CHECK-UP', 'name' => $profile->localizedTranslation?->title ?: $checkup->display_name,
                 'short_description' => $profile->short_description, 'price' => $checkup->price_amount,
                 'duration_minutes' => $checkup->indicative_duration_minutes,
                 'is_operationally_available' => $checkup->isOperationallyAvailable(),
@@ -149,19 +159,24 @@ class CheckupPublicContentService
         return $data === null ? null : ['key' => $section->key, 'order' => (int) $section->sort_order, 'data' => $data];
     }
 
-    private function includedService($item, Request $request): array
+    private function includedService($item, Request $request): ?array
     {
         $service = $item->service;
         $visible = ! $service->trashed() && $service->isEffectivelyVisible();
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = $service->webProfile === null ? null : app(LocalizedContentResolver::class)->project($service->webProfile, $locale);
+        if ($locale !== SupportedLocale::IT && $profile === null) {
+            return null;
+        }
         $primary = app(PrimarySpecializationResolver::class)->resolve($service);
 
         return [
-            'id' => $service->id, 'name' => $service->publicLabel(), 'order' => (int) $item->sort_order,
+            'id' => $service->id, 'name' => $profile?->localizedTranslation?->title ?: $service->publicLabel(), 'order' => (int) $item->sort_order,
             'price' => $service->importo_prestazione,
             'duration_minutes' => $service->default_duration_minutes,
             'is_active' => (bool) $service->is_active, 'is_archived' => $service->trashed(),
             'is_publicly_visible' => $visible,
-            'href' => $visible && $service->webProfile?->public_slug ? '/prestazioni/'.$service->webProfile->public_slug : null,
+            'href' => $visible && $profile?->public_slug ? app(LocalizedRouteRegistry::class)->path('services', $locale, $profile->public_slug) : null,
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
             'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
         ];
@@ -171,33 +186,42 @@ class CheckupPublicContentService
     {
         return $checkup->items->sortBy(fn ($item) => [$item->sort_order, $item->id])
             ->filter(fn ($item) => $item->service !== null)
-            ->map(fn ($item) => $this->includedService($item, $request))->values();
+            ->map(fn ($item) => $this->includedService($item, $request))->filter()->values();
     }
 
-    private function area($area, Request $request): array
+    private function area($area, Request $request): ?array
     {
         $profile = $area->webProfile;
         $visible = (bool) $area->is_active && (bool) $profile?->is_web_enabled;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = $visible ? app(LocalizedContentResolver::class)->project($profile, $locale) : null;
+        if ($profile === null) {
+            return null;
+        }
 
         return [
-            'name' => $area->name,
-            'slug' => $visible ? $profile->slug : null,
-            'href' => $visible ? '/aree-mediche/'.$profile->slug : null,
+            'name' => $profile->localizedTranslation?->title ?: $area->name,
+            'slug' => $profile->slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('medical_areas', $locale, $profile->slug),
             'icon_url' => PublicMediaUrl::fromPublicDisk($area->icon_path, $request),
         ];
     }
 
-    private function professional($professional, Request $request): array
+    private function professional($professional, Request $request): ?array
     {
-        $profile = $professional->publicProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($professional->publicProfile, $locale);
+        if ($profile === null) {
+            return null;
+        }
         $primary = $professional->specializations->sortBy(fn ($area) => [
             ($area->pivot?->is_primary ?? false) ? 0 : 1, $area->pivot?->sort_order ?? PHP_INT_MAX, $area->id,
         ])->first();
 
         return [
             'slug' => $profile->slug,
-            'href' => '/equipe/'.$profile->slug,
-            'name' => trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
+            'href' => app(LocalizedRouteRegistry::class)->path('team', $locale, $profile->slug),
+            'name' => $profile->localizedTranslation?->title ?: trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
             'short_bio' => $profile->short_bio ?: '', 'specialization' => $primary?->name,
             'image_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path ?: $profile->profile_image_path, $request),
         ];

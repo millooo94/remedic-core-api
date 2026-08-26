@@ -4,12 +4,20 @@ namespace App\Models;
 
 use App\Enums\PublicationState;
 use App\Models\Concerns\HasSectionsAndFaqs;
+use App\Models\Concerns\SynchronizesLocalizedSingleton;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SiteIndexPage extends Model
 {
     use HasSectionsAndFaqs;
+    use SynchronizesLocalizedSingleton;
+
+    public function translations(): HasMany
+    {
+        return $this->hasMany(SiteIndexPageTranslation::class);
+    }
 
     protected $fillable = ['internal_key', 'title', 'slug', 'content', 'configuration', 'hero_video_path', 'hero_poster_path', 'intro_split_image_path', 'seo_title', 'seo_description', 'seo_h1', 'canonical_url', 'robots', 'is_active', 'published_at'];
 

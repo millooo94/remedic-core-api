@@ -15,22 +15,26 @@ class MedicalAreaPublicService
 {
     public function query(): Builder
     {
-        return SpecializationWebProfile::query()
+        $locale = app(PublicLocaleResolver::class)->resolve(request());
+        $query = SpecializationWebProfile::query()
             ->effectivelyVisible()
             ->with([
-                'sections' => fn ($query) => $query->active()->ordered(),
-                'faqs' => fn ($query) => $query->active()->ordered(),
+                'translations',
+                'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
                 'specialization.services' => fn ($query) => $query
                     ->effectivelyVisible()
                     ->orderBy('service_specialization.sort_order')
                     ->orderBy('services.id'),
                 'specialization.services.webProfile',
+                'specialization.services.webProfile.translations',
                 'specialization.professionals' => fn ($query) => $query
                     ->where('professionals.is_active', true)
                     ->whereHas('publicProfile', fn (Builder $profile) => $profile->where('is_web_enabled', true))
                     ->orderBy('professional_specialization.sort_order')
                     ->orderBy('professionals.id'),
                 'specialization.professionals.publicProfile' => fn ($query) => $query->where('is_web_enabled', true),
+                'specialization.professionals.publicProfile.translations',
                 'specialization.professionals.specializations',
             ])
             ->orderBy('list_sort_order')
@@ -38,15 +42,19 @@ class MedicalAreaPublicService
                 fn ($query) => $query->select('name')->from('specializations')
                     ->whereColumn('specializations.id', 'specialization_web_profiles.specialization_id')
             );
+
+        return app(LocalizedContentResolver::class)->publicTranslations($query, $locale);
     }
 
     public function listItem(SpecializationWebProfile $profile, Request $request): array
     {
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($profile, $locale) ?? abort(404);
         $master = $profile->specialization;
 
         return [
             'slug' => $profile->slug,
-            'name' => $master->name,
+            'name' => $profile->localizedTranslation?->title ?: $master->name,
             'short_description' => $profile->short_description ?: '',
             'description' => $profile->short_description ?: '',
             'list_sort_order' => (int) $profile->list_sort_order,
@@ -59,9 +67,12 @@ class MedicalAreaPublicService
 
     public function detail(SpecializationWebProfile $profile, Request $request): array
     {
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($profile, $locale) ?? abort(404);
+        abort_unless(app(LocalizedContentResolver::class)->hasCompleteStructure($profile, $locale), 404);
         $master = $profile->specialization;
-        $services = $master->services->values();
-        $professionals = $master->professionals->values();
+        $services = $master->services->filter(fn (Service $service): bool => $this->service($service, $request) !== null)->values();
+        $professionals = $master->professionals->filter(fn (Professional $professional): bool => $this->professional($professional, $request) !== null)->values();
         $faqs = $profile->faqs->values();
         $sections = $profile->sections
             ->whereIn('key', MedicalAreaSectionDefinition::keys())
@@ -77,7 +88,7 @@ class MedicalAreaPublicService
             ->map(function ($section) use ($profile, $master, $services, $professionals, $faqs, $request): array {
                 $data = match ($section->key) {
                     'hero' => [
-                        'name' => $master->name,
+                        'name' => $profile->localizedTranslation?->title ?: $master->name,
                         'short_description' => $profile->short_description,
                         'icon_url' => PublicMediaUrl::fromPublicDisk($master->icon_path, $request),
                         'featured_image_url' => PublicMediaUrl::fromPublicDisk($master->featured_image_path, $request),
@@ -90,11 +101,7 @@ class MedicalAreaPublicService
                     'services' => [
                         'title' => $section->title,
                         'intro' => $section->content,
-                        'items' => $services->map(fn (Service $service) => [
-                            'slug' => $service->webProfile->public_slug,
-                            'name' => $service->publicLabel(),
-                            'short_description' => $service->webProfile->short_description ?: '',
-                        ])->values()->all(),
+                        'items' => $services->map(fn (Service $service) => $this->service($service, $request))->filter()->values()->all(),
                     ],
                     'faqs' => [
                         'title' => $section->title,
@@ -108,7 +115,7 @@ class MedicalAreaPublicService
                     'equipe' => [
                         'title' => $section->title,
                         'intro' => $section->content,
-                        'items' => $professionals->map(fn (Professional $professional) => $this->professional($professional, $request))->values()->all(),
+                        'items' => $professionals->map(fn (Professional $professional) => $this->professional($professional, $request))->filter()->values()->all(),
                     ],
                 };
 
@@ -141,19 +148,38 @@ class MedicalAreaPublicService
         ];
     }
 
-    private function professional(Professional $professional, Request $request): array
+    private function professional(Professional $professional, Request $request): ?array
     {
-        $profile = $professional->publicProfile;
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($professional->publicProfile, $locale);
+        if ($profile === null) {
+            return null;
+        }
         $primary = $professional->specializations
             ->sortBy(fn ($area) => [($area->pivot?->is_primary ?? false) ? 0 : 1, $area->pivot?->sort_order ?? PHP_INT_MAX, $area->id])
             ->first();
 
         return [
             'slug' => $profile->slug,
-            'name' => trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
+            'name' => $profile->localizedTranslation?->title ?: trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
             'short_bio' => $profile->short_bio ?: '',
             'image_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path ?: $profile->profile_image_path, $request),
             'primary_specialization' => $primary ? ['name' => $primary->name] : null,
+        ];
+    }
+
+    private function service(Service $service, Request $request): ?array
+    {
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profile = app(LocalizedContentResolver::class)->project($service->webProfile, $locale);
+        if ($profile === null) {
+            return null;
+        }
+
+        return [
+            'slug' => $profile->public_slug,
+            'name' => $profile->localizedTranslation?->title ?: $service->publicLabel(),
+            'short_description' => $profile->short_description ?: '',
         ];
     }
 }

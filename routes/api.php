@@ -7,6 +7,9 @@ use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostControl
 use App\Http\Controllers\Api\V1\Admin\ConsentConfigurationController as AdminConsentConfigurationController;
 use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
 use App\Http\Controllers\Api\V1\Admin\HomePageController as AdminHomePageController;
+use App\Http\Controllers\Api\V1\Admin\LocalizedContentController;
+use App\Http\Controllers\Api\V1\Admin\LocalizedSingletonController;
+use App\Http\Controllers\Api\V1\Admin\LocalizedStructureController;
 use App\Http\Controllers\Api\V1\Admin\MedicalAreaController as AdminMedicalAreaController;
 use App\Http\Controllers\Api\V1\Admin\NewsletterSubscriberController as AdminNewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
@@ -274,6 +277,21 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('admin')
             ->middleware('permission:'.AdminPermission::VIEW_BACKOFFICE->value)
             ->group(function (): void {
+                Route::get('localized-content/{type}/{id}/{locale}', [LocalizedContentController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::post('localized-content/{type}/{id}/{locale}', [LocalizedContentController::class, 'store'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::put('localized-content/{type}/{id}/{locale}', [LocalizedContentController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::PUBLISH_CONTENT->value);
+                Route::get('localized-structure/{kind}/{id}/{locale}', [LocalizedStructureController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::post('localized-structure/{kind}/{id}/{locale}', [LocalizedStructureController::class, 'store'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::put('localized-structure/{kind}/{id}/{locale}', [LocalizedStructureController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::get('localized-singletons/{kind}/{id}/{locale}', [LocalizedSingletonController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::post('localized-singletons/{kind}/{id}/{locale}', [LocalizedSingletonController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::put('localized-singletons/{kind}/{id}/{locale}', [LocalizedSingletonController::class, 'update'])->middleware('permission:'.AdminPermission::PUBLISH_CONTENT->value);
                 Route::get('homepage', [AdminHomePageController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::get('index-pages', [AdminSiteIndexPageController::class, 'index'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);

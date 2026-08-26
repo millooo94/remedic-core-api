@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\SynchronizesLocalizedStructure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Section extends Model
 {
     use HasFactory;
+    use SynchronizesLocalizedStructure;
 
     protected $fillable = [
         'legacy_backend_id',
@@ -47,5 +50,10 @@ class Section extends Model
     public function sectionable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    public function translations(): HasMany
+    {
+        return $this->hasMany(SectionTranslation::class);
     }
 }

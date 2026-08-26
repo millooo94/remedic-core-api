@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RobotsValue;
+use App\Models\Concerns\HasContentTranslations;
 use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ServiceWebProfile extends Model
 {
+    use HasContentTranslations;
     use HasFactory;
     use HasSectionsAndFaqs;
 
