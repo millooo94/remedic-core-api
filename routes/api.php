@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostControl
 use App\Http\Controllers\Api\V1\Admin\ConsentConfigurationController as AdminConsentConfigurationController;
 use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
 use App\Http\Controllers\Api\V1\Admin\HomePageController as AdminHomePageController;
+use App\Http\Controllers\Api\V1\Admin\InternalNotificationController;
 use App\Http\Controllers\Api\V1\Admin\LocalizedContentController;
 use App\Http\Controllers\Api\V1\Admin\LocalizedSingletonController;
 use App\Http\Controllers\Api\V1\Admin\LocalizedStructureController;
@@ -279,6 +280,10 @@ Route::prefix('v1')->group(function (): void {
         Route::prefix('admin')
             ->middleware('permission:'.AdminPermission::VIEW_BACKOFFICE->value)
             ->group(function (): void {
+                Route::get('notifications/summary', [InternalNotificationController::class, 'summary']);
+                Route::post('notifications/mark-all-read', [InternalNotificationController::class, 'markAllRead']);
+                Route::get('notifications', [InternalNotificationController::class, 'index']);
+                Route::patch('notifications/{publicId}/read', [InternalNotificationController::class, 'markRead']);
                 Route::get('localized-content/{type}/{id}/{locale}', [LocalizedContentController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::post('localized-content/{type}/{id}/{locale}', [LocalizedContentController::class, 'store'])

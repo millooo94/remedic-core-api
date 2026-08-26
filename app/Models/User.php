@@ -9,6 +9,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
@@ -118,6 +119,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function rejectedBy(): BelongsTo
     {
         return $this->belongsTo(self::class, 'rejected_by_user_id');
+    }
+
+    public function internalNotifications(): HasMany
+    {
+        return $this->hasMany(InternalNotification::class, 'recipient_user_id');
     }
 
     public function getFullNameAttribute(): string
