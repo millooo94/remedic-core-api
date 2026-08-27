@@ -12,12 +12,14 @@ use App\Models\Section;
 use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\ServiceWebProfile;
+use App\Models\SiteIndexPage;
 use App\Models\Specialization;
 use App\Models\SpecializationWebProfile;
 use App\Models\User;
 use App\Services\EquipeContentService;
 use App\Services\MedicalAreaContentService;
 use App\Services\ServiceWebContentService;
+use App\Services\SiteIndexPageInitializer;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -232,6 +234,111 @@ class EquipeApiTest extends TestCase
             $this->getJson('/api/v1/public/equipe/giulia-ferri-nuovo')->assertOk()->json('data.sections')
         )->pluck('key');
         $this->assertFalse($emptyBiographyKeys->contains('biography'));
+    }
+
+    #[Test]
+    public function professional_detail_exposes_all_public_specializations(): void
+    {
+        $professional = Professional::factory()->create(['is_active' => true]);
+        $profile = ProfessionalPublicProfile::query()->create([
+            'professional_id' => $professional->id,
+            'slug' => 'dottore-multi',
+            'is_active' => true,
+            'is_web_enabled' => true,
+        ]);
+        app(EquipeContentService::class)->initializeSections($profile);
+
+        $publish = function (ProfessionalPublicProfile|SpecializationWebProfile $owner, string $locale, string $title, string $slug, string $state = 'published', bool $reviewed = true): void {
+            $italian = $owner->translations()->where('locale', 'it')->firstOrFail();
+            $owner->translations()->create([
+                'locale' => $locale,
+                'title' => $title,
+                'slug' => $slug,
+                'publication_state' => $state,
+                'source_revision' => $italian->source_revision,
+                'reviewed_source_revision' => $reviewed ? $italian->source_revision : 'outdated-source-revision',
+            ]);
+        };
+        $area = function (string $name, string $slug, bool $active = true, bool $webEnabled = true): array {
+            $specialization = Specialization::query()->create([
+                'name' => $name,
+                'slug' => 'master-'.$slug,
+                'is_active' => $active,
+                'is_web_active' => $active,
+            ]);
+            $webProfile = SpecializationWebProfile::query()->create([
+                'specialization_id' => $specialization->id,
+                'slug' => $slug,
+                'is_web_enabled' => $webEnabled,
+            ]);
+
+            return [$specialization, $webProfile];
+        };
+
+        [$cardiology, $cardiologyProfile] = $area('Cardiologia', 'cardiologia');
+        [$neurology, $neurologyProfile] = $area('Neurologia', 'neurologia');
+        [$dermatology, $dermatologyProfile] = $area('Dermatologia', 'dermatologia');
+        [, $inactiveProfile] = $area('Area inattiva', 'area-inattiva', false);
+        [, $webDisabledProfile] = $area('Area web disabilitata', 'area-web-disabilitata', true, false);
+        [, $draftProfile] = $area('Area draft', 'area-draft');
+        [, $staleProfile] = $area('Area stale', 'area-stale');
+        [, $missingLocaleProfile] = $area('Area senza locale', 'area-senza-locale');
+
+        foreach ([
+            ['en', 'Doctor multi EN', 'doctor-multi-en'],
+            ['es', 'Doctor multi ES', 'doctor-multi-es'],
+            ['fr', 'Doctor multi FR', 'doctor-multi-fr'],
+        ] as [$locale, $title, $slug]) {
+            $publish($profile, $locale, $title, $slug);
+        }
+        $publish($cardiologyProfile, 'en', 'Cardiology', 'cardiology-en');
+        $publish($cardiologyProfile, 'es', 'Cardiología', 'cardiologia-es');
+        $publish($neurologyProfile, 'en', 'Neurology', 'neurology-en');
+        $publish($neurologyProfile, 'fr', 'Neurologie', 'neurologie-fr');
+        $publish($draftProfile, 'en', 'Draft area', 'draft-area', 'draft');
+        $publish($staleProfile, 'en', 'Stale area', 'stale-area', 'published', false);
+        $publish($inactiveProfile, 'en', 'Inactive area', 'inactive-area');
+        $publish($webDisabledProfile, 'en', 'Disabled area', 'disabled-area');
+
+        $professional->specializations()->attach($cardiology->id, ['is_primary' => true, 'sort_order' => 2]);
+        $professional->specializations()->attach($neurology->id, ['is_primary' => false, 'sort_order' => 0]);
+        $professional->specializations()->attach($dermatology->id, ['is_primary' => false, 'sort_order' => 1]);
+        foreach ([$inactiveProfile, $webDisabledProfile, $draftProfile, $staleProfile, $missingLocaleProfile] as $index => $profileToExclude) {
+            $professional->specializations()->attach($profileToExclude->specialization_id, ['is_primary' => false, 'sort_order' => $index + 3]);
+        }
+
+        $english = $this->getJson('/api/v1/public/equipe/doctor-multi-en?locale=en')->assertOk();
+        $this->assertSame(['Cardiology', 'Neurology'], array_column($english->json('data.areas'), 'name'));
+        $this->assertSame(['/en/medical-areas/cardiology-en', '/en/medical-areas/neurology-en'], array_column($english->json('data.areas'), 'href'));
+
+        $spanish = $this->getJson('/api/v1/public/equipe/doctor-multi-es?locale=es')->assertOk();
+        $this->assertSame(['Cardiología'], array_column($spanish->json('data.areas'), 'name'));
+        $this->assertSame('/es/areas-medicas/cardiologia-es', $spanish->json('data.areas.0.href'));
+
+        $french = $this->getJson('/api/v1/public/equipe/doctor-multi-fr?locale=fr')->assertOk();
+        $this->assertSame(['Neurologie'], array_column($french->json('data.areas'), 'name'));
+        $this->assertSame('/fr/specialites-medicales/neurologie-fr', $french->json('data.areas.0.href'));
+
+        SpecializationWebProfile::query()->whereIn('id', [$draftProfile->id, $staleProfile->id, $missingLocaleProfile->id])->update(['is_web_enabled' => false]);
+        $italian = $this->getJson('/api/v1/public/equipe/dottore-multi')->assertOk()
+            ->assertJsonPath('data.specialization', 'Cardiologia')
+            ->assertJsonMissingPath('data.areas.0.id')
+            ->assertJsonMissingPath('data.areas.0.pivot')
+            ->assertJsonMissingPath('data.areas.0.sort_order')
+            ->assertJsonMissingPath('data.areas.0.professional_id')
+            ->assertJsonMissingPath('data.areas.0.specialization_id');
+        $this->assertSame(['Cardiologia', 'Neurologia', 'Dermatologia'], array_column($italian->json('data.areas'), 'name'));
+        $this->assertSame(['/aree-mediche/cardiologia', '/aree-mediche/neurologia', '/aree-mediche/dermatologia'], array_column($italian->json('data.areas'), 'href'));
+        $this->assertSame(['name', 'slug', 'href', 'icon_url', 'is_primary'], array_keys($italian->json('data.areas.0')));
+        $this->assertTrue($italian->json('data.areas.0.is_primary'));
+        $this->assertFalse($italian->json('data.areas.1.is_primary'));
+        $this->assertSame('Cardiologia', collect($italian->json('data.sections'))->firstWhere('key', 'hero')['data']['primary_specialization']['name']);
+
+        app(SiteIndexPageInitializer::class)->initialize();
+        SiteIndexPage::query()->where('internal_key', 'equipe_index')->update(['is_active' => true, 'published_at' => now()->subMinute()]);
+        $index = $this->getJson('/api/v1/public/site-indexes/equipe_index')->assertOk();
+        $this->assertSame('Cardiologia', $index->json('data.items.0.primary_area.name'));
+        $this->assertSame(['Cardiologia', 'Neurologia'], $index->json('data.items.0.tags'));
     }
 
     #[Test]

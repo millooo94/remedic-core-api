@@ -11,6 +11,7 @@ use App\Services\EditorialIndexProjectionService;
 use App\Services\LocalizedContentResolver;
 use App\Services\LocalizedRouteRegistry;
 use App\Services\MedicalAreaPublicService;
+use App\Services\ProfessionalPublicAreaProjection;
 use App\Services\PublicLocaleResolver;
 use App\Services\PublicSeoResolver;
 use App\Services\SiteIndexProjectionService;
@@ -20,7 +21,7 @@ use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private MedicalAreaPublicService $areas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo, private PublicLocaleResolver $locales, private LocalizedContentResolver $localized, private LocalizedRouteRegistry $routes) {}
+    public function __construct(private MedicalAreaPublicService $areas, private ProfessionalPublicAreaProjection $professionalAreas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo, private PublicLocaleResolver $locales, private LocalizedContentResolver $localized, private LocalizedRouteRegistry $routes) {}
 
     public function show(Request $request, string $key)
     {
@@ -98,16 +99,12 @@ class SiteIndexPageController extends Controller
         return $query->orderBy('sort_order')->orderBy('id')->get()->map(function ($profile) use ($request, $locale) {
             $profile = $this->localized->project($profile, $locale) ?? abort(404);
             $professional = $profile->professional;
-            $areas = $professional->specializations->filter(fn ($area) => $area->is_active && $area->webProfile?->is_web_enabled)->map(function ($area) use ($locale) {
-                $areaProfile = $this->localized->project($area->webProfile, $locale);
-
-                return $areaProfile === null ? null : [$area, $areaProfile];
-            })->filter()->sortBy(fn ($area) => [($area[0]->pivot?->is_primary ?? false) ? 0 : 1, $area[0]->pivot?->sort_order ?? PHP_INT_MAX]);
+            $areas = $this->professionalAreas->areas($professional, $locale, $request);
             $primary = $areas->first();
 
             $fullName = trim(($professional->honorific_prefix ? $professional->honorific_prefix.' ' : '').$professional->full_name);
 
-            return ['public_slug' => $profile->slug, 'href' => $this->routes->path('team', $locale, $profile->slug), 'name' => $fullName, 'full_name' => $fullName, 'avatar_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request), 'role_label' => $profile->title_prefix, 'primary_area' => $primary ? ['name' => $primary[1]->localizedTranslation?->title ?: $primary[0]->name, 'public_slug' => $primary[1]->slug, 'href' => $this->routes->path('medical_areas', $locale, $primary[1]->slug)] : null, 'tags' => $areas->take(2)->map(fn ($area) => $area[1]->localizedTranslation?->title ?: $area[0]->name)->values()->all()];
+            return ['public_slug' => $profile->slug, 'href' => $this->routes->path('team', $locale, $profile->slug), 'name' => $fullName, 'full_name' => $fullName, 'avatar_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path, $request), 'role_label' => $profile->title_prefix, 'primary_area' => $primary ? ['name' => $primary['name'], 'public_slug' => $primary['slug'], 'href' => $primary['href']] : null, 'tags' => $areas->take(2)->pluck('name')->all()];
         })->all();
     }
 
@@ -115,11 +112,7 @@ class SiteIndexPageController extends Controller
     {
         $locale = $this->locales->resolve($request);
 
-        return $this->localized->publicTranslations(ProfessionalPublicProfile::query()->effectivelyVisible()->with(['translations', 'professional.specializations.webProfile.translations']), $locale)->get()->flatMap(fn ($profile) => $profile->professional->specializations)->filter(fn ($area) => $area->is_active && $area->webProfile?->is_web_enabled)->map(function ($area) use ($locale) {
-            $profile = $this->localized->project($area->webProfile, $locale);
-
-            return $profile === null ? null : ['name' => $profile->localizedTranslation?->title ?: $area->name, 'public_slug' => $profile->slug];
-        })->filter()->unique('public_slug')->sortBy('name')->values()->all();
+        return $this->localized->publicTranslations(ProfessionalPublicProfile::query()->effectivelyVisible()->with(['translations', 'professional.specializations.webProfile.translations']), $locale)->get()->flatMap(fn ($profile) => $this->professionalAreas->areas($profile->professional, $locale, $request)->map(fn (array $area): array => ['name' => $area['name'], 'public_slug' => $area['slug']]))->unique('public_slug')->sortBy('name')->values()->all();
     }
 
     private function media(SiteIndexPage $page, Request $request): array

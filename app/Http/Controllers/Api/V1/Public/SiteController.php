@@ -24,6 +24,7 @@ use App\Services\LegalDocumentPublicProjection;
 use App\Services\LocalizedContentResolver;
 use App\Services\LocalizedRouteRegistry;
 use App\Services\MedicalAreaPublicService;
+use App\Services\ProfessionalPublicAreaProjection;
 use App\Services\PublicLocaleResolver;
 use App\Services\PublicSeoResolver;
 use App\Services\ServicePublicContentService;
@@ -39,6 +40,7 @@ class SiteController extends Controller
 {
     public function __construct(
         private readonly MedicalAreaPublicService $medicalAreaContent,
+        private readonly ProfessionalPublicAreaProjection $professionalAreas,
         private readonly ServicePublicContentService $serviceContent,
         private readonly CheckupPublicContentService $checkupContent,
         private readonly ContactCenterDataResolver $contactCenterData,
@@ -454,7 +456,7 @@ class SiteController extends Controller
                     ->orderByDesc('professional_specialization.is_primary')
                     ->orderBy('professional_specialization.sort_order')
                     ->orderBy('specializations.id'),
-                'professional.specializations.webProfile',
+                'professional.specializations.webProfile.translations',
                 'professional.professionalServices' => fn ($query) => $query
                     ->where('is_active', true)
                     ->where('is_visible_public', true)
@@ -679,6 +681,7 @@ class SiteController extends Controller
     ): array {
         $profile ??= $professional->publicProfile;
         $sections = $profile?->sections ?? collect();
+        $locale = $this->locales->resolve($request);
 
         $services = $professional->professionalServices
             ->filter(fn ($link) => $link->is_active && $link->is_visible_public && $link->service?->isEffectivelyVisible())
@@ -695,6 +698,7 @@ class SiteController extends Controller
             'name' => $professional->full_name,
             'title' => $this->resolveProfessionalTitlePrefix($profile),
             'specialization' => $this->resolveProfessionalSpecialization($professional),
+            'areas' => $this->professionalAreas->areas($professional, $locale, $request)->all(),
             'short_bio' => $this->resolveProfessionalShortBio($professional, $profile),
             'full_bio' => $profile?->bio_content ?: '',
             'professional_profile' => $profile?->bio_content ?: '',

@@ -79,6 +79,30 @@ responses expose localized slug and href where a consumer can navigate.
 `filter`; editorial indexes accept their documented `q`/category filters. All
 return `items` and `result_count`; an empty match is `200` with `[]` and `0`.
 
+## Public API V1 additive amendment — Professional multi-specialization
+
+`GET equipe/{slug}` (and the `professionals/{slug}` compatibility alias) now
+contains canonical `areas`, the complete ordered list of associated public
+medical areas. Each item is `{name, slug, href, icon_url, is_primary}`. The
+list is ordered by the domain's explicit `is_primary` flag, then the internal
+relation order, then a stable canonical tie-breaker; the internal ordering and
+identifiers are never exposed.
+
+`is_primary` is meaningful: the existing `professional_specialization` domain
+relation explicitly owns it and normalizes one primary relation. `areas` is the
+canonical multi-area field. The existing top-level `specialization` and
+`sections.hero.primary_specialization` remain compatibility single-area fields
+for existing consumers and are cleanup candidates only after all consumers use
+`areas`.
+
+An embedded area is included only when its master and Web profile are publicly
+visible and its requested-locale translation is published, complete and
+reviewed. Its `name`, `slug` and `href` are localized through the frozen route
+registry; missing, draft or stale translations omit only that relation and
+never fall back to Italian. `icon_url` reuses the existing public medical-area
+icon projection. The Equipe index uses the same relation projection for its
+legacy `primary_area` and summary `tags` fields.
+
 ## Search and public submissions
 
 | Method | Path | Request / response | Limit |
