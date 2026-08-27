@@ -29,4 +29,12 @@ class LocalizedRouteRegistry
     {
         return $locale === SupportedLocale::IT ? '/' : '/'.$locale->value;
     }
+
+    /** Public pages use their published localized slug below the locale prefix. */
+    public function page(SupportedLocale $locale, string $slug): string
+    {
+        return $locale === SupportedLocale::IT
+            ? '/'.rawurlencode($slug)
+            : '/'.$locale->value.'/'.rawurlencode($slug);
+    }
 }

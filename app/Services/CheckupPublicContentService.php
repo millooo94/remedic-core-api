@@ -44,6 +44,7 @@ class CheckupPublicContentService
 
         return [
             'slug' => $profile->public_slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('checkups', $locale, $profile->public_slug),
             'name' => $profile->localizedTranslation?->title ?: $checkup->display_name,
             'category_label' => $profile->category_label,
             'short_description' => $profile->short_description ?: '',
@@ -52,7 +53,6 @@ class CheckupPublicContentService
             'is_operationally_available' => $checkup->isOperationallyAvailable(),
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($checkup->featured_image_path, $request),
             'icon_url' => PublicMediaUrl::fromPublicDisk($checkup->icon_path, $request),
-            'list_sort_order' => (int) $profile->list_sort_order,
         ];
     }
 
@@ -64,7 +64,6 @@ class CheckupPublicContentService
 
         return [
             ...$this->listItem($checkup, $request),
-            'id' => $checkup->id,
             'public_slug' => $slug,
             'href' => app(LocalizedRouteRegistry::class)->path('checkups', $locale, $slug),
             'anchor' => 'checkup-'.$slug,
@@ -117,7 +116,7 @@ class CheckupPublicContentService
 
         return [
             'checkup' => [
-                'id' => $checkup->id, 'name' => $profile->localizedTranslation?->title ?: $checkup->display_name,
+                'name' => $profile->localizedTranslation?->title ?: $checkup->display_name,
                 'price' => $checkup->price_amount, 'duration_minutes' => $checkup->indicative_duration_minutes,
                 'operationally_active' => (bool) $checkup->is_active,
                 'operationally_available' => $checkup->isOperationallyAvailable(),
@@ -171,7 +170,7 @@ class CheckupPublicContentService
         $primary = app(PrimarySpecializationResolver::class)->resolve($service);
 
         return [
-            'id' => $service->id, 'name' => $profile?->localizedTranslation?->title ?: $service->publicLabel(), 'order' => (int) $item->sort_order,
+            'name' => $profile?->localizedTranslation?->title ?: $service->publicLabel(),
             'price' => $service->importo_prestazione,
             'duration_minutes' => $service->default_duration_minutes,
             'is_active' => (bool) $service->is_active, 'is_archived' => $service->trashed(),

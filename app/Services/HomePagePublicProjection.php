@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 
 class HomePagePublicProjection
 {
-    public function __construct(private readonly MedicalAreaPublicService $areas, private readonly ServicePublicContentService $services, private readonly CheckupPublicContentService $checkups, private readonly ContactCenterDataResolver $center) {}
+    public function __construct(private readonly MedicalAreaPublicService $areas, private readonly ServicePublicContentService $services, private readonly CheckupPublicContentService $checkups, private readonly ContactCenterDataResolver $center, private readonly PublicLocaleResolver $locales, private readonly LocalizedContentResolver $localized, private readonly LocalizedRouteRegistry $routes) {}
 
     /** @return array<string,mixed> */
     public function project(Page $page, Request $request): array
@@ -35,7 +35,7 @@ class HomePagePublicProjection
             $data['media'] = $this->media($data, $request);
             if ($section->key === 'hero') {
                 $data['booking_action'] = ['type' => 'booking'];
-                $data['search_action'] = $this->indexAction('medical_areas_index');
+                $data['search_action'] = $this->indexAction('medical_areas_index', $request);
             }
             if ($target = match ($section->key) {
                 'medical_areas' => 'medical_areas_index',
@@ -47,7 +47,7 @@ class HomePagePublicProjection
                 'health_pills' => 'health_pills_index',
                 default => null,
             }) {
-                $data['index_action'] = $this->indexAction($target);
+                $data['index_action'] = $this->indexAction($target, $request);
             }
             if ($section->key === 'newsletter') {
                 $data['component_type'] = 'newsletter_signup';
@@ -64,12 +64,22 @@ class HomePagePublicProjection
         return min(24, max(1, (int) ($data['max_items'] ?? 6)));
     }
 
-    private function indexAction(string $key): array
+    private function indexAction(string $key, Request $request): array
     {
         $action = ['target' => $key];
         $page = SiteIndexPage::query()->where('internal_key', $key)->first();
-        if ($page?->isPubliclyAvailable()) {
-            $action['href'] = $page->canonical_url;
+        $locale = $this->locales->resolve($request);
+        $translation = $page?->translations()->where('locale', $locale->value)->first();
+        if ($page?->isPubliclyAvailable() && ($locale->value === 'it' || $translation?->isPubliclyAvailable())) {
+            $action['href'] = $this->routes->path(match ($key) {
+                'medical_areas_index' => 'medical_areas',
+                'equipe_index' => 'team',
+                'checkups_index' => 'checkups',
+                'diagnostics_index' => 'diagnostics',
+                'aesthetic_medicine_index' => 'aesthetic_medicine',
+                'news_index' => 'news',
+                'health_pills_index' => 'health_tips',
+            }, $locale);
         }
 
         return $action;
@@ -82,21 +92,29 @@ class HomePagePublicProjection
 
     private function professionals(Request $request, int $limit): array
     {
-        return ProfessionalPublicProfile::query()->effectivelyVisible()->with(['professional.specializations'])->orderBy('sort_order')->orderBy('id')->limit($limit)->get()->map(function ($profile) use ($request) {
+        $locale = $this->locales->resolve($request);
+
+        return $this->localized->publicTranslations(ProfessionalPublicProfile::query()->effectivelyVisible()->with(['translations', 'professional.specializations']), $locale)->orderBy('sort_order')->orderBy('id')->limit($limit)->get()->map(function ($profile) use ($request, $locale) {
+            $profile = $this->localized->project($profile, $locale) ?? abort(404);
             $p = $profile->professional;
             $area = $p->specializations->sortBy(fn ($s) => [($s->pivot->is_primary ?? false) ? 0 : 1, $s->pivot->sort_order ?? 999])->first();
 
-            return ['slug' => $profile->slug, 'href' => '/equipe/'.$profile->slug, 'name' => trim(($p->honorific_prefix ? $p->honorific_prefix.' ' : '').$p->full_name), 'short_bio' => $profile->short_bio ?: '', 'image_url' => PublicMediaUrl::fromPublicDisk($p->avatar_path, $request), 'primary_specialization' => $area?->name];
+            return ['slug' => $profile->slug, 'href' => $this->routes->path('team', $locale, $profile->slug), 'name' => trim(($p->honorific_prefix ? $p->honorific_prefix.' ' : '').$p->full_name), 'short_bio' => $profile->short_bio ?: '', 'image_url' => PublicMediaUrl::fromPublicDisk($p->avatar_path, $request), 'primary_specialization' => $area?->name];
         })->all();
     }
 
     private function posts(array $data): array
     {
-        $q = BlogPost::query()->active()->published()->healthPills();
+        $locale = $this->locales->resolve(request());
+        $q = $this->localized->publicTranslations(BlogPost::query()->with('translations')->active()->published()->healthPills(), $locale);
         $ids = array_values(array_filter([(int) ($data['featured_blog_post_id'] ?? 0), ...array_map('intval', $data['secondary_blog_post_ids'] ?? [])]));
         $posts = ($data['selection_mode'] ?? 'automatic') === 'manual' ? $q->whereIn('id', $ids)->get()->sortBy(fn ($p) => array_search($p->id, $ids, true)) : $q->orderByDesc('published_at')->orderByDesc('id')->limit(3)->get();
 
-        return $posts->map(fn ($p) => ['id' => $p->id, 'title' => $p->title, 'slug' => $p->slug, 'href' => $p->canonicalHref(), 'subtitle' => $p->subtitle, 'category_label' => $p->category_label, 'excerpt' => $p->excerpt])->values()->all();
+        return $posts->map(function ($post) use ($locale) {
+            $post = $this->localized->project($post, $locale) ?? abort(404);
+
+            return ['title' => $post->title, 'slug' => $post->slug, 'href' => $this->routes->path('health_tips', $locale, $post->slug), 'subtitle' => $post->subtitle, 'category_label' => $post->category_label, 'excerpt' => $post->excerpt];
+        })->values()->all();
     }
 
     private function partners(array $data, Request $request): array
@@ -104,7 +122,7 @@ class HomePagePublicProjection
         $q = ConventionPartner::query()->publiclyAvailable()->publicOrder();
         $ids = array_map('intval', $data['partner_ids'] ?? []);
         $featured = ($data['selection_mode'] ?? 'automatic') === 'manual' ? $q->whereIn('id', $ids)->get()->sortBy(fn ($p) => array_search($p->id, $ids, true)) : $q->limit(2)->get();
-        $map = fn ($p) => ['id' => $p->id, 'name' => $p->name, 'type' => $p->type?->value ?? $p->type, 'logo_url' => PublicMediaUrl::fromPublicDisk($p->logo_path, $request)];
+        $map = fn ($p) => ['name' => $p->name, 'type' => $p->type?->value ?? $p->type, 'logo_url' => PublicMediaUrl::fromPublicDisk($p->logo_path, $request)];
 
         return ['featured_partners' => $featured->map($map)->values()->all(), 'other_partners' => ConventionPartner::query()->publiclyAvailable()->publicOrder()->whereNotIn('id', $featured->pluck('id'))->get()->map($map)->values()->all()];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\SupportedLocale;
 use App\Models\Page;
 use App\Models\SiteIndexPage;
 use App\Models\SiteNavigation;
@@ -13,7 +14,7 @@ use Illuminate\Http\Request;
 
 class SiteNavigationProjectionService
 {
-    public function __construct(private readonly ContactCenterDataResolver $centerData, private readonly MedicalAreaPublicService $areas, private readonly ConsentConfigurationInitializer $consentConfiguration) {}
+    public function __construct(private readonly ContactCenterDataResolver $centerData, private readonly MedicalAreaPublicService $areas, private readonly ConsentConfigurationInitializer $consentConfiguration, private readonly PublicLocaleResolver $locales, private readonly LocalizedContentResolver $localized, private readonly LocalizedRouteRegistry $routes) {}
 
     /** @return array<string, mixed> */
     public function admin(SiteNavigation $navigation, Request $request): array
@@ -32,9 +33,10 @@ class SiteNavigationProjectionService
     /** @return array<string, mixed> */
     public function public(SiteNavigation $navigation, Request $request): array
     {
+        $locale = $this->locales->resolve($request);
         $configuration = $this->configuration($navigation);
-        $centerMenu = $this->publicCenterMenu($configuration['center_mega_menu'], $navigation, $request);
-        $areasMenu = $this->publicAreasMenu($configuration['medical_areas_mega_menu'], $navigation, $request);
+        $centerMenu = $this->publicCenterMenu($configuration['center_mega_menu'], $navigation, $request, $locale);
+        $areasMenu = $this->publicAreasMenu($configuration['medical_areas_mega_menu'], $navigation, $request, $locale);
         $items = [];
 
         foreach ($configuration['header'] as $item) {
@@ -60,7 +62,7 @@ class SiteNavigationProjectionService
                 continue;
             }
 
-            $target = $this->target((string) $definition['target']);
+            $target = $this->target((string) $definition['target'], $locale);
             if ($target['href'] === null) {
                 continue;
             }
@@ -73,7 +75,7 @@ class SiteNavigationProjectionService
                 'reserved_area' => ['action' => 'reserved_area', 'label' => SiteNavigationRegistry::TARGETS['reserved_area']],
                 'booking' => ['action' => 'booking', 'label' => SiteNavigationRegistry::TARGETS['booking']],
             ],
-            'footer' => $this->publicFooter($configuration['footer']),
+            'footer' => $this->publicFooter($configuration['footer'], $locale),
         ];
     }
 
@@ -100,8 +102,9 @@ class SiteNavigationProjectionService
     }
 
     /** @return array{href: ?string, publication_state: string, is_public: bool, action?: string} */
-    public function target(string $key): array
+    public function target(string $key, ?SupportedLocale $locale = null): array
     {
+        $locale ??= SupportedLocale::IT;
         if ($key === 'cookie_preferences') {
             return ['href' => null, 'publication_state' => 'action', 'is_public' => (bool) $this->consentConfiguration->initialize()->is_enabled, 'action' => 'cookie_preferences'];
         }
@@ -109,20 +112,31 @@ class SiteNavigationProjectionService
             return ['href' => null, 'publication_state' => 'action', 'is_public' => true, 'action' => $key];
         }
         if (str_ends_with($key, '_index')) {
-            $page = SiteIndexPage::query()->where('internal_key', $key)->first();
-            $public = $page?->isPubliclyAvailable() ?? false;
+            $page = SiteIndexPage::query()->with('translations')->where('internal_key', $key)->first();
+            $translation = $page?->translations->firstWhere('locale', $locale);
+            $public = ($page?->isPubliclyAvailable() ?? false) && ($locale === SupportedLocale::IT || $translation?->isPubliclyAvailable());
 
-            return ['href' => $public ? ($page->canonical_url ?: '/'.$page->slug) : null, 'publication_state' => $page?->publicationState()->value ?? 'missing', 'is_public' => $public];
+            return ['href' => $public ? $this->routes->path(match ($key) {
+                'medical_areas_index' => 'medical_areas',
+                'equipe_index' => 'team',
+                'checkups_index' => 'checkups',
+                'diagnostics_index' => 'diagnostics',
+                'aesthetic_medicine_index' => 'aesthetic_medicine',
+                'news_index' => 'news',
+                'health_pills_index' => 'health_tips',
+            }, $locale) : null, 'publication_state' => $page?->publicationState()->value ?? 'missing', 'is_public' => $public];
         }
 
-        $page = Page::query()->where('internal_key', $key === 'cookie_policy' ? 'cookie-policy' : $key)->first();
-        $public = $page?->isPubliclyAvailable() ?? false;
+        $page = Page::query()->with('translations')->where('internal_key', $key === 'cookie_policy' ? 'cookie-policy' : $key)->first();
+        $translation = $page?->translations->firstWhere('locale', $locale);
+        $public = ($page?->isPubliclyAvailable() ?? false) && ($locale === SupportedLocale::IT || $translation?->isPubliclyAvailable());
+        $slug = $locale === SupportedLocale::IT ? $page?->slug : $translation?->slug;
 
-        return ['href' => $public ? '/'.$page->slug : null, 'publication_state' => $page?->publicationState()->value ?? 'missing', 'is_public' => $public];
+        return ['href' => $public && $slug ? $this->routes->page($locale, $slug) : null, 'publication_state' => $page?->publicationState()->value ?? 'missing', 'is_public' => $public];
     }
 
     /** @param array<string, mixed> $menu @return array<string, mixed> */
-    private function publicCenterMenu(array $menu, SiteNavigation $navigation, Request $request): array
+    private function publicCenterMenu(array $menu, SiteNavigation $navigation, Request $request, SupportedLocale $locale): array
     {
         $groups = [];
         foreach ($menu['groups'] as $key => $group) {
@@ -131,7 +145,7 @@ class SiteNavigationProjectionService
                 if (! $item['is_active']) {
                     continue;
                 }
-                $target = $this->target($item['target']);
+                $target = $this->target($item['target'], $locale);
                 if ($target['href'] === null) {
                     continue;
                 }
@@ -142,7 +156,7 @@ class SiteNavigationProjectionService
             }
         }
         $promo = $menu['promo'];
-        $cta = $this->target($promo['cta_target']);
+        $cta = $this->target($promo['cta_target'], $locale);
         if ($cta['href'] === null) {
             $promo['cta_label'] = null;
             $promo['cta_target'] = null;
@@ -206,7 +220,7 @@ class SiteNavigationProjectionService
     }
 
     /** @param array<string, mixed> $menu @return array<string, mixed> */
-    private function publicAreasMenu(array $menu, SiteNavigation $navigation, Request $request): array
+    private function publicAreasMenu(array $menu, SiteNavigation $navigation, Request $request, SupportedLocale $locale): array
     {
         $profiles = $this->areas->query()->whereIn('specialization_id', $menu['specialization_ids'])->get()->keyBy('specialization_id');
         $items = collect($menu['specialization_ids'])->map(function (int $id) use ($profiles, $request): ?array {
@@ -216,9 +230,9 @@ class SiteNavigationProjectionService
             }
             $item = $this->areas->listItem($profile, $request);
 
-            return ['public_slug' => $item['slug'], 'href' => '/aree-mediche/'.$item['slug'], 'name' => $item['name'], 'icon_url' => $item['icon_url'], 'short_description' => $item['short_description']];
+            return ['public_slug' => $item['slug'], 'href' => $item['href'], 'name' => $item['name'], 'icon_url' => $item['icon_url'], 'short_description' => $item['short_description']];
         })->filter()->values()->all();
-        $target = $this->target('medical_areas_index');
+        $target = $this->target('medical_areas_index', $locale);
         $promo = $target['href'] === null ? null : [...$menu['promo'], 'href' => $target['href']];
         if ($promo !== null) {
             $promo['image_url'] = PublicMediaUrl::fromPublicDisk($navigation->medical_areas_mega_menu_promo_image_path, $request);
@@ -228,13 +242,13 @@ class SiteNavigationProjectionService
     }
 
     /** @param array<string, mixed> $footer @return array<string, mixed> */
-    private function publicFooter(array $footer): array
+    private function publicFooter(array $footer, SupportedLocale $locale): array
     {
         $columns = [];
         foreach ($footer['columns'] as $key => $column) {
             $items = [];
             foreach ($column['items'] as $item) {
-                $target = $this->target($item['target']);
+                $target = $this->target($item['target'], $locale);
                 if ($item['is_active'] && $target['href'] !== null) {
                     $items[] = ['target' => $item['target'], 'label' => $item['label'] ?: SiteNavigationRegistry::TARGETS[$item['target']], 'href' => $target['href']];
                 }
@@ -242,8 +256,8 @@ class SiteNavigationProjectionService
             $columns[] = ['key' => $key, 'title' => $column['title'], 'items' => $items];
         }
         $center = $this->center();
-        $legalLinks = collect(['privacy' => 'Privacy Policy', 'cookie_policy' => 'Cookie Policy', 'terms_of_service' => 'Termini di servizio'])->map(function (string $label, string $target): ?array {
-            $resolved = $this->target($target);
+        $legalLinks = collect(['privacy' => 'Privacy Policy', 'cookie_policy' => 'Cookie Policy', 'terms_of_service' => 'Termini di servizio'])->map(function (string $label, string $target) use ($locale): ?array {
+            $resolved = $this->target($target, $locale);
 
             return $resolved['href'] ? ['target' => $target, 'label' => $label, 'href' => $resolved['href']] : null;
         })->filter()->values()->all();

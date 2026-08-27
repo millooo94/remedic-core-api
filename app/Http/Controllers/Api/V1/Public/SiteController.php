@@ -22,6 +22,7 @@ use App\Services\ConventionPartnerPublicProjection;
 use App\Services\HomePagePublicProjection;
 use App\Services\LegalDocumentPublicProjection;
 use App\Services\LocalizedContentResolver;
+use App\Services\LocalizedRouteRegistry;
 use App\Services\MedicalAreaPublicService;
 use App\Services\PublicLocaleResolver;
 use App\Services\PublicSeoResolver;
@@ -48,6 +49,7 @@ class SiteController extends Controller
         private readonly PublicSeoResolver $seo,
         private readonly PublicLocaleResolver $locales,
         private readonly LocalizedContentResolver $localized,
+        private readonly LocalizedRouteRegistry $routes,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -688,8 +690,8 @@ class SiteController extends Controller
             ->all();
 
         return [
-            'id' => (string) $profile?->id,
             'slug' => $this->resolveProfessionalSlug($professional, $profile),
+            'href' => $this->routes->path('team', $this->locales->resolve($request), $this->resolveProfessionalSlug($professional, $profile)),
             'name' => $professional->full_name,
             'title' => $this->resolveProfessionalTitlePrefix($profile),
             'specialization' => $this->resolveProfessionalSpecialization($professional),
@@ -719,7 +721,7 @@ class SiteController extends Controller
                 'og_title' => $profile?->og_title,
                 'og_description' => $profile?->og_description,
                 'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
-            ], '/equipe/'.$profile?->slug, $request),
+            ], $this->routes->path('team', $this->locales->resolve($request), (string) $profile?->slug), $request),
                 'h1' => $profile?->seo_h1,
             ],
         ];
@@ -751,14 +753,12 @@ class SiteController extends Controller
                 'honorific_prefix' => $professional->honorific_prefix,
                 'name' => $professional->full_name,
                 'primary_specialization' => $primary ? [
-                    'id' => $primary->id,
                     'name' => $primary->name,
                     'public_slug' => $primaryWebProfile?->public_slug,
-                    'href' => $primaryWebProfile?->is_web_enabled ? '/aree-mediche/'.$primaryWebProfile->public_slug : null,
+                    'href' => $primaryWebProfile?->is_web_enabled ? $this->routes->path('medical_areas', $this->locales->resolve($request), $primaryWebProfile->public_slug) : null,
                 ] : null,
                 'short_bio' => $profile->short_bio,
                 'competencies' => $profile->heroCompetencies->map(fn ($item) => [
-                    'id' => $item->id,
                     'title' => $item->title,
                     'icon_key' => $item->icon_key,
                 ])->values()->all(),
@@ -767,14 +767,12 @@ class SiteController extends Controller
             'approach' => [
                 'content' => $profile->approach_content,
                 'principles' => $profile->approachPrinciples->map(fn ($item) => [
-                    'id' => $item->id,
                     'label' => $item->label,
                     'icon_key' => $item->icon_key,
                 ])->values()->all(),
             ],
             'competencies' => [
                 'items' => $profile->competencies->map(fn ($item) => [
-                    'id' => $item->id,
                     'title' => $item->title,
                     'description' => $item->description,
                     'icon_key' => $item->icon_key,
@@ -782,7 +780,6 @@ class SiteController extends Controller
             ],
             'career' => [
                 'items' => $professional->careerExperiences->map(fn ($item) => [
-                    'id' => $item->id,
                     'year_from' => (int) $item->year_from,
                     'year_to' => $item->year_to !== null ? (int) $item->year_to : null,
                     'is_current' => (bool) $item->is_current,
@@ -793,7 +790,6 @@ class SiteController extends Controller
             ],
             'scientific_activity' => [
                 'items' => $profile->scientificActivities->map(fn ($item) => [
-                    'id' => $item->id,
                     'contribution_type' => $item->contribution_type?->value ?? $item->contribution_type,
                     'occurred_on' => optional($item->occurred_on)?->toDateString(),
                     'year' => $item->year,
@@ -836,9 +832,11 @@ class SiteController extends Controller
 
     private function mapBlogListItem(BlogPost $post): array
     {
+        $locale = $this->locales->resolve(request());
+
         return [
             'slug' => $post->slug,
-            'href' => $post->canonicalHref(),
+            'href' => $this->routes->path($post->content_type === 'health_pill' ? 'health_tips' : 'news', $locale, $post->slug),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label ?: 'Blog',
@@ -853,6 +851,8 @@ class SiteController extends Controller
 
     private function mapBlogDetail(BlogPost $post): array
     {
+        $locale = $this->locales->resolve(request());
+        $route = $post->content_type === 'health_pill' ? 'health_tips' : 'news';
         $relatedArticles = $post->relatedArticles
             ->filter(fn (BlogPost $article) => $article->id !== $post->id && $article->isPubliclyAvailable())
             ->pluck('slug')
@@ -864,14 +864,14 @@ class SiteController extends Controller
             ->map(fn (Service $service): array => [
                 'name' => $service->publicLabel(),
                 'slug' => $service->webProfile->public_slug,
-                'href' => '/prestazioni/'.$service->webProfile->public_slug,
+                'href' => $this->routes->path('services', $locale, $service->webProfile->public_slug),
             ])
             ->values()
             ->all();
 
         return [
             'slug' => $post->slug,
-            'href' => $post->canonicalHref(),
+            'href' => $this->routes->path($route, $locale, $post->slug),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label ?: 'Blog',
@@ -911,7 +911,7 @@ class SiteController extends Controller
                 'og_title' => $post->og_title,
                 'og_description' => $post->og_description,
                 'image_url' => $this->resolveMediaPathOrUrl($post->cover_image, request()),
-            ], $post->canonicalHref(), request(), in_array($post->content_type, ['news', 'health_pill'], true) ? 'article' : 'website'),
+            ], $this->routes->path($route, $locale, $post->slug), request(), in_array($post->content_type, ['news', 'health_pill'], true) ? 'article' : 'website'),
                 'h1' => $post->seo_h1,
             ],
         ];
@@ -919,6 +919,7 @@ class SiteController extends Controller
 
     private function mapPageDetail(Page $page): array
     {
+        $locale = $this->locales->resolve(request());
         $defaultOgImagePath = SiteSetting::current()->default_og_image_path;
         $isLegal = LegalDocumentRegistry::isLegal((string) $page->internal_key);
         $sections = PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
@@ -934,6 +935,7 @@ class SiteController extends Controller
         return [
             'internal_key' => $page->internal_key,
             'slug' => $page->slug,
+            'href' => $this->routes->page($locale, $page->slug),
             'title' => $page->title,
             'template' => $page->template?->value ?? $page->template,
             'excerpt' => $page->excerpt,
@@ -961,7 +963,7 @@ class SiteController extends Controller
                 'og_title' => $page->og_title,
                 'og_description' => $page->og_description,
                 'image_url' => $this->resolveMediaPathOrUrl($page->og_image_path ?: $page->hero_image_path ?: $defaultOgImagePath, request()),
-            ], $page->canonical_url ?: '/'.$page->slug, request()),
+            ], $this->routes->page($locale, $page->slug), request()),
                 'h1' => $page->seo_h1,
                 'twitter_title' => $page->twitter_title,
                 'twitter_description' => $page->twitter_description,
@@ -1116,8 +1118,8 @@ class SiteController extends Controller
         $profile ??= $professional->publicProfile;
 
         return [
-            'id' => (string) $profile?->id,
             'slug' => $this->resolveProfessionalSlug($professional, $profile),
+            'href' => $this->routes->path('team', $this->locales->resolve($request), $this->resolveProfessionalSlug($professional, $profile)),
             'name' => $professional->full_name,
             'title' => $this->resolveProfessionalTitlePrefix($profile),
             'specialization' => $this->resolveProfessionalSpecialization($professional),

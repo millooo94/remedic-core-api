@@ -9,14 +9,13 @@ use Illuminate\Http\Request;
 
 class ConventionPartnerPublicProjection
 {
-    /** @return array{items: list<array{id: int, name: string, type: string, type_label: string, logo_url: ?string}>, available_types: list<array{type: string, label: string}>} */
+    /** @return array{items: list<array{name: string, type: string, type_label: string, logo_url: ?string}>, available_types: list<array{type: string, label: string}>} */
     public function catalog(Request $request): array
     {
         $partners = ConventionPartner::query()->publiclyAvailable()->publicOrder()->get();
 
         return [
             'items' => $partners->map(fn (ConventionPartner $partner): array => [
-                'id' => $partner->id,
                 'name' => $partner->name,
                 'type' => $partner->type->value,
                 'type_label' => $partner->type->label(),

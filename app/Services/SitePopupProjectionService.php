@@ -67,9 +67,9 @@ class SitePopupProjectionService
             'title' => $popup->title,
             'body' => $popup->body,
             'image_url' => PublicMediaUrl::fromPublicDisk($popup->image_path, $request),
-            'primary_cta' => $this->publicCta($popup->primary_cta_label, $popup->primary_cta_target),
-            'secondary_cta' => $this->publicCta($popup->secondary_cta_label, $popup->secondary_cta_target),
-            'source' => $this->source($popup),
+            'primary_cta' => $this->publicCta($popup->primary_cta_label, $popup->primary_cta_target, $request),
+            'secondary_cta' => $this->publicCta($popup->secondary_cta_label, $popup->secondary_cta_target, $request),
+            'source' => $this->publicSource($popup),
         ];
     }
 
@@ -80,6 +80,16 @@ class SitePopupProjectionService
             SitePopupSourceType::MANUAL => ['type' => 'manual', 'data' => null],
             SitePopupSourceType::PROMOTION => ['type' => 'promotion', 'data' => $popup->promotion ? $this->promotionSummary($popup->promotion) : null],
             SitePopupSourceType::EVENT => ['type' => 'event', 'data' => $popup->event ? $this->eventSummary($popup->event) : null],
+        };
+    }
+
+    /** Public source metadata intentionally excludes operational primary keys. */
+    private function publicSource(SitePopup $popup): array
+    {
+        return match ($popup->source_type) {
+            SitePopupSourceType::MANUAL => ['type' => 'manual', 'data' => null],
+            SitePopupSourceType::PROMOTION => ['type' => 'promotion', 'data' => $popup->promotion ? $this->publicPromotionSummary($popup->promotion) : null],
+            SitePopupSourceType::EVENT => ['type' => 'event', 'data' => $popup->event ? $this->publicEventSummary($popup->event) : null],
         };
     }
 
@@ -123,6 +133,22 @@ class SitePopupProjectionService
         ];
     }
 
+    private function publicPromotionSummary(Promotion $promotion): array
+    {
+        $summary = $this->promotionSummary($promotion);
+        unset($summary['id']);
+
+        return $summary;
+    }
+
+    private function publicEventSummary(Event $event): array
+    {
+        $summary = $this->eventSummary($event);
+        unset($summary['id']);
+
+        return $summary;
+    }
+
     /** @return array<string, mixed> */
     private function locationSummary(Event $event): array
     {
@@ -153,12 +179,12 @@ class SitePopupProjectionService
     }
 
     /** @return array<string, mixed>|null */
-    private function publicCta(?string $label, ?string $target): ?array
+    private function publicCta(?string $label, ?string $target, Request $request): ?array
     {
         if ($label === null || $target === null) {
             return null;
         }
-        $resolved = $this->navigation->target($target);
+        $resolved = $this->navigation->target($target, app(PublicLocaleResolver::class)->resolve($request));
         if ($resolved['publication_state'] === 'action') {
             return ['label' => $label, 'action' => $target];
         }

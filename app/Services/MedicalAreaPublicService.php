@@ -54,10 +54,10 @@ class MedicalAreaPublicService
 
         return [
             'slug' => $profile->slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('medical_areas', $locale, $profile->slug),
             'name' => $profile->localizedTranslation?->title ?: $master->name,
             'short_description' => $profile->short_description ?: '',
             'description' => $profile->short_description ?: '',
-            'list_sort_order' => (int) $profile->list_sort_order,
             'services_count' => $master->services->count(),
             'professionals_count' => $master->professionals->count(),
             'icon_url' => PublicMediaUrl::fromPublicDisk($master->icon_path, $request),
@@ -138,7 +138,7 @@ class MedicalAreaPublicService
                 'og_title' => $profile->og_title,
                 'og_description' => $profile->og_description,
                 'image_url' => PublicMediaUrl::fromPublicDisk($master->featured_image_path, $request),
-            ], '/aree-mediche/'.$profile->slug, $request),
+            ], app(LocalizedRouteRegistry::class)->path('medical_areas', $locale, $profile->slug), $request),
                 'local_title' => $profile->local_seo_title,
                 'local_description' => $profile->local_seo_description,
                 'h1' => $profile->seo_h1,

@@ -57,6 +57,7 @@ class ServicePublicContentService
 
         return [
             'slug' => $profile->public_slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('services', $locale, $profile->public_slug),
             'name' => $profile->localizedTranslation?->title ?: $service->publicLabel(),
             'short_description' => $profile->short_description ?: '',
             'price' => $service->importo_prestazione,
@@ -64,7 +65,6 @@ class ServicePublicContentService
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
             'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
             'primary_area' => $this->publicArea($primary, $request),
-            'list_sort_order' => (int) $profile->list_sort_order,
         ];
     }
 
