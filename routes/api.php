@@ -350,6 +350,10 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('blog-posts', AdminBlogPostController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::post('blog-posts/{blogPost}/sections/{section}/media', [AdminBlogPostController::class, 'uploadSectionMedia'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::post('blog-posts/media', [AdminBlogPostController::class, 'uploadMedia'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::apiResource('redirects', AdminRedirectController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_REDIRECTS->value);
                 Route::get('seo', [AdminSeoConfigurationController::class, 'show'])

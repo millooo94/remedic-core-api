@@ -394,7 +394,10 @@ class SiteController extends Controller
         $locale = $this->locales->resolve(request());
         $post = $this->blogPostsBaseQuery()->when($locale === SupportedLocale::IT, fn (Builder $query) => $query->where('slug', $slug), fn (Builder $query) => $query->whereHas('translations', fn (Builder $translations) => $translations->where('locale', $locale->value)->where('slug', $slug)))->where('content_type', $type)->firstOrFail();
 
-        return response()->json(['data' => $this->mapBlogDetail($this->localized->project($post, $locale) ?? abort(404))]);
+        $post = $this->localized->project($post, $locale) ?? abort(404);
+        abort_unless($this->localized->hasCompleteStructure($post, $locale), 404);
+
+        return response()->json(['data' => [...$this->mapBlogDetail($post), 'locale' => $locale->value, 'available_locales' => $this->localized->availableLocales($post)]]);
     }
 
     public function page(Request $request, string $slug): JsonResponse
@@ -491,7 +494,7 @@ class SiteController extends Controller
                 'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
                 'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
                 'relatedServices.webProfile',
-                'relatedArticles',
+                'relatedArticles.translations',
             ])
             ->active()
             ->published()
@@ -880,7 +883,26 @@ class SiteController extends Controller
         $route = $post->content_type === 'health_pill' ? 'health_tips' : 'news';
         $relatedArticles = $post->relatedArticles
             ->filter(fn (BlogPost $article) => $article->id !== $post->id && $article->isPubliclyAvailable())
-            ->pluck('slug')
+            ->map(function (BlogPost $article) use ($locale): ?array {
+                $article = $this->localized->project($article, $locale);
+                if (! $article instanceof BlogPost) {
+                    return null;
+                }
+                $route = $article->content_type === 'health_pill' ? 'health_tips' : 'news';
+
+                return [
+                    'title' => $article->title,
+                    'excerpt' => $article->excerpt ?: $article->intro_text ?: '',
+                    'image_url' => $this->resolveMediaPathOrUrl($article->cover_image, request()),
+                    'published_at' => $article->published_at?->toIso8601String(),
+                    'date' => $article->published_at?->translatedFormat('j F Y'),
+                    'category_key' => $article->editorial_category,
+                    'category_label' => BlogPost::editorialCategories($article->content_type)[$article->editorial_category] ?? $article->category_label,
+                    'content_type' => $article->content_type,
+                    'href' => $this->routes->path($route, $locale, $article->slug),
+                ];
+            })
+            ->filter()
             ->values()
             ->all();
 
@@ -899,22 +921,24 @@ class SiteController extends Controller
             'href' => $this->routes->path($route, $locale, $post->slug),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
-            'category' => $post->category_label ?: 'Blog',
+            'category' => $post->category_label,
             'excerpt' => $post->excerpt ?: '',
             'content' => $post->intro_text ?: $post->excerpt ?: '',
-            'sections' => $post->sections->map(fn (Section $section): array => [
-                'type' => $this->resolveBlogSectionType($section),
-                'title' => $section->title,
-                'content' => $section->content,
-                'items' => is_array($section->extra_json['items'] ?? null)
-                    ? array_values(array_filter(array_map(
-                        fn ($item) => is_string($item) ? $item : null,
-                        $section->extra_json['items']
-                    )))
-                    : [],
-            ])->values()->all(),
-            'date' => optional($post->published_at)->translatedFormat('j F Y') ?: 'Bozza',
-            'author' => $post->author_name ?: 'Redazione Remedic',
+            'sections' => $post->sections->map(function (Section $section): array {
+                $template = $section->template?->value ?? $section->template ?? 'text';
+
+                return [
+                    'template' => $template,
+                    'title' => $section->title,
+                    'body' => $section->content,
+                    'image_url' => $template === 'image_text'
+                        ? $this->resolveMediaPathOrUrl($section->extra_json['image_path'] ?? null, request())
+                        : null,
+                ];
+            })->values()->all(),
+            'published_at' => $post->published_at?->toIso8601String(),
+            'date' => $post->published_at?->translatedFormat('j F Y'),
+            'author' => $post->author_name,
             'reviewer' => $post->reviewer_name,
             'featured' => $this->blogPostsHaveFeaturedFlag() ? (bool) ($post->getAttribute('is_featured') ?? false) : false,
             'related_prestazioni' => $relatedServices,
@@ -923,7 +947,7 @@ class SiteController extends Controller
                 'question' => $faq->question,
                 'answer' => $faq->answer,
             ])->values()->all(),
-            'cover_image' => $post->cover_image,
+            'cover_image' => $this->resolveMediaPathOrUrl($post->cover_image, request()),
             'content_type' => $post->content_type,
             'editorial_category' => $post->editorial_category,
             'editorial_category_label' => BlogPost::editorialCategories($post->content_type)[$post->editorial_category] ?? null,

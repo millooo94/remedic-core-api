@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EditorialSectionTemplate;
 use App\Models\Concerns\SynchronizesLocalizedStructure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,6 +20,7 @@ class Section extends Model
         'sectionable_id',
         'sectionable_type',
         'key',
+        'template',
         'title',
         'subtitle',
         'content',
@@ -31,6 +33,7 @@ class Section extends Model
     {
         return [
             'legacy_backend_id' => 'integer',
+            'template' => EditorialSectionTemplate::class,
             'extra_json' => 'array',
             'sort_order' => 'integer',
             'is_active' => 'boolean',

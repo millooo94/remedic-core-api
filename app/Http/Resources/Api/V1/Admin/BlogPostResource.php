@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1\Admin;
 
 use App\Models\BlogPost;
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -41,10 +42,17 @@ class BlogPostResource extends JsonResource
             'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(fn ($section) => [
                 'id' => $section->id,
                 'key' => $section->key,
+                'template' => $section->template?->value ?? $section->template ?? 'text',
                 'title' => $section->title,
                 'subtitle' => $section->subtitle,
                 'content' => $section->content,
                 'extra_json' => $section->extra_json,
+                'image_path' => ($section->template?->value ?? $section->template) === 'image_text'
+                    ? ($section->extra_json['image_path'] ?? null)
+                    : null,
+                'image_url' => ($section->template?->value ?? $section->template) === 'image_text'
+                    ? PublicMediaUrl::fromPublicDisk($section->extra_json['image_path'] ?? null, $request)
+                    : null,
                 'sort_order' => $section->sort_order,
                 'is_active' => (bool) $section->is_active,
             ])->values()->all()),

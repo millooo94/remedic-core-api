@@ -140,7 +140,9 @@ class StateNormalizationApiTest extends TestCase
 
         $this->getJson('/api/v1/public/blog-posts/source-post')
             ->assertOk()
-            ->assertJsonPath('data.related_articles', ['related-published']);
+            ->assertJsonPath('data.related_articles.0.title', 'Related Published')
+            ->assertJsonPath('data.related_articles.0.href', '/news/related-published')
+            ->assertJsonPath('data.related_articles.0.content_type', null);
     }
 
     private function actingAsAdmin(): void

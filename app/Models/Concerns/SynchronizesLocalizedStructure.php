@@ -34,7 +34,7 @@ trait SynchronizesLocalizedStructure
                 if ($italian !== null) {
                     $revision = hash('sha256', json_encode([
                         'content' => $italian->only(['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description']),
-                        'sections' => $owner->sections()->active()->orderBy('id')->get(['id', 'title', 'subtitle', 'content'])->toArray(),
+                        'sections' => $owner->sections()->active()->orderBy('id')->get(['id', 'template', 'title', 'subtitle', 'content', 'extra_json'])->toArray(),
                         'faqs' => $owner->faqs()->active()->orderBy('id')->get(['id', 'question', 'answer'])->toArray(),
                     ], JSON_THROW_ON_ERROR));
                     $italian->forceFill(['source_revision' => $revision, 'reviewed_source_revision' => $revision])->save();

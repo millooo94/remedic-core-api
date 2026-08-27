@@ -353,6 +353,64 @@ class AdminBackofficeApiTest extends TestCase
     }
 
     #[Test]
+    public function editorial_sections_keep_identity_and_clear_image_when_switched_to_text(): void
+    {
+        $user = User::factory()->create(['role' => UserRole::Admin]);
+        $user->assignRole(Role::findByName(AdminRole::ADMIN->value, 'web'));
+        Sanctum::actingAs($user);
+
+        $created = $this->postJson('/api/v1/admin/blog-posts', [
+            'title' => 'Sezioni editoriali',
+            'slug' => 'sezioni-editoriali',
+            'content_type' => 'news',
+            'is_active' => true,
+            'published_at' => now()->subMinute()->toIso8601String(),
+            'sections' => [[
+                'template' => 'image_text',
+                'title' => 'Titolo sezione',
+                'content' => '<p>Paragrafo</p>',
+                'image_path' => 'blog-posts/drafts/section.webp',
+                'is_active' => true,
+            ]],
+        ])->assertCreated()
+            ->assertJsonPath('sections.0.template', 'image_text');
+
+        $postId = (int) $created->json('id');
+        $sectionId = (int) $created->json('sections.0.id');
+
+        $this->putJson("/api/v1/admin/blog-posts/{$postId}", [
+            'title' => 'Sezioni editoriali',
+            'slug' => 'sezioni-editoriali',
+            'content_type' => 'news',
+            'is_active' => true,
+            'published_at' => now()->subMinute()->toIso8601String(),
+            'sections' => [[
+                'id' => $sectionId,
+                'template' => 'text',
+                'title' => 'Titolo aggiornato',
+                'content' => '<p>Paragrafo aggiornato</p>',
+                'is_active' => true,
+            ]],
+        ])->assertOk()
+            ->assertJsonPath('sections.0.id', $sectionId)
+            ->assertJsonPath('sections.0.template', 'text')
+            ->assertJsonPath('sections.0.image_path', null);
+
+        $this->assertDatabaseHas('sections', ['id' => $sectionId, 'template' => 'text']);
+
+        $this->getJson('/api/v1/public/news/sezioni-editoriali')
+            ->assertOk()
+            ->assertJsonPath('data.locale', 'it')
+            ->assertJsonPath('data.available_locales', ['it'])
+            ->assertJsonPath('data.author', null)
+            ->assertJsonPath('data.sections.0.template', 'text')
+            ->assertJsonPath('data.sections.0.body', '<p>Paragrafo aggiornato</p>')
+            ->assertJsonPath('data.sections.0.image_url', null)
+            ->assertJsonMissingPath('data.sections.0.key')
+            ->assertJsonMissingPath('data.sections.0.sort_order');
+    }
+
+    #[Test]
     public function seo_manager_can_crud_redirects_via_admin_api(): void
     {
         $user = User::factory()->create([

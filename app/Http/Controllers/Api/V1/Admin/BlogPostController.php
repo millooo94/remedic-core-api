@@ -10,10 +10,17 @@ use App\Http\Requests\Api\V1\Admin\BlogPosts\UpdateBlogPostRequest;
 use App\Http\Resources\Api\V1\Admin\BlogPostResource;
 use App\Models\BlogPost;
 use App\Models\Redirect;
+use App\Models\Section;
 use App\Services\BlogPostSlugRedirectService;
+use App\Support\Media\PublicMediaUrl;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class BlogPostController extends Controller
 {
@@ -87,13 +94,48 @@ class BlogPostController extends Controller
         return response()->noContent();
     }
 
+    public function uploadSectionMedia(Request $request, BlogPost $blogPost, Section $section): JsonResponse
+    {
+        abort_unless($section->sectionable_type === BlogPost::class && $section->sectionable_id === $blogPost->id, 404);
+        if (($section->template?->value ?? $section->template) !== 'image_text') {
+            throw ValidationException::withMessages(['section' => 'Il media e consentito solo per il template immagine e testo.']);
+        }
+
+        $request->validate(['image' => ['required', 'image', 'max:10240']]);
+        $storedPath = $request->file('image')->store("blog-posts/{$blogPost->id}/sections/{$section->id}", 'public');
+        $extra = $section->extra_json ?? [];
+        $oldPath = $extra['image_path'] ?? null;
+        $extra['image_path'] = $storedPath;
+        $section->forceFill(['extra_json' => $extra])->save();
+        if (is_string($oldPath) && str_starts_with($oldPath, "blog-posts/{$blogPost->id}/sections/{$section->id}/") && $oldPath !== $storedPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return response()->json([
+            'section_id' => $section->id,
+            'image_path' => $storedPath,
+            'image_url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
+            'original_name' => $request->file('image')->getClientOriginalName(),
+        ]);
+    }
+
+    public function uploadMedia(Request $request): JsonResponse
+    {
+        $request->validate(['image' => ['required', 'image', 'max:10240']]);
+        $storedPath = $request->file('image')->store('blog-posts/drafts/'.Str::uuid(), 'public');
+
+        return response()->json([
+            'image_path' => $storedPath,
+            'image_url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
+            'original_name' => $request->file('image')->getClientOriginalName(),
+        ]);
+    }
+
     private function persist(BlogPost $blogPost, array $payload): BlogPost
     {
         $previousSlug = $blogPost->exists ? $blogPost->slug : null;
-        $relationsPayload = [
-            'sections' => $payload['sections'] ?? [],
-            'faqs' => $payload['faqs'] ?? [],
-        ];
+        $relationsPayload = ['faqs' => $payload['faqs'] ?? []];
+        $sections = $payload['sections'] ?? null;
         $syncRelatedServices = array_key_exists('related_service_ids', $payload);
         $syncRelatedArticles = array_key_exists('related_article_ids', $payload);
         $relatedServiceIds = $payload['related_service_ids'] ?? [];
@@ -104,6 +146,9 @@ class BlogPostController extends Controller
         $blogPost->fill($payload);
         $blogPost->save();
 
+        if (is_array($sections)) {
+            $this->persistEditorialSections($blogPost, $sections);
+        }
         $this->persistSectionsAndFaqs($blogPost, $relationsPayload);
         if ($syncRelatedServices) {
             $blogPost->relatedServices()->sync($this->pivotPayload($relatedServiceIds));
@@ -132,5 +177,48 @@ class BlogPostController extends Controller
             ->values()
             ->mapWithKeys(fn (int $id, int $index): array => [$id => ['sort_order' => $index]])
             ->all();
+    }
+
+    /** @param list<array<string, mixed>> $sections */
+    private function persistEditorialSections(BlogPost $blogPost, array $sections): void
+    {
+        $existing = $blogPost->sections()->get()->keyBy('id');
+        $retainedIds = [];
+
+        foreach ($sections as $index => $payload) {
+            $id = isset($payload['id']) ? (int) $payload['id'] : null;
+            $section = $id === null ? null : $existing->get($id);
+            if ($id !== null && $section === null) {
+                throw ValidationException::withMessages(["sections.$index.id" => 'La sezione non appartiene a questo articolo.']);
+            }
+
+            $template = $payload['template'] ?? 'text';
+            $extra = $payload['extra_json'] ?? ($section?->extra_json ?? []);
+            $extra = is_array($extra) ? $extra : [];
+            if ($template === 'image_text') {
+                $extra['image_path'] = $payload['image_path'] ?? ($extra['image_path'] ?? null);
+            } else {
+                unset($extra['image_path']);
+            }
+
+            $attributes = [
+                'key' => $payload['key'] ?? $section?->key ?? 'section-'.Str::uuid(),
+                'template' => $template,
+                'title' => trim((string) $payload['title']),
+                'subtitle' => $payload['subtitle'] ?? null,
+                'content' => trim((string) $payload['content']),
+                'extra_json' => $extra ?: null,
+                'sort_order' => $index,
+                'is_active' => $payload['is_active'] ?? true,
+            ];
+            if ($section === null) {
+                $section = $blogPost->sections()->create($attributes);
+            } else {
+                $section->fill($attributes)->save();
+            }
+            $retainedIds[] = $section->id;
+        }
+
+        $blogPost->sections()->whereNotIn('id', $retainedIds)->delete();
     }
 }

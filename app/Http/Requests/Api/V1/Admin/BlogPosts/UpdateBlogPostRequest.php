@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1\Admin\BlogPosts;
 
+use App\Enums\EditorialSectionTemplate;
 use App\Enums\RobotsValue;
 use App\Models\BlogPost;
 use Illuminate\Foundation\Http\FormRequest;
@@ -41,10 +42,13 @@ class UpdateBlogPostRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'published_at' => ['nullable', 'date'],
             'sections' => ['sometimes', 'array'],
-            'sections.*.key' => ['required', 'string', 'max:255', 'distinct'],
-            'sections.*.title' => ['nullable', 'string', 'max:255'],
+            'sections.*.id' => ['nullable', 'integer'],
+            'sections.*.key' => ['nullable', 'string', 'max:255', 'distinct'],
+            'sections.*.template' => ['nullable', Rule::enum(EditorialSectionTemplate::class)],
+            'sections.*.title' => ['required', 'string', 'max:255'],
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
-            'sections.*.content' => ['nullable', 'string'],
+            'sections.*.content' => ['required', 'string'],
+            'sections.*.image_path' => ['nullable', 'string', 'max:255'],
             'sections.*.extra_json' => ['nullable', 'array'],
             'sections.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'sections.*.is_active' => ['sometimes', 'boolean'],
@@ -67,6 +71,13 @@ class UpdateBlogPostRequest extends FormRequest
             $category = $this->input('editorial_category');
             if ($category !== null && ! array_key_exists($category, BlogPost::editorialCategories($this->input('content_type')))) {
                 $validator->errors()->add('editorial_category', 'La categoria editoriale non è valida per il tipo contenuto selezionato.');
+            }
+            foreach ($this->input('sections', []) as $index => $section) {
+                $template = $section['template'] ?? EditorialSectionTemplate::Text->value;
+                $imagePath = $section['image_path'] ?? data_get($section, 'extra_json.image_path');
+                if ($template === EditorialSectionTemplate::ImageText->value && ! filled($imagePath)) {
+                    $validator->errors()->add("sections.$index.image_path", 'Il template con immagine richiede un media associato.');
+                }
             }
         }];
     }

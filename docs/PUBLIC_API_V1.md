@@ -140,6 +140,28 @@ parent projections. A related record without a publicly available requested-
 locale projection is omitted; no Italian name, slug, or href fallback is
 returned.
 
+## Public API V1 additive amendment — Editorial section templates and related articles
+
+`GET news/{slug}` and `GET pillole-di-salute/{slug}` describe the same public
+`BlogPost` editorial domain, distinguished only by `content_type` (`news` or
+`health_pill`). Both detail payloads include `locale` and `available_locales`
+with the standard effective-publication semantics.
+
+`sections` is ordered and contains only public presentation data:
+`{template, title, body, image_url}`. `template` is exactly `text` (Titolo +
+paragrafo) or `image_text` (Titolo + immagine + paragrafo). `image_url` is
+`null` for `text`; a published `image_text` section has an associated public
+media URL. Internal section identifiers, keys, storage paths, JSON metadata
+and editor sort fields are never exposed.
+
+`related_articles` is an ordered, locale-aware public projection, not a list
+of slugs. Each item is `{title, excerpt, image_url, published_at, date,
+category_key, category_label, content_type, href}`. `href` is always derived
+by `LocalizedRouteRegistry`; a related article without an effective requested
+locale projection is omitted without Italian fallback. Editorial `author`,
+`published_at`, and `date` are nullable when absent; no synthetic author or
+draft date label is emitted.
+
 ## Search and public submissions
 
 | Method | Path | Request / response | Limit |
