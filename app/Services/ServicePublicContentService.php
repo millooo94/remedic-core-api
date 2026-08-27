@@ -99,6 +99,7 @@ class ServicePublicContentService
 
         return [
             'slug' => $profile->public_slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('services', $locale, $profile->public_slug),
             'name' => $this->localizedTitle($profile, $service->publicLabel()),
             'short_description' => $profile->short_description ?: '',
             'price' => $service->importo_prestazione,
@@ -244,6 +245,7 @@ class ServicePublicContentService
 
         return [
             'slug' => $profile->slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('team', $locale, $profile->slug),
             'name' => $this->localizedTitle($profile, trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name])))),
             'short_bio' => $profile->short_bio ?: '',
             'specialization' => $primary?->name,

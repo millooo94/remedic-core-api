@@ -248,7 +248,7 @@ class EquipeApiTest extends TestCase
         ]);
         app(EquipeContentService::class)->initializeSections($profile);
 
-        $publish = function (ProfessionalPublicProfile|SpecializationWebProfile $owner, string $locale, string $title, string $slug, string $state = 'published', bool $reviewed = true): void {
+        $publish = function (ProfessionalPublicProfile|ServiceWebProfile|SpecializationWebProfile $owner, string $locale, string $title, string $slug, string $state = 'published', bool $reviewed = true): void {
             $italian = $owner->translations()->where('locale', 'it')->firstOrFail();
             $owner->translations()->create([
                 'locale' => $locale,
@@ -307,17 +307,66 @@ class EquipeApiTest extends TestCase
             $professional->specializations()->attach($profileToExclude->specialization_id, ['is_primary' => false, 'sort_order' => $index + 3]);
         }
 
+        $categoryId = ServiceCategory::query()->value('id');
+        $localizedService = Service::factory()->create([
+            'category_id' => $categoryId,
+            'display_name' => 'Visita multi',
+            'is_active' => true,
+            'is_web_active' => true,
+        ]);
+        $localizedServiceProfile = ServiceWebProfile::query()->create([
+            'service_id' => $localizedService->id,
+            'public_slug' => 'visita-multi',
+            'is_web_enabled' => true,
+        ]);
+        app(ServiceWebContentService::class)->initializeSections($localizedServiceProfile);
+        foreach ([
+            ['en', 'Multi visit EN', 'multi-visit-en'],
+            ['es', 'Visita multi ES', 'visita-multi-es'],
+            ['fr', 'Consultation multi FR', 'consultation-multi-fr'],
+        ] as [$locale, $title, $slug]) {
+            $publish($localizedServiceProfile, $locale, $title, $slug);
+        }
+        $italianOnlyService = Service::factory()->create([
+            'category_id' => $categoryId,
+            'display_name' => 'Solo italiano',
+            'is_active' => true,
+            'is_web_active' => true,
+        ]);
+        $italianOnlyProfile = ServiceWebProfile::query()->create([
+            'service_id' => $italianOnlyService->id,
+            'public_slug' => 'solo-italiano',
+            'is_web_enabled' => true,
+        ]);
+        app(ServiceWebContentService::class)->initializeSections($italianOnlyProfile);
+        $professional->professionalServices()->create([
+            'service_id' => $localizedService->id,
+            'is_active' => true,
+            'is_visible_public' => true,
+            'public_sort_order' => 0,
+        ]);
+        $professional->professionalServices()->create([
+            'service_id' => $italianOnlyService->id,
+            'is_active' => true,
+            'is_visible_public' => true,
+            'public_sort_order' => 1,
+        ]);
+
         $english = $this->getJson('/api/v1/public/equipe/doctor-multi-en?locale=en')->assertOk();
         $this->assertSame(['Cardiology', 'Neurology'], array_column($english->json('data.areas'), 'name'));
         $this->assertSame(['/en/medical-areas/cardiology-en', '/en/medical-areas/neurology-en'], array_column($english->json('data.areas'), 'href'));
+        $this->assertSame(['/en/services/multi-visit-en'], array_column($english->json('data.services'), 'href'));
+        $this->assertSame('/en/services/multi-visit-en', collect($english->json('data.sections'))->firstWhere('key', 'services')['data']['items'][0]['href']);
 
         $spanish = $this->getJson('/api/v1/public/equipe/doctor-multi-es?locale=es')->assertOk();
         $this->assertSame(['Cardiología'], array_column($spanish->json('data.areas'), 'name'));
         $this->assertSame('/es/areas-medicas/cardiologia-es', $spanish->json('data.areas.0.href'));
+        $this->assertSame('/es/servicios/visita-multi-es', $spanish->json('data.services.0.href'));
 
         $french = $this->getJson('/api/v1/public/equipe/doctor-multi-fr?locale=fr')->assertOk();
         $this->assertSame(['Neurologie'], array_column($french->json('data.areas'), 'name'));
         $this->assertSame('/fr/specialites-medicales/neurologie-fr', $french->json('data.areas.0.href'));
+        $this->assertSame('/fr/prestations/consultation-multi-fr', $french->json('data.services.0.href'));
 
         SpecializationWebProfile::query()->whereIn('id', [$draftProfile->id, $staleProfile->id, $missingLocaleProfile->id])->update(['is_web_enabled' => false]);
         $italian = $this->getJson('/api/v1/public/equipe/dottore-multi')->assertOk()
@@ -332,6 +381,7 @@ class EquipeApiTest extends TestCase
         $this->assertSame(['name', 'slug', 'href', 'icon_url', 'is_primary'], array_keys($italian->json('data.areas.0')));
         $this->assertTrue($italian->json('data.areas.0.is_primary'));
         $this->assertFalse($italian->json('data.areas.1.is_primary'));
+        $this->assertSame(['/prestazioni/visita-multi', '/prestazioni/solo-italiano'], array_column($italian->json('data.services'), 'href'));
         $this->assertSame('Cardiologia', collect($italian->json('data.sections'))->firstWhere('key', 'hero')['data']['primary_specialization']['name']);
 
         app(SiteIndexPageInitializer::class)->initialize();

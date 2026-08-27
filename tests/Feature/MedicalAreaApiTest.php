@@ -170,6 +170,9 @@ class MedicalAreaApiTest extends TestCase
         $flattened = collect($response->json('data.sections'))->flatten()->all();
         $this->assertNotContains('private@example.test', $flattened);
         $this->assertNotContains('Riservato', $flattened);
+        $sections = collect($response->json('data.sections'))->keyBy('key');
+        $this->assertSame('/prestazioni/ecg', $sections->get('services')['data']['items'][0]['href']);
+        $this->assertSame('/equipe/ada-rossi', $sections->get('equipe')['data']['items'][0]['href']);
         $this->getJson('/api/v1/public/specializations/cardiologia')->assertOk()->assertJsonPath('data.slug', 'cardiologia');
     }
 

@@ -161,6 +161,7 @@ class MedicalAreaPublicService
 
         return [
             'slug' => $profile->slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('team', $locale, $profile->slug),
             'name' => $profile->localizedTranslation?->title ?: trim(implode(' ', array_filter([$professional->honorific_prefix, $professional->full_name]))),
             'short_bio' => $profile->short_bio ?: '',
             'image_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path ?: $profile->profile_image_path, $request),
@@ -178,6 +179,7 @@ class MedicalAreaPublicService
 
         return [
             'slug' => $profile->public_slug,
+            'href' => app(LocalizedRouteRegistry::class)->path('services', $locale, $profile->public_slug),
             'name' => $profile->localizedTranslation?->title ?: $service->publicLabel(),
             'short_description' => $profile->short_description ?: '',
         ];

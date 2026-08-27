@@ -231,6 +231,7 @@ class ServiceWebProfileApiTest extends TestCase
         ]);
 
         $response = $this->getJson('/api/v1/public/prestazioni/ecg')->assertOk()
+            ->assertJsonPath('data.href', '/prestazioni/ecg')
             ->assertJsonPath('data.price', '99.90')
             ->assertJsonPath('data.duration_minutes', 20)
             ->assertJsonPath('data.primary_area.slug', 'cardiologia')
@@ -242,6 +243,8 @@ class ServiceWebProfileApiTest extends TestCase
             ->assertJsonMissing(['notes' => 'Dato riservato'])
             ->assertJsonMissingPath('data.is_bookable_online');
         $this->assertSame(ServiceSectionDefinition::keys(), collect($response->json('data.sections'))->pluck('key')->all());
+        $sections = collect($response->json('data.sections'))->keyBy('key');
+        $this->assertSame('/equipe/ada-rossi', $sections->get('equipe')['data']['items'][0]['href']);
 
         $empty = $this->profiledService('Prestazione vuota', 'prestazione-vuota', true, true);
         $emptyResponse = $this->getJson('/api/v1/public/prestazioni/prestazione-vuota')->assertOk();

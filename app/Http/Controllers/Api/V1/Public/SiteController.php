@@ -465,7 +465,7 @@ class SiteController extends Controller
                 'professional.professionalServices.service' => fn ($query) => $query
                     ->effectivelyVisible()
                     ->orderBy('display_name'),
-                'professional.professionalServices.service.webProfile',
+                'professional.professionalServices.service.webProfile.translations',
                 'professional.degrees',
                 'professional.academicSpecializations',
                 'professional.boardRegistrations',
@@ -685,9 +685,12 @@ class SiteController extends Controller
 
         $services = $professional->professionalServices
             ->filter(fn ($link) => $link->is_active && $link->is_visible_public && $link->service?->isEffectivelyVisible())
-            ->map(fn ($link): array => [
-                'name' => $link->service->publicLabel(),
-                'description' => $link->service->webProfile?->short_description ?: '',
+            ->map(fn ($link) => $this->publicProfessionalService($link->service, $locale))
+            ->filter()
+            ->map(fn (array $service): array => [
+                'name' => $service['name'],
+                'description' => $service['short_description'],
+                'href' => $service['href'],
             ])
             ->values()
             ->all();
@@ -736,6 +739,7 @@ class SiteController extends Controller
         ProfessionalPublicProfile $profile,
         Request $request
     ): array {
+        $locale = $this->locales->resolve($request);
         $primary = $professional->specializations
             ->sortBy(fn ($item) => [($item->pivot?->is_primary ?? false) ? 0 : 1, $item->pivot?->sort_order ?? PHP_INT_MAX, $item->id])
             ->first();
@@ -745,11 +749,9 @@ class SiteController extends Controller
                 && $link->is_visible_public
                 && $link->service !== null
                 && $link->service->isEffectivelyVisible())
-            ->map(fn ($link) => [
-                'slug' => $link->service->webProfile->public_slug,
-                'name' => $link->service->publicLabel(),
-                'short_description' => $link->service->webProfile->short_description ?: '',
-            ])->values();
+            ->map(fn ($link) => $this->publicProfessionalService($link->service, $locale))
+            ->filter()
+            ->values();
 
         $payloads = [
             'hero' => [
@@ -832,6 +834,25 @@ class SiteController extends Controller
                     ]
                     : $payloads[$section->key],
             ])->values()->all();
+    }
+
+    private function publicProfessionalService(?Service $service, SupportedLocale $locale): ?array
+    {
+        if ($service === null || $service->webProfile === null) {
+            return null;
+        }
+
+        $profile = $this->localized->project($service->webProfile, $locale);
+        if ($profile === null) {
+            return null;
+        }
+
+        return [
+            'slug' => $profile->public_slug,
+            'href' => $this->routes->path('services', $locale, $profile->public_slug),
+            'name' => $profile->localizedTranslation?->title ?: $service->publicLabel(),
+            'short_description' => $profile->short_description ?: '',
+        ];
     }
 
     private function mapBlogListItem(BlogPost $post): array
