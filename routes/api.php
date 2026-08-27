@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\V1\Public\SiteNavigationController as PublicSiteNav
 use App\Http\Controllers\Api\V1\Public\SitePopupController as PublicSitePopupController;
 use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\ServiceController;
+use App\Http\Controllers\Api\V1\ServiceStructuredPricingController;
 use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\SpecializationController;
 use Illuminate\Support\Facades\Route;
@@ -186,6 +187,19 @@ Route::prefix('v1')->group(function (): void {
                 Route::delete('{service}/image', [EntityMediaController::class, 'deleteServiceImage']);
                 Route::post('{service}/restore', [ServiceController::class, 'restore']);
                 Route::delete('{service}/force', [ServiceController::class, 'forceDestroy']);
+                Route::get('{service}/pricing', [ServiceStructuredPricingController::class, 'show']);
+                Route::post('{service}/pricing/profiles', [ServiceStructuredPricingController::class, 'storeProfile']);
+                Route::put('{service}/pricing/profiles/{profile}', [ServiceStructuredPricingController::class, 'updateProfile']);
+                Route::delete('{service}/pricing/profiles/{profile}', [ServiceStructuredPricingController::class, 'destroyProfile']);
+                Route::post('{service}/pricing/profiles/reorder', [ServiceStructuredPricingController::class, 'reorderProfiles']);
+                Route::post('{service}/pricing/profiles/{profile}/items', [ServiceStructuredPricingController::class, 'storeItem']);
+                Route::put('{service}/pricing/profiles/{profile}/items/{item}', [ServiceStructuredPricingController::class, 'updateItem']);
+                Route::delete('{service}/pricing/profiles/{profile}/items/{item}', [ServiceStructuredPricingController::class, 'destroyItem']);
+                Route::post('{service}/pricing/profiles/{profile}/items/reorder', [ServiceStructuredPricingController::class, 'reorderItems']);
+                Route::put('{service}/pricing/profiles/{profile}/presentation', [ServiceStructuredPricingController::class, 'updateProfilePresentation']);
+                Route::put('{service}/pricing/profiles/{profile}/items/{item}/presentation', [ServiceStructuredPricingController::class, 'updateItemPresentation']);
+                Route::post('{service}/pricing/profiles/{profile}/items/{item}/presentation/icon', [ServiceStructuredPricingController::class, 'uploadItemIcon']);
+                Route::delete('{service}/pricing/profiles/{profile}/items/{item}/presentation/icon', [ServiceStructuredPricingController::class, 'deleteItemIcon']);
             });
         Route::apiResource('services', ServiceController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);

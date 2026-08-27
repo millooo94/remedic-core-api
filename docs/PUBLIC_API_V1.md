@@ -74,6 +74,25 @@ responses expose localized slug and href where a consumer can navigate.
 | GET | `professionals`, `professionals/{slug}` | Compatibility alias for team. |
 | GET | `blog-posts`, `blog-posts/{slug}` | Compatibility editorial endpoint; it must not define the canonical href of News or Health Pills. |
 
+## Public API V1 additive amendment â€” Structured service pricing
+
+`GET prestazioni/{slug}` (and the `services/{slug}` compatibility alias) now
+returns the optional `pricing` field. It is `null` when the Service has no
+published structured tariff. Otherwise it is `{profiles: [...]}`: profiles and
+their items are already in the explicit management order and contain only
+`label`, optional `intro`, and item `label`, `type` (`zone`, `package` or
+`variant`), decimal `price`, optional public `note`, optional public
+`icon_url`, and Web-owned `is_highlighted`.
+
+Prices and item types are commercial data from Gestione. Labels, public notes,
+icons and highlights come solely from the Web presentation; internal notes,
+identifiers, media keys, publication metadata and sort values are not exposed.
+Only active, Web-enabled profiles/items with a complete, reviewed requested-
+locale presentation are included. Italian is the source presentation; EN, ES
+and FR never fall back to Italian and omit unavailable profile/items. This is
+an additive V1 amendment: the existing nullable Service `price` retains its
+unchanged meaning and no standalone pricing endpoint or public route exists.
+
 `site-indexes/medical_areas_index` accepts `q`; `equipe_index` accepts `q` and
 `area`; diagnostics accepts `q` and `filter`; aesthetic medicine accepts
 `filter`; editorial indexes accept their documented `q`/category filters. All

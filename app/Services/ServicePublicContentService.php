@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\ProfessionalPublicProfile;
 use App\Models\Service;
+use App\Models\ServicePricingItemPresentation;
+use App\Models\ServicePricingProfilePresentation;
 use App\Models\ServiceWebProfile;
 use App\Models\SpecializationWebProfile;
 use App\Support\Media\PublicMediaUrl;
@@ -36,6 +38,8 @@ class ServicePublicContentService
                 'professionalServices.professional.publicProfile',
                 'professionalServices.professional.publicProfile.translations',
                 'professionalServices.professional.specializations',
+                'pricingProfiles.presentation.translations',
+                'pricingProfiles.items.presentation.translations',
             ])
             ->orderBy(
                 ServiceWebProfile::query()
@@ -104,6 +108,7 @@ class ServicePublicContentService
             'short_description' => $profile->short_description ?: '',
             'price' => $service->importo_prestazione,
             'duration_minutes' => $service->default_duration_minutes,
+            'pricing' => $this->pricing($service, $request),
             'featured_image_url' => PublicMediaUrl::fromPublicDisk($service->featured_image_path, $request),
             'icon_url' => PublicMediaUrl::fromPublicDisk($primary?->icon_path, $request),
             'primary_area' => $this->publicArea($primary, $request),
@@ -251,6 +256,63 @@ class ServicePublicContentService
             'specialization' => $primary?->name,
             'image_url' => PublicMediaUrl::fromPublicDisk($professional->avatar_path ?: $profile->profile_image_path, $request),
         ];
+    }
+
+    /**
+     * The commercial structure belongs to Gestione; this is deliberately only
+     * the localized, published Web projection. IDs, sort orders and internal
+     * notes are never sent to public consumers.
+     */
+    private function pricing(Service $service, Request $request): ?array
+    {
+        $locale = app(PublicLocaleResolver::class)->resolve($request);
+        $profiles = $service->pricingProfiles
+            ->filter(fn ($profile) => $profile->is_active && $profile->presentation?->is_web_enabled)
+            ->map(function ($profile) use ($locale, $request) {
+                $presentation = $profile->presentation;
+                $translation = $this->pricingTranslation($presentation, $locale);
+                if ($locale->value !== 'it' && $translation === null) {
+                    return null;
+                }
+                $items = $profile->items
+                    ->filter(fn ($item) => $item->is_active && $item->presentation?->is_web_enabled)
+                    ->map(function ($item) use ($locale, $request) {
+                        $presentation = $item->presentation;
+                        $translation = $this->pricingTranslation($presentation, $locale);
+                        if ($locale->value !== 'it' && $translation === null) {
+                            return null;
+                        }
+
+                        return [
+                            'label' => $translation?->label ?: ($presentation->public_label ?: $item->label),
+                            'type' => $item->kind->value,
+                            'price' => $item->price_amount,
+                            'note' => $translation?->note ?: $presentation->public_note,
+                            'icon_url' => PublicMediaUrl::fromPublicDisk($presentation->icon_path, $request),
+                            'is_highlighted' => (bool) $presentation->is_highlighted,
+                        ];
+                    })->filter()->values()->all();
+                if ($items === []) {
+                    return null;
+                }
+
+                return [
+                    'label' => $translation?->label ?: ($presentation->public_label ?: $profile->label),
+                    'intro' => $locale->value === 'it' ? $presentation->intro : null,
+                    'items' => $items,
+                ];
+            })->filter()->values()->all();
+
+        return $profiles === [] ? null : ['profiles' => $profiles];
+    }
+
+    private function pricingTranslation(ServicePricingProfilePresentation|ServicePricingItemPresentation $presentation, $locale)
+    {
+        if ($locale->value === 'it') {
+            return null;
+        }
+
+        return $presentation->translations->first(fn ($translation) => $translation->locale === $locale && $translation->isPubliclyAvailable());
     }
 
     private function localizedTitle(ServiceWebProfile|SpecializationWebProfile|ProfessionalPublicProfile $profile, string $fallback): string

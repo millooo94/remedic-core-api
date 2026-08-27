@@ -83,6 +83,11 @@ class Service extends Model
         return $this->hasOne(ServiceWebProfile::class);
     }
 
+    public function pricingProfiles(): HasMany
+    {
+        return $this->hasMany(ServicePricingProfile::class)->ordered();
+    }
+
     public function aliases(): HasMany
     {
         return $this->hasMany(ServiceAlias::class);
