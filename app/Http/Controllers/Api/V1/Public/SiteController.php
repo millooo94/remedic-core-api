@@ -22,6 +22,7 @@ use App\Services\ConventionPartnerPublicProjection;
 use App\Services\HomePagePublicProjection;
 use App\Services\LegalDocumentPublicProjection;
 use App\Services\LocalizedContentResolver;
+use App\Services\LocalizedRouteProjection;
 use App\Services\LocalizedRouteRegistry;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ProfessionalPublicAreaProjection;
@@ -52,6 +53,7 @@ class SiteController extends Controller
         private readonly PublicLocaleResolver $locales,
         private readonly LocalizedContentResolver $localized,
         private readonly LocalizedRouteRegistry $routes,
+        private readonly LocalizedRouteProjection $localizedRoutes,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -118,6 +120,8 @@ class SiteController extends Controller
         abort_unless($this->localized->hasCompleteStructure($page, $locale), 404);
         $data = $this->homePage->project($page, $request);
         $data['locale'] = $locale->value;
+        $data['available_locales'] = $this->localized->availableLocales($page);
+        $data['localized_routes'] = $this->localizedRoutes->home($page);
         $data['seo'] = $this->seo->resolve([
             'title' => $page->title,
             'description' => $page->excerpt ?: $page->intro_text,
@@ -701,6 +705,9 @@ class SiteController extends Controller
         return [
             'slug' => $this->resolveProfessionalSlug($professional, $profile),
             'href' => $this->routes->path('team', $this->locales->resolve($request), $this->resolveProfessionalSlug($professional, $profile)),
+            'locale' => $locale->value,
+            'available_locales' => $this->localized->availableLocales($profile),
+            'localized_routes' => $this->localizedRoutes->content($profile, 'team', fn (ProfessionalPublicProfile $localized): string => $localized->slug),
             'name' => $professional->full_name,
             'title' => $this->resolveProfessionalTitlePrefix($profile),
             'specialization' => $this->resolveProfessionalSpecialization($professional),
@@ -919,6 +926,7 @@ class SiteController extends Controller
         return [
             'slug' => $post->slug,
             'href' => $this->routes->path($route, $locale, $post->slug),
+            'localized_routes' => $this->localizedRoutes->content($post, $route, fn (BlogPost $localized): string => $localized->slug),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
             'category' => $post->category_label,
@@ -985,6 +993,7 @@ class SiteController extends Controller
             'internal_key' => $page->internal_key,
             'slug' => $page->slug,
             'href' => $this->routes->page($locale, $page->slug),
+            'localized_routes' => $this->localizedRoutes->page($page),
             'title' => $page->title,
             'template' => $page->template?->value ?? $page->template,
             'excerpt' => $page->excerpt,

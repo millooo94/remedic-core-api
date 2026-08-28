@@ -186,6 +186,8 @@ class CheckupWebProfileApiTest extends TestCase
         $this->profiledCheckup('Percorso pubblico', 'percorso-pubblico', true, true, [$service]);
 
         $this->getJson('/api/v1/public/check-up/percorso-pubblico')->assertOk()
+            ->assertJsonPath('data.localized_routes.0', ['locale' => 'it', 'href' => '/check-up/percorso-pubblico'])
+            ->assertJsonPath('data.available_locales', ['it'])
             ->assertJsonPath('data.checkup.name', 'Percorso pubblico')
             ->assertJsonPath('data.web_profile.public_slug', 'percorso-pubblico')
             ->assertJsonPath('data.included_services.0.href', '/prestazioni/ecg-pubblico')

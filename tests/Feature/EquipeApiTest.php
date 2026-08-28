@@ -357,6 +357,12 @@ class EquipeApiTest extends TestCase
         $this->assertSame(['/en/medical-areas/cardiology-en', '/en/medical-areas/neurology-en'], array_column($english->json('data.areas'), 'href'));
         $this->assertSame(['/en/services/multi-visit-en'], array_column($english->json('data.services'), 'href'));
         $this->assertSame('/en/services/multi-visit-en', collect($english->json('data.sections'))->firstWhere('key', 'services')['data']['items'][0]['href']);
+        $this->assertSame([
+            ['locale' => 'it', 'href' => '/equipe/dottore-multi'],
+            ['locale' => 'en', 'href' => '/en/team/doctor-multi-en'],
+            ['locale' => 'es', 'href' => '/es/equipo/doctor-multi-es'],
+            ['locale' => 'fr', 'href' => '/fr/equipe/doctor-multi-fr'],
+        ], $english->json('data.localized_routes'));
 
         $spanish = $this->getJson('/api/v1/public/equipe/doctor-multi-es?locale=es')->assertOk();
         $this->assertSame(['Cardiología'], array_column($spanish->json('data.areas'), 'name'));

@@ -36,6 +36,7 @@ class PublicApiFreezeContractTest extends TestCase
             ->assertJsonPath('data.href', '/'.$slug)
             ->assertJsonPath('data.locale', 'it')
             ->assertJsonPath('data.available_locales', ['it'])
+            ->assertJsonPath('data.localized_routes', [['locale' => 'it', 'href' => '/'.$slug]])
             ->assertJsonStructure(['data' => ['sections', 'seo' => ['title', 'description', 'canonical_url', 'robots', 'open_graph']]]);
     }
 
@@ -52,6 +53,7 @@ class PublicApiFreezeContractTest extends TestCase
             ->assertJsonPath('data.locale', 'it')
             ->assertJsonPath('data.canonical_url', $path)
             ->assertJsonPath('data.available_locales', ['it'])
+            ->assertJsonPath('data.localized_routes', [['locale' => 'it', 'href' => $path]])
             ->assertJsonStructure(['data' => ['content', 'media', 'seo' => ['title', 'description', 'canonical_url', 'robots', 'open_graph']]]);
     }
 

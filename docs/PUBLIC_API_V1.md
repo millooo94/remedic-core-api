@@ -18,7 +18,12 @@ below are rooted at `/api/v1/public`, are unauthenticated, and use JSON.
   equivalents included). `/blog-posts`, `/services`, `/specializations`, and
   the other historical aliases are compatibility routes, never canonicals.
 - `available_locales` lists only effectively published, reviewed translations,
-  in `it`, `en`, `es`, `fr` order.
+  in `it`, `en`, `es`, `fr` order. Navigable page, index and detail payloads
+  also expose additive `localized_routes`, an ordered list of `{locale, href}`
+  canonical destinations for that same resource. Both lists contain the same
+  publicly available locales. Every `href` comes from `LocalizedRouteRegistry`;
+  slugs may differ by locale, and unavailable, draft or stale translations are
+  omitted without an Italian fallback.
 - Public payloads use slugs, typed keys, and `public_id` where applicable; they
   do not expose implementation PKs, pivot keys, storage paths, or private CV
   data. Collections are already ordered by the server and do not expose editor
@@ -48,8 +53,8 @@ values are `null`; absent collections are `[]`; public booleans are booleans.
 | GET | `site/popup` | Active popup, CTAs, runtime source and `campaign_version` | locale-aware; inactive is `data: null` |
 | GET | `home` | Compatibility homepage summary | bounded lists |
 | GET | `site/home` | Canonical typed home-page projection | locale-aware, SEO included |
-| GET | `pages/{slug}` | One of the published static pages: home, center, why_choose_us, plus_health_protocol, contact, conventions_network, careers, privacy, cookie-policy, terms_of_service | `data` contains `internal_key`, localized `slug`/`href`, sections, SEO and `available_locales` |
-| GET | `site-indexes/{key}` | One of medical_areas_index, equipe_index, checkups_index, diagnostics_index, aesthetic_medicine_index, news_index, health_pills_index | `data` has locale, canonical path, SEO, content/media and projection items; filters are documented by each projection |
+| GET | `pages/{slug}` | One of the published static pages: home, center, why_choose_us, plus_health_protocol, contact, conventions_network, careers, privacy, cookie-policy, terms_of_service | `data` contains `internal_key`, localized `slug`/`href`, `available_locales`, `localized_routes`, sections and SEO |
+| GET | `site-indexes/{key}` | One of medical_areas_index, equipe_index, checkups_index, diagnostics_index, aesthetic_medicine_index, news_index, health_pills_index | `data` has locale, canonical path, `available_locales`, `localized_routes`, SEO, content/media and projection items; filters are documented by each projection |
 | GET | `seo` | Global defaults and structured data | `404` if requested locale is not published |
 | GET | `seo/robots` | Indexing directives and sitemap endpoint | no locale input |
 | GET | `seo/sitemap` | Canonical public paths only | locale-aware; draft, stale, redirects and compatibility paths excluded |
@@ -59,7 +64,9 @@ values are `null`; absent collections are `[]`; public booleans are booleans.
 
 The canonical website route families are `aree-mediche`, `prestazioni`,
 `equipe`, `check-up`, `news`, and `pillole-di-salute`. Entity list/detail
-responses expose localized slug and href where a consumer can navigate.
+responses expose localized slug and href where a consumer can navigate. Their
+detail payloads also expose `available_locales` and `localized_routes` for the
+same entity, so a consumer can switch locale without deriving a target path.
 
 | Method | Path | Contract |
 | --- | --- | --- |

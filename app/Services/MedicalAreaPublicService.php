@@ -128,6 +128,9 @@ class MedicalAreaPublicService
 
         return [
             ...$this->listItem($profile, $request),
+            'locale' => $locale->value,
+            'available_locales' => app(LocalizedContentResolver::class)->availableLocales($profile),
+            'localized_routes' => app(LocalizedRouteProjection::class)->content($profile, 'medical_areas', fn (SpecializationWebProfile $localized): string => $localized->slug),
             'sections' => $sections,
             'seo' => [...app(PublicSeoResolver::class)->resolve([
                 'title' => $master->name,

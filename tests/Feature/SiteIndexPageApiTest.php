@@ -150,8 +150,12 @@ class SiteIndexPageApiTest extends TestCase
             ->assertJsonPath('data.result_count', 1)->assertJsonPath('data.featured.href', '/news/nuova-tecnologia');
         $this->getJson('/api/v1/public/site-indexes/health_pills_index?category=cardiology')->assertOk()
             ->assertJsonPath('data.items.0.href', '/pillole-di-salute/pillola-cuore');
-        $this->getJson('/api/v1/public/news/nuova-tecnologia')->assertOk()->assertJsonPath('data.href', '/news/nuova-tecnologia');
-        $this->getJson('/api/v1/public/pillole-di-salute/pillola-cuore')->assertOk()->assertJsonPath('data.href', '/pillole-di-salute/pillola-cuore');
+        $this->getJson('/api/v1/public/news/nuova-tecnologia')->assertOk()
+            ->assertJsonPath('data.href', '/news/nuova-tecnologia')
+            ->assertJsonPath('data.localized_routes', [['locale' => 'it', 'href' => '/news/nuova-tecnologia']]);
+        $this->getJson('/api/v1/public/pillole-di-salute/pillola-cuore')->assertOk()
+            ->assertJsonPath('data.href', '/pillole-di-salute/pillola-cuore')
+            ->assertJsonPath('data.localized_routes', [['locale' => 'it', 'href' => '/pillole-di-salute/pillola-cuore']]);
         $this->assertSame('Nuova tecnologia', $news->title);
     }
 

@@ -9,6 +9,7 @@ use App\Models\SiteIndexPage;
 use App\Services\CheckupPublicContentService;
 use App\Services\EditorialIndexProjectionService;
 use App\Services\LocalizedContentResolver;
+use App\Services\LocalizedRouteProjection;
 use App\Services\LocalizedRouteRegistry;
 use App\Services\MedicalAreaPublicService;
 use App\Services\ProfessionalPublicAreaProjection;
@@ -21,7 +22,7 @@ use Illuminate\Http\Request;
 
 class SiteIndexPageController extends Controller
 {
-    public function __construct(private MedicalAreaPublicService $areas, private ProfessionalPublicAreaProjection $professionalAreas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo, private PublicLocaleResolver $locales, private LocalizedContentResolver $localized, private LocalizedRouteRegistry $routes) {}
+    public function __construct(private MedicalAreaPublicService $areas, private ProfessionalPublicAreaProjection $professionalAreas, private CheckupPublicContentService $checkups, private SiteIndexProjectionService $projections, private EditorialIndexProjectionService $editorial, private PublicSeoResolver $seo, private PublicLocaleResolver $locales, private LocalizedContentResolver $localized, private LocalizedRouteRegistry $routes, private LocalizedRouteProjection $localizedRoutes) {}
 
     public function show(Request $request, string $key)
     {
@@ -56,7 +57,7 @@ class SiteIndexPageController extends Controller
 
         $canonicalPath = $this->canonicalPath($key, $locale, $page->slug);
 
-        return response()->json(['data' => ['locale' => $locale->value, 'internal_key' => $key, 'title' => $page->title, 'slug' => $page->slug, 'canonical_url' => $canonicalPath, 'available_locales' => $this->availableLocales($page), 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $canonicalPath, $request), 'h1' => $page->seo_h1], ...$data]]);
+        return response()->json(['data' => ['locale' => $locale->value, 'internal_key' => $key, 'title' => $page->title, 'slug' => $page->slug, 'canonical_url' => $canonicalPath, 'available_locales' => $this->localizedRoutes->siteIndexLocales($page), 'localized_routes' => $this->localizedRoutes->siteIndex($page, $this->routeKey($key)), 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $canonicalPath, $request), 'h1' => $page->seo_h1], ...$data]]);
     }
 
     private function content(SiteIndexPage $page): array
@@ -122,7 +123,12 @@ class SiteIndexPageController extends Controller
 
     private function canonicalPath(string $key, SupportedLocale $locale, string $slug): string
     {
-        $route = match ($key) {
+        return $this->routes->path($this->routeKey($key), $locale);
+    }
+
+    private function routeKey(string $key): string
+    {
+        return match ($key) {
             'medical_areas_index' => 'medical_areas',
             'equipe_index' => 'team',
             'checkups_index' => 'checkups',
@@ -131,17 +137,5 @@ class SiteIndexPageController extends Controller
             'news_index' => 'news',
             'health_pills_index' => 'health_tips',
         };
-
-        return $this->routes->path($route, $locale);
-    }
-
-    private function availableLocales(SiteIndexPage $page): array
-    {
-        $translated = $page->translations->toBase()->filter(fn ($translation): bool => $translation->isPubliclyAvailable())
-            ->map(fn ($translation) => $translation->locale->value)
-            ->all();
-
-        return collect([SupportedLocale::IT->value, ...$translated])->unique()
-            ->sortBy(fn (string $locale): int => array_search($locale, ['it', 'en', 'es', 'fr'], true))->values()->all();
     }
 }

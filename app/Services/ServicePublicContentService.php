@@ -104,6 +104,9 @@ class ServicePublicContentService
         return [
             'slug' => $profile->public_slug,
             'href' => app(LocalizedRouteRegistry::class)->path('services', $locale, $profile->public_slug),
+            'locale' => $locale->value,
+            'available_locales' => app(LocalizedContentResolver::class)->availableLocales($profile),
+            'localized_routes' => app(LocalizedRouteProjection::class)->content($profile, 'services', fn (ServiceWebProfile $localized): string => $localized->public_slug),
             'name' => $this->localizedTitle($profile, $service->publicLabel()),
             'short_description' => $profile->short_description ?: '',
             'price' => $service->importo_prestazione,

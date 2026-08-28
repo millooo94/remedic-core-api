@@ -82,7 +82,10 @@ class LocalizedContentResolver
 
     public function availableLocales(Model $owner): array
     {
-        $locales = $owner->translations()->get()->filter(fn (ContentTranslation $translation) => $translation->isPubliclyAvailable())
+        $translations = $owner->relationLoaded('translations')
+            ? $owner->translations
+            : $owner->translations()->get();
+        $locales = $translations->filter(fn (ContentTranslation $translation) => $translation->isPubliclyAvailable())
             ->map(fn (ContentTranslation $translation) => $translation->locale->value)->values()->all();
 
         $locales = array_values(array_unique(['it', ...$locales]));

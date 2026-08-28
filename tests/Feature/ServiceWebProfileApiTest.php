@@ -232,6 +232,8 @@ class ServiceWebProfileApiTest extends TestCase
 
         $response = $this->getJson('/api/v1/public/prestazioni/ecg')->assertOk()
             ->assertJsonPath('data.href', '/prestazioni/ecg')
+            ->assertJsonPath('data.localized_routes.0', ['locale' => 'it', 'href' => '/prestazioni/ecg'])
+            ->assertJsonPath('data.available_locales', ['it'])
             ->assertJsonPath('data.price', '99.90')
             ->assertJsonPath('data.duration_minutes', 20)
             ->assertJsonPath('data.primary_area.slug', 'cardiologia')

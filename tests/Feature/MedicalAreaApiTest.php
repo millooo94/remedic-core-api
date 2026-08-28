@@ -158,6 +158,8 @@ class MedicalAreaApiTest extends TestCase
         $profile->faqs()->create(['question' => 'Serve una prescrizione?', 'answer' => 'No.', 'is_active' => true]);
 
         $response = $this->getJson('/api/v1/public/aree-mediche/cardiologia')->assertOk()
+            ->assertJsonPath('data.localized_routes.0', ['locale' => 'it', 'href' => '/aree-mediche/cardiologia'])
+            ->assertJsonPath('data.available_locales', ['it'])
             ->assertJsonFragment(['key' => 'services'])
             ->assertJsonFragment(['key' => 'equipe'])
             ->assertJsonFragment(['key' => 'faqs'])
