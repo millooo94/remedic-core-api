@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1\Public;
 
+use App\Enums\SupportedLocale;
 use App\Http\Controllers\Controller;
 use App\Models\ConsentRecord;
+use App\Services\ConsentCategoryInitializer;
 use App\Services\ConsentConfigurationInitializer;
 use App\Services\ConsentService;
+use App\Services\LocalizedContentResolver;
+use App\Services\PublicLocaleResolver;
 use App\Services\SiteNavigationProjectionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,20 +18,24 @@ class ConsentController extends Controller
 {
     public function __construct(
         private readonly ConsentConfigurationInitializer $initializer,
+        private readonly ConsentCategoryInitializer $categories,
         private readonly ConsentService $consents,
         private readonly SiteNavigationProjectionService $navigation,
+        private readonly PublicLocaleResolver $locales,
+        private readonly LocalizedContentResolver $localized,
     ) {}
 
-    public function configuration(): JsonResponse
+    public function configuration(Request $request): JsonResponse
     {
         $configuration = $this->initializer->initialize();
+        $locale = $this->locales->resolve($request);
 
         return response()->json(['data' => [
             'enabled' => (bool) $configuration->is_enabled,
             'configuration_version' => (int) $configuration->configuration_version,
-            'categories' => $this->categories(),
-            'privacy' => ['label' => 'Privacy Policy', ...$this->navigation->target('privacy')],
-            'cookie_policy' => ['label' => 'Cookie Policy', ...$this->navigation->target('cookie_policy')],
+            'categories' => $this->categories($locale),
+            'privacy' => ['label' => 'Privacy Policy', ...$this->navigation->target('privacy', $locale)],
+            'cookie_policy' => ['label' => 'Cookie Policy', ...$this->navigation->target('cookie_policy', $locale)],
         ]]);
     }
 
@@ -110,14 +118,14 @@ class ConsentController extends Controller
         ];
     }
 
-    /** @return list<array{key: string, label: string, required: bool}> */
-    private function categories(): array
+    /** @return list<array{key: string, label: string, description: string, required: bool}> */
+    private function categories(SupportedLocale $locale): array
     {
-        return [
-            ['key' => 'necessary', 'label' => 'Necessari', 'required' => true],
-            ['key' => 'preferences', 'label' => 'Preferenze', 'required' => false],
-            ['key' => 'statistics', 'label' => 'Statistiche', 'required' => false],
-            ['key' => 'marketing', 'label' => 'Marketing', 'required' => false],
-        ];
+        return $this->categories->initialize()->map(function ($category) use ($locale): array {
+            $translation = $this->localized->translation($category, $locale);
+            abort_if($translation === null, 404);
+
+            return ['key' => $category->key, 'label' => $translation->label, 'description' => $translation->description, 'required' => (bool) $category->is_required];
+        })->all();
     }
 }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ConsentCategoryKey;
 use App\Models\Concerns\HasActiveScope;
+use App\Models\Concerns\HasContentTranslations;
 use App\Models\Concerns\HasOrderedScope;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ConsentCategory extends Model
 {
     use HasActiveScope;
+    use HasContentTranslations;
     use HasFactory;
     use HasOrderedScope;
 

@@ -6,7 +6,7 @@ enum ConsentCategoryKey: string
 {
     case NECESSARY = 'necessary';
     case PREFERENCES = 'preferences';
-    case ANALYTICS = 'analytics';
+    case STATISTICS = 'statistics';
     case MARKETING = 'marketing';
 
     public function label(): string
@@ -14,7 +14,7 @@ enum ConsentCategoryKey: string
         return match ($this) {
             self::NECESSARY => 'Necessari',
             self::PREFERENCES => 'Preferenze',
-            self::ANALYTICS => 'Analytics',
+            self::STATISTICS => 'Statistiche',
             self::MARKETING => 'Marketing',
         };
     }
@@ -24,7 +24,7 @@ enum ConsentCategoryKey: string
         return match ($this) {
             self::NECESSARY => 'Tecnologie strettamente necessarie al funzionamento del sito.',
             self::PREFERENCES => 'Servizi che abilitano preferenze, embed o funzionalita opzionali.',
-            self::ANALYTICS => 'Strumenti di analisi e misurazione del traffico.',
+            self::STATISTICS => 'Strumenti di analisi e misurazione del traffico.',
             self::MARKETING => 'Strumenti di advertising, remarketing o profilazione.',
         };
     }

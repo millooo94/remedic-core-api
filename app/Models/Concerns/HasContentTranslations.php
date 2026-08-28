@@ -5,6 +5,7 @@ namespace App\Models\Concerns;
 use App\Enums\SupportedLocale;
 use App\Models\BlogPost;
 use App\Models\CheckupWebProfile;
+use App\Models\ConsentCategory;
 use App\Models\ContentTranslation;
 use App\Models\Page;
 use App\Models\ProfessionalPublicProfile;
@@ -67,6 +68,7 @@ trait HasContentTranslations
             ServiceWebProfile::class => ['public_slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
             ProfessionalPublicProfile::class => ['slug', 'short_bio', 'bio_content', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
             CheckupWebProfile::class => ['public_slug', 'short_description', 'category_label', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
+            ConsentCategory::class => ['name', 'description'],
             BlogPost::class => ['title', 'slug', 'subtitle', 'category_label', 'excerpt', 'intro_text', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
             default => [],
         };
@@ -80,6 +82,7 @@ trait HasContentTranslations
                 'public_slug' => 'slug',
                 'short_bio' => 'short_description',
                 'bio_content' => 'body',
+                'name' => 'label',
                 default => $field,
             }] = $owner->getAttribute($field);
         }

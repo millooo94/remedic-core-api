@@ -12,6 +12,7 @@ class ContentTranslation extends Model
     protected $fillable = [
         'translatable_type', 'translatable_id', 'locale', 'title', 'slug', 'excerpt', 'intro_text', 'short_description',
         'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description',
+        'label', 'description',
         'publication_state', 'source_revision', 'reviewed_source_revision',
     ];
 
@@ -37,6 +38,10 @@ class ContentTranslation extends Model
 
     public function isComplete(): bool
     {
+        if ($this->translatable_type === ConsentCategory::class) {
+            return filled($this->label) && filled($this->description);
+        }
+
         return filled($this->title) && filled($this->slug);
     }
 

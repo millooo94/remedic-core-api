@@ -172,10 +172,19 @@ draft date label is emitted.
 | GET | `newsletter/unsubscribe/{publicId}` | Signed URL only, returns `data.status` | signed middleware |
 | GET | `application-types` | Active career types as `{key,label}` | ordered public projection |
 | POST | `career-applications` | Multipart: first_name, last_name, email, nullable phone/message/CV, application_type key, locale, privacy consent; CV PDF/DOC/DOCX up to 5 MB | career limiter; `201` with public reference and submitted_at only |
-| GET | `consent/configuration` | CMP enabled/version, necessary/preferences/statistics/marketing categories and legal targets | singleton projection |
+| GET | `consent/configuration` | Locale-aware CMP enabled/version, canonical necessary/preferences/statistics/marketing categories (`key`, `label`, `description`, `required`) and legal targets | `locale` defaults to `it`; non-Italian locales require complete reviewed Core copy and never fall back to Italian |
 | POST | `consents` | configuration_version plus preferences/statistics/marketing booleans | consent mutation limiter; `201`, pseudonymous public_id and management token |
 | GET | `consents/{publicId}` | Requires `X-Consent-Token` | no private identity data |
 | PUT/PATCH | `consents/{publicId}` | Same preferences and configuration version; requires token | consent mutation limiter |
+
+`consent/configuration` resolves `locale` through the shared Public API locale
+resolver. The four category keys are stable technical identifiers; only their
+Core-managed `label` and `description` are localized. Italian is the source
+copy. A requested EN/ES/FR configuration is available only when every
+category has complete reviewed localized copy; otherwise the endpoint returns
+`404` and never substitutes Italian text. Updating category copy does not
+increment `configuration_version`; the authorized explicit publish-version
+operation remains the consent-renewal boundary.
 
 ## Audit classification
 

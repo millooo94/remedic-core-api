@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Enums\AdminRole;
 use App\Enums\ConsentEventType;
 use App\Enums\UserRole;
+use App\Models\ConsentCategory;
 use App\Models\ConsentConfiguration;
 use App\Models\ConsentRecord;
 use App\Models\Page;
 use App\Models\User;
+use App\Services\ConsentCategoryInitializer;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -31,8 +33,41 @@ class ConsentManagementApiTest extends TestCase
     {
         Page::query()->where('internal_key', 'privacy')->update(['is_active' => true, 'published_at' => now()]);
         Page::query()->where('internal_key', 'cookie-policy')->update(['is_active' => true, 'published_at' => now()]);
-        $this->getJson('/api/v1/public/consent/configuration')->assertOk()->assertJsonPath('data.enabled', false)->assertJsonPath('data.configuration_version', 1)->assertJsonPath('data.categories.0.key', 'necessary')->assertJsonPath('data.categories.0.required', true)->assertJsonPath('data.categories.2.key', 'statistics')->assertJsonPath('data.privacy.href', '/privacy')->assertJsonPath('data.cookie_policy.href', '/cookie-policy');
+        app(ConsentCategoryInitializer::class)->initialize();
+        $this->assertDatabaseHas('content_translations', ['translatable_type' => ConsentCategory::class, 'locale' => 'it', 'label' => 'Necessari']);
+        $this->getJson('/api/v1/public/consent/configuration')->assertOk()->assertJsonPath('data.enabled', false)->assertJsonPath('data.configuration_version', 1)->assertJsonPath('data.categories.0.key', 'necessary')->assertJsonPath('data.categories.0.label', 'Necessari')->assertJsonPath('data.categories.0.description', 'Indispensabili per il funzionamento del sito e la sicurezza. Sempre attivi.')->assertJsonPath('data.categories.0.required', true)->assertJsonPath('data.categories.2.key', 'statistics')->assertJsonPath('data.privacy.href', '/privacy')->assertJsonPath('data.cookie_policy.href', '/cookie-policy');
         $this->assertSame(1, ConsentConfiguration::query()->count());
+    }
+
+    #[Test]
+    public function configuration_uses_complete_reviewed_copy_for_each_requested_locale_without_italian_fallback(): void
+    {
+        $this->getJson('/api/v1/public/consent/configuration?locale=en')->assertNotFound();
+        $this->getJson('/api/v1/public/consent/configuration?locale=de')->assertUnprocessable();
+
+        foreach (['en', 'es', 'fr'] as $locale) {
+            foreach (ConsentCategory::query()->orderBy('sort_order')->get() as $category) {
+                $sourceRevision = $category->translations()->where('locale', 'it')->value('source_revision');
+                $category->translations()->updateOrCreate(['locale' => $locale], [
+                    'label' => strtoupper($locale).' '.$category->key,
+                    'description' => strtoupper($locale).' description '.$category->key,
+                    'publication_state' => 'published',
+                    'source_revision' => $sourceRevision,
+                    'reviewed_source_revision' => $sourceRevision,
+                ]);
+            }
+
+            $this->getJson('/api/v1/public/consent/configuration?locale='.$locale)
+                ->assertOk()
+                ->assertJsonPath('data.categories.0.key', 'necessary')
+                ->assertJsonPath('data.categories.0.label', strtoupper($locale).' necessary')
+                ->assertJsonPath('data.categories.0.required', true)
+                ->assertJsonPath('data.categories.3.key', 'marketing');
+        }
+
+        $category = ConsentCategory::query()->where('key', 'statistics')->firstOrFail();
+        $category->translations()->where('locale', 'en')->update(['description' => null]);
+        $this->getJson('/api/v1/public/consent/configuration?locale=en')->assertNotFound();
     }
 
     #[Test]
@@ -70,7 +105,9 @@ class ConsentManagementApiTest extends TestCase
     {
         $this->getJson('/api/v1/admin/consent-configuration')->assertUnauthorized();
         $this->admin();
-        $this->putJson('/api/v1/admin/consent-configuration', ['is_enabled' => true])->assertOk()->assertJsonPath('data.is_enabled', true);
+        $this->putJson('/api/v1/admin/consent-configuration', ['is_enabled' => true, 'categories' => [[
+            'key' => 'preferences', 'translations' => [['locale' => 'en', 'label' => 'Preferences', 'description' => 'Stores non-essential choices.']],
+        ]]])->assertOk()->assertJsonPath('data.is_enabled', true)->assertJsonPath('data.configuration_version', 1)->assertJsonFragment(['locale' => 'en', 'label' => 'Preferences']);
         $this->getJson('/api/v1/admin/consent-records')->assertOk()->assertJsonPath('meta.total', 0);
         $this->getJson('/api/v1/public/navigation')->assertOk()->assertJsonFragment(['action' => 'cookie_preferences']);
     }
