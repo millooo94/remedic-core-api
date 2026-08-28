@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\V1\Admin\SiteNavigationMediaController as AdminSite
 use App\Http\Controllers\Api\V1\Admin\SitePopupController as AdminSitePopupController;
 use App\Http\Controllers\Api\V1\Admin\SitePopupMediaController as AdminSitePopupMediaController;
 use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
+use App\Http\Controllers\Api\V1\Admin\TranslationGenerationController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\ApplicationTypeController;
 use App\Http\Controllers\Api\V1\AppointmentController;
@@ -316,6 +317,8 @@ Route::prefix('v1')->group(function (): void {
                 Route::get('localized-singletons/{kind}/{id}/{locale}', [LocalizedSingletonController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::post('localized-singletons/{kind}/{id}/{locale}', [LocalizedSingletonController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::put('localized-singletons/{kind}/{id}/{locale}', [LocalizedSingletonController::class, 'update'])->middleware('permission:'.AdminPermission::PUBLISH_CONTENT->value);
+                Route::post('translation-generations', [TranslationGenerationController::class, 'store'])
+                    ->middleware(['permission:'.AdminPermission::MANAGE_PAGES->value, 'throttle:translation-generations']);
                 Route::get('homepage', [AdminHomePageController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::get('index-pages', [AdminSiteIndexPageController::class, 'index'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);

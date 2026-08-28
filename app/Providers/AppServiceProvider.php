@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\TranslationProvider;
 use App\Models\BlogPost;
 use App\Models\Checkup;
 use App\Models\CheckupWebProfile;
@@ -22,6 +23,7 @@ use App\Models\Specialization;
 use App\Models\SpecializationWebProfile;
 use App\Observers\ExpenseRecordObserver;
 use App\Observers\PublicSearchObserver;
+use App\Services\Translation\GoogleCloudTranslationProvider;
 use App\Support\TestingDatabaseGuard;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -39,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(TranslationProvider::class, GoogleCloudTranslationProvider::class);
         $requestedEnvironment = Env::get('APP_ENV');
         $requestedConnection = null;
 
@@ -75,6 +78,8 @@ class AppServiceProvider extends ServiceProvider
             ->by('newsletter:'.$request->ip()));
         RateLimiter::for('consent-mutations', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('consent:'.$request->ip()));
+        RateLimiter::for('translation-generations', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by('translation:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
         RateLimiter::for('career-applications', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('career-application:'.$request->ip()));
 

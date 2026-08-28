@@ -51,4 +51,10 @@ return [
         'remedic_lng' => env('MARKETING_REMEDIC_LNG', 15.1659),
     ],
 
+    'google_translation' => [
+        'enabled' => env('GOOGLE_TRANSLATION_ENABLED', false),
+        'project' => env('GOOGLE_CLOUD_PROJECT'),
+        'timeout_seconds' => (int) env('GOOGLE_TRANSLATION_TIMEOUT_SECONDS', 12),
+    ],
+
 ];
