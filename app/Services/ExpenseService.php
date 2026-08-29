@@ -16,8 +16,7 @@ class ExpenseService
     public function __construct(
         private readonly ExpenseRecordFilters $filters,
         private readonly PerformancePaymentStatusSyncService $paymentStatusSyncService,
-    ) {
-    }
+    ) {}
 
     public function baseQuery(array $filters = []): Builder
     {
@@ -36,6 +35,12 @@ class ExpenseService
         $variableCosts = round((float) (clone $query)
             ->where('type', 'variable')
             ->sum('amount'), 2);
+        $ordinaryCosts = round((float) (clone $query)
+            ->where('nature', 'ordinary')
+            ->sum('amount'), 2);
+        $specialCosts = round((float) (clone $query)
+            ->where('nature', 'special')
+            ->sum('amount'), 2);
         $unpaidCosts = round((float) (clone $query)
             ->where('payment_status', PaymentStatus::DaPagare->value)
             ->sum('amount'), 2);
@@ -44,6 +49,7 @@ class ExpenseService
             'filters' => [
                 'q' => $filters['q'] ?? null,
                 'type' => $filters['type'] ?? null,
+                'nature' => $filters['nature'] ?? null,
                 'expense_category_id' => isset($filters['expense_category_id']) ? (int) $filters['expense_category_id'] : null,
                 'payment_status' => $filters['payment_status'] ?? null,
                 'month' => isset($filters['month']) ? (int) $filters['month'] : null,
@@ -58,6 +64,8 @@ class ExpenseService
                 'total_costs' => round($fixedCosts + $variableCosts, 2),
                 'fixed_costs' => $fixedCosts,
                 'variable_costs' => $variableCosts,
+                'ordinary_costs' => $ordinaryCosts,
+                'special_costs' => $specialCosts,
                 'unpaid_costs' => $unpaidCosts,
             ],
         ];
@@ -118,6 +126,7 @@ class ExpenseService
             'competence_year' => (int) $competenceStart->format('Y'),
             'description' => $payload['description'],
             'type' => $payload['type'],
+            'nature' => $payload['nature'] ?? 'ordinary',
             'amount' => $this->normalizeMoneyAmount($payload['amount'] ?? 0),
             'supplier' => $payload['supplier'] ?? null,
             'payment_status' => $payload['payment_status'] ?? 'da_pagare',

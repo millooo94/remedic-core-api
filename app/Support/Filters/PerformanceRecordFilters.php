@@ -71,7 +71,7 @@ class PerformanceRecordFilters
 
         return match ($field) {
             'performed_at', 'professional_name_snapshot', 'category_name_snapshot', 'service_name_snapshot', 'quantity', 'total_amount', 'professional_amount', 'center_amount', 'payment_status' => $query->orderBy($field, $direction),
-            default => $query->orderBy('performed_at', 'desc')->orderBy('id', 'desc'),
+            default => $query->orderBy('created_at', 'desc')->orderBy('id', 'desc'),
         };
     }
 }

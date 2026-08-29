@@ -17,6 +17,7 @@ class ExpenseRecordQueryRequest extends FormRequest
         return [
             'q' => ['nullable', 'string', 'max:120'],
             'type' => ['nullable', Rule::in(['fixed', 'variable'])],
+            'nature' => ['nullable', Rule::in(['ordinary', 'special'])],
             'expense_category_id' => ['nullable', 'integer', 'exists:expense_categories,id'],
             'payment_status' => ['nullable', Rule::in(['da_pagare', 'pagata'])],
             'month' => ['nullable', 'integer', 'between:1,12'],

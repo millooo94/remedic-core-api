@@ -33,6 +33,7 @@ class StoreExpenseRecordRequest extends FormRequest
             'competence_year' => ['nullable', 'integer', 'between:2020,2100'],
             'description' => ['required', 'string', 'max:190'],
             'type' => ['required', 'in:fixed,variable'],
+            'nature' => ['nullable', 'in:ordinary,special'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'supplier' => ['nullable', 'string', 'max:190'],
             'payment_status' => ['nullable', 'in:da_pagare,pagata'],

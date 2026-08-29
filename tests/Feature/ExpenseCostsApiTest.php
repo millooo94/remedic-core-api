@@ -32,9 +32,11 @@ class ExpenseCostsApiTest extends TestCase
             'expense_date' => '2026-04-26',
             'description' => 'Test costo',
             'type' => 'fixed',
+            'nature' => 'special',
             'amount' => 123.45,
             'payment_status' => 'da_pagare',
-        ])->assertCreated();
+        ])->assertCreated()
+            ->assertJsonPath('nature', 'special');
 
         $this->assertSame('123.45', $response->json('amount'));
 
@@ -48,6 +50,24 @@ class ExpenseCostsApiTest extends TestCase
         ])->assertCreated();
 
         $this->assertSame('98.70', $commaResponse->json('amount'));
+        $this->assertSame('ordinary', $commaResponse->json('nature'));
+
+        $this->getJson('/api/v1/expense-records?nature=special')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.description', 'Test costo');
+
+        $this->putJson('/api/v1/expense-records/'.$response->json('id'), [
+            'expense_category_id' => $category->id,
+            'expense_date' => '2026-04-26',
+            'description' => 'Test costo aggiornato',
+            'type' => 'fixed',
+            'nature' => 'ordinary',
+            'amount' => 123.45,
+            'payment_status' => 'da_pagare',
+        ])->assertOk()
+            ->assertJsonPath('nature', 'ordinary')
+            ->assertJsonPath('description', 'Test costo aggiornato');
     }
 
     #[Test]
@@ -187,6 +207,35 @@ class ExpenseCostsApiTest extends TestCase
         $this->deleteJson('/api/v1/expense-records/'.$expense->id)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['expense_record']);
+    }
+
+    #[Test]
+    public function it_inherits_the_economic_nature_from_linked_performances(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $ordinary = $this->postJson('/api/v1/performance-records', [
+            'performed_at' => '2026-04-27', 'professional_id' => $professional->id, 'service_id' => $service->id,
+            'patient_ids' => [Patient::factory()->create()->id], 'quantity' => 1, 'unit_amount' => 100,
+            'payment_method' => 'card', 'calculation_mode' => 'percentage', 'percentage_value' => 70,
+        ])->assertCreated()->json();
+        $special = $this->postJson('/api/v1/performance-records', [
+            'performed_at' => '2026-04-28', 'professional_id' => $professional->id, 'service_id' => $service->id,
+            'patient_ids' => [Patient::factory()->create()->id], 'quantity' => 1, 'unit_amount' => 100,
+            'payment_method' => 'cash', 'calculation_mode' => 'percentage', 'percentage_value' => 70, 'is_black' => true,
+        ])->assertCreated()->json();
+        $provvigione = $this->postJson('/api/v1/performance-records', [
+            'performed_at' => '2026-04-29', 'professional_id' => $professional->id, 'service_id' => $service->id,
+            'patient_ids' => [Patient::factory()->create()->id], 'quantity' => 1, 'unit_amount' => 100,
+            'payment_method' => 'cash', 'calculation_mode' => 'percentage', 'percentage_value' => 70, 'is_provvigione' => true,
+        ])->assertCreated()->json();
+
+        $this->assertDatabaseHas('expense_records', ['source_performance_record_id' => $ordinary['id'], 'nature' => 'ordinary']);
+        $this->assertDatabaseHas('expense_records', ['source_performance_record_id' => $special['id'], 'nature' => 'special']);
+        // A provvigione is structurally special, but the existing domain correctly
+        // does not generate a professional quota for it.
+        $this->assertDatabaseMissing('expense_records', ['source_performance_record_id' => $provvigione['id']]);
     }
 
     #[Test]

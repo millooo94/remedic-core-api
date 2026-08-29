@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ExpenseNature;
 use App\Enums\ExpenseType;
 use App\Enums\PaymentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -27,6 +28,7 @@ class ExpenseRecord extends Model
         'competence_year',
         'description',
         'type',
+        'nature',
         'amount',
         'supplier',
         'payment_status',
@@ -44,6 +46,7 @@ class ExpenseRecord extends Model
             'competence_month' => 'integer',
             'competence_year' => 'integer',
             'type' => ExpenseType::class,
+            'nature' => ExpenseNature::class,
             'amount' => 'decimal:2',
             'payment_status' => PaymentStatus::class,
         ];

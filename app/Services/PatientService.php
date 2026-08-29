@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Marketing\ItalianTaxCodeService;
 use App\Services\Marketing\PatientGeocodingService;
 use App\Services\Marketing\PatientSegmentQueryService;
+use App\Support\ItalianProvinces;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -166,7 +167,7 @@ class PatientService
         );
         $residenceAddress = $this->nullableTrimmedString($payload['residence_address'] ?? null);
         $residenceCity = $this->nullableTrimmedString($payload['residence_city'] ?? null);
-        $residenceProvince = $this->nullableTrimmedString($payload['residence_province'] ?? null);
+        $residenceProvince = ItalianProvinces::normalize($payload['residence_province'] ?? null);
         $residenceZip = $this->nullableTrimmedString($payload['residence_zip'] ?? null);
         $geocoding = $this->patientGeocodingService->geocode($residenceAddress, $residenceCity, $residenceZip);
         $geocodedAt = $geocoding['status'] === 'ok' ? now() : null;

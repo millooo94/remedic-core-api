@@ -12,8 +12,8 @@ use App\Models\Service;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Services\PerformanceRecordService;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -130,6 +130,23 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('cards.total_fixed_costs', 20)
             ->assertJsonPath('cards.total_variable_costs', 505)
             ->assertJsonPath('cards.total_center_costs', 525)
+            ->assertJsonPath('cards.cost_breakdown.fixed.ordinary', 20)
+            ->assertJsonPath('cards.cost_breakdown.fixed.special', 0)
+            ->assertJsonPath('cards.cost_breakdown.variable.ordinary', 435)
+            ->assertJsonPath('cards.cost_breakdown.variable.special', 70)
+            ->assertJsonPath('cards.cost_breakdown.total.ordinary', 455)
+            ->assertJsonPath('cards.cost_breakdown.total.special', 70)
+            ->assertJsonPath('cards.cost_breakdown.total.total', 525)
+            ->assertJsonPath('cards.center_share_breakdown.ordinary', 315)
+            ->assertJsonPath('cards.center_share_breakdown.special', 30)
+            ->assertJsonPath('cards.center_share_breakdown.total', 345)
+            ->assertJsonPath('cards.net_margin_breakdown.ordinary.revenue', 750)
+            ->assertJsonPath('cards.net_margin_breakdown.ordinary.costs', 455)
+            ->assertJsonPath('cards.net_margin_breakdown.ordinary.margin', 295)
+            ->assertJsonPath('cards.net_margin_breakdown.special.revenue', 100)
+            ->assertJsonPath('cards.net_margin_breakdown.special.costs', 70)
+            ->assertJsonPath('cards.net_margin_breakdown.special.margin', 30)
+            ->assertJsonPath('cards.net_margin_breakdown.total.margin', 325)
             ->assertJsonPath('cards.black', 30)
             ->assertJsonPath('cards.net_center_margin', 325)
             ->assertJsonPath('cards.professional_amount_breakdown.total', 505)

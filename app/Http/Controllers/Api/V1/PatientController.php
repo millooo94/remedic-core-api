@@ -8,6 +8,7 @@ use App\Models\Patient;
 use App\Services\Marketing\ItalianTaxCodeService;
 use App\Services\PatientImportService;
 use App\Services\PatientService;
+use App\Support\ItalianProvinces;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -109,6 +110,13 @@ class PatientController extends Controller
 
     private function validatedPayload(Request $request): array
     {
+        if ($request->has('residence_province')) {
+            $normalizedProvince = ItalianProvinces::normalize($request->input('residence_province'));
+            if ($normalizedProvince !== null || blank($request->input('residence_province'))) {
+                $request->merge(['residence_province' => $normalizedProvince]);
+            }
+        }
+
         return $request->validate([
             'first_name' => ['required', 'string', 'max:120'],
             'last_name' => ['required', 'string', 'max:120'],
@@ -139,7 +147,7 @@ class PatientController extends Controller
             'email' => ['nullable', 'email', 'max:190'],
             'residence_address' => ['nullable', 'string', 'max:190'],
             'residence_city' => ['nullable', 'string', 'max:120'],
-            'residence_province' => ['nullable', 'string', 'max:120'],
+            'residence_province' => ['nullable', 'string', 'size:2', 'in:'.implode(',', ItalianProvinces::codes())],
             'residence_zip' => ['nullable', 'string', 'max:10', 'regex:/^\d{5}$/'],
             'contactable_sms' => ['sometimes', 'boolean'],
             'contactable_whatsapp' => ['sometimes', 'boolean'],

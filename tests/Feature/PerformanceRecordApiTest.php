@@ -717,6 +717,25 @@ class PerformanceRecordApiTest extends TestCase
     }
 
     #[Test]
+    public function it_orders_unfiltered_records_by_creation_time_with_id_tie_breaker(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+        ['professional' => $professional, 'service' => $service] = $this->createProfessionalServiceContext();
+
+        $first = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-30', 'notes' => 'created-first',
+        ]))->assertCreated()->json();
+        $second = $this->postJson('/api/v1/performance-records', $this->performancePayload($professional, $service, [
+            'performed_at' => '2026-04-01', 'notes' => 'created-second',
+        ]))->assertCreated()->json();
+
+        $this->getJson('/api/v1/performance-records')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $second['id'])
+            ->assertJsonPath('data.1.id', $first['id']);
+    }
+
+    #[Test]
     public function it_returns_filtered_center_and_professional_totals_independent_from_pagination(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));

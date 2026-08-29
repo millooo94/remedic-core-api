@@ -28,6 +28,7 @@ class ExpenseRecordResource extends JsonResource
             'competence_year' => $this->competence_year,
             'description' => $this->description,
             'type' => $this->type?->value ?? $this->type,
+            'nature' => $this->nature?->value ?? $this->nature ?? 'ordinary',
             'amount' => $this->amount,
             'supplier' => $this->supplier,
             'payment_status' => $this->payment_status?->value ?? $this->payment_status,

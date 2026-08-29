@@ -10,6 +10,7 @@ use App\Models\ExpenseRecord;
 use App\Models\ExpenseRecordCompetence;
 use App\Models\PerformanceRecord;
 use App\Models\PerformanceRecordSplit;
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -30,7 +31,23 @@ class DashboardService
 
         $fixedCosts = round((float) $fixedExpenseAllocations->sum('allocated_amount'), 2);
         $variableCosts = round((float) $variableExpenseRecords->sum('amount'), 2);
+        $ordinaryFixedCosts = round((float) $fixedExpenseAllocations
+            ->filter(fn (ExpenseRecordCompetence $allocation) => ($allocation->expenseRecord?->nature?->value ?? $allocation->expenseRecord?->nature ?? 'ordinary') === 'ordinary')
+            ->sum('allocated_amount'), 2);
+        $ordinaryVariableCosts = round((float) $variableExpenseRecords
+            ->filter(fn (ExpenseRecord $expense) => ($expense->nature?->value ?? $expense->nature ?? 'ordinary') === 'ordinary')
+            ->sum('amount'), 2);
+        $specialFixedCosts = round($fixedCosts - $ordinaryFixedCosts, 2);
+        $specialVariableCosts = round($variableCosts - $ordinaryVariableCosts, 2);
+        $ordinaryCosts = round($ordinaryFixedCosts + $ordinaryVariableCosts, 2);
+        $specialCosts = round($specialFixedCosts + $specialVariableCosts, 2);
         $centerTotal = round((float) $performanceRecords->sum('center_amount'), 2);
+        $ordinaryPerformanceRecords = $performanceRecords->filter(fn (PerformanceRecord $record) => ! $this->isSpecialPerformance($record));
+        $specialPerformanceRecords = $performanceRecords->filter(fn (PerformanceRecord $record) => $this->isSpecialPerformance($record));
+        $ordinaryCenterTotal = round((float) $ordinaryPerformanceRecords->sum('center_amount'), 2);
+        $specialCenterTotal = round((float) $specialPerformanceRecords->sum('center_amount'), 2);
+        $ordinaryRevenueTotal = round((float) $ordinaryPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
+        $specialRevenueTotal = round((float) $specialPerformanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $professionalTotal = round((float) $performanceRecords->sum(fn (PerformanceRecord $record) => $this->dashboardProfessionalAmountForRecord($record)), 2);
         $revenueTotal = round((float) $performanceRecords->sum(fn (PerformanceRecord $record) => $this->recognizedRevenueForRecord($record)), 2);
         $cashPerformanceRecords = $performanceRecords->where('payment_method', PaymentMethod::Cash);
@@ -81,6 +98,8 @@ class DashboardService
         $blackCenterNet = round((float) $performanceRecords->where('is_black', true)->sum('center_amount'), 2);
         $totalCenterCosts = round($fixedCosts + $variableCosts, 2);
         $netCenterMargin = round($revenueTotal - $totalCenterCosts, 2);
+        $ordinaryMargin = round($ordinaryRevenueTotal - $ordinaryCosts, 2);
+        $specialMargin = round($specialRevenueTotal - $specialCosts, 2);
 
         $previousFixedCosts = round((float) $previousFixedExpenseAllocations->sum('allocated_amount'), 2);
         $previousVariableCosts = round((float) $previousVariableExpenseRecords->sum('amount'), 2);
@@ -131,6 +150,21 @@ class DashboardService
                 ],
                 'total_fixed_costs' => $fixedCosts,
                 'total_variable_costs' => $variableCosts,
+                'cost_breakdown' => [
+                    'total' => ['ordinary' => $ordinaryCosts, 'special' => $specialCosts, 'total' => $totalCenterCosts],
+                    'fixed' => ['ordinary' => $ordinaryFixedCosts, 'special' => $specialFixedCosts, 'total' => $fixedCosts],
+                    'variable' => ['ordinary' => $ordinaryVariableCosts, 'special' => $specialVariableCosts, 'total' => $variableCosts],
+                ],
+                'center_share_breakdown' => [
+                    'ordinary' => $ordinaryCenterTotal,
+                    'special' => $specialCenterTotal,
+                    'total' => $centerTotal,
+                ],
+                'net_margin_breakdown' => [
+                    'ordinary' => ['revenue' => $ordinaryRevenueTotal, 'costs' => $ordinaryCosts, 'margin' => $ordinaryMargin],
+                    'special' => ['revenue' => $specialRevenueTotal, 'costs' => $specialCosts, 'margin' => $specialMargin],
+                    'total' => ['revenue' => $revenueTotal, 'costs' => $totalCenterCosts, 'margin' => $netCenterMargin],
+                ],
                 'average_performance_cost' => $averagePerformanceCost,
                 'average_performance_cost_excluding_black' => $averagePerformanceCostExcludingBlack,
                 'average_center_gain_performance' => $averageCenterGainPerPerformance,
@@ -382,6 +416,7 @@ class DashboardService
             ->groupBy(fn (PerformanceRecord $record) => $this->normalizedRankingLabel($record->category_name_snapshot))
             ->map(fn (Collection $group, string $label) => [
                 'label' => $label,
+                'icon_url' => $this->specializationIconUrlForRanking($group, $label),
                 'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
                 'promo_performances' => (int) $group
                     ->where('is_promo', true)
@@ -403,6 +438,7 @@ class DashboardService
             ->groupBy(fn (PerformanceRecord $record) => $this->normalizedRankingLabel($record->service_name_snapshot))
             ->map(fn (Collection $group, string $label) => [
                 'label' => $label,
+                'image_url' => $this->serviceImageUrlForRanking($group),
                 'performances' => (int) $group->sum(fn (PerformanceRecord $record) => (int) $record->quantity),
                 'promo_performances' => (int) $group
                     ->where('is_promo', true)
@@ -501,6 +537,27 @@ class DashboardService
         );
     }
 
+    private function isSpecialPerformance(PerformanceRecord $record): bool
+    {
+        return (bool) $record->is_black || (bool) $record->is_provvigione;
+    }
+
+    private function specializationIconUrlForRanking(Collection $records, string $label): ?string
+    {
+        $specialization = $records
+            ->flatMap(fn (PerformanceRecord $record) => $record->service?->specializations ?? collect())
+            ->first(fn ($candidate) => $candidate->name === $label);
+
+        return PublicMediaUrl::fromPublicDisk($specialization?->icon_path, request());
+    }
+
+    private function serviceImageUrlForRanking(Collection $records): ?string
+    {
+        $service = $records->pluck('service')->filter()->first();
+
+        return PublicMediaUrl::fromPublicDisk($service?->featured_image_path, request());
+    }
+
     private function dashboardProfessionalAmountForRecord(PerformanceRecord $record): float
     {
         return $record->is_provvigione
@@ -578,7 +635,7 @@ class DashboardService
     private function performanceRecordsForRange(string $startDate, string $endDate): Collection
     {
         return PerformanceRecord::query()
-            ->with('splits')
+            ->with(['splits', 'service.specializations'])
             ->whereDate('performed_at', '>=', $startDate)
             ->whereDate('performed_at', '<=', $endDate)
             ->get();

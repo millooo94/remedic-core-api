@@ -42,7 +42,7 @@ class PatientApiTest extends TestCase
             ->assertJsonPath('last_name', 'Rossi')
             ->assertJsonPath('full_name', 'Mario Rossi')
             ->assertJsonPath('sex', 'male')
-            ->assertJsonPath('residence_province', 'Catania')
+            ->assertJsonPath('residence_province', 'CT')
             ->assertJsonPath('available_channels.sms', true)
             ->assertJsonPath('available_channels.whatsapp', true)
             ->assertJsonPath('available_channels.email', true)
@@ -90,6 +90,33 @@ class PatientApiTest extends TestCase
             'contactable_sms' => false,
             'contactable_email' => true,
         ]);
+    }
+
+    #[Test]
+    public function it_accepts_a_nullable_canonical_province_and_rejects_unknown_codes(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $this->postJson('/api/v1/patients', [
+            'first_name' => 'Lucia',
+            'last_name' => 'Verdi',
+            'residence_province' => 'MI',
+            'excluded_from_campaigns' => false,
+        ])->assertOk()->assertJsonPath('residence_province', 'MI');
+
+        $this->postJson('/api/v1/patients', [
+            'first_name' => 'Anna',
+            'last_name' => 'Blu',
+            'residence_province' => 'XX',
+            'excluded_from_campaigns' => false,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['residence_province']);
+
+        $this->postJson('/api/v1/patients', [
+            'first_name' => 'Paolo',
+            'last_name' => 'Neri',
+            'residence_province' => null,
+            'excluded_from_campaigns' => false,
+        ])->assertOk()->assertJsonPath('residence_province', null);
     }
 
     #[Test]

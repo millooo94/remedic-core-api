@@ -18,6 +18,7 @@ class ExpenseRecordFilters
                 });
             })
             ->when($filters['type'] ?? null, fn (Builder $builder, string $type) => $builder->where('type', $type))
+            ->when($filters['nature'] ?? null, fn (Builder $builder, string $nature) => $builder->where('nature', $nature))
             ->when($filters['expense_category_id'] ?? null, fn (Builder $builder, mixed $categoryId) => $builder->where('expense_category_id', $categoryId))
             ->when($filters['payment_status'] ?? null, fn (Builder $builder, string $status) => $builder->where('payment_status', $status))
             ->when($filters['month'] ?? null, function (Builder $builder, int $month) use ($filters): void {

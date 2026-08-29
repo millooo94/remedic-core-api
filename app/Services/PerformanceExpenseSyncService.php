@@ -24,8 +24,7 @@ class PerformanceExpenseSyncService
 
     public function __construct(
         private readonly PerformancePaymentStatusSyncService $paymentStatusSyncService,
-    ) {
-    }
+    ) {}
 
     public function syncFromPerformanceRecord(PerformanceRecord $performanceRecord): ?ExpenseRecord
     {
@@ -64,6 +63,7 @@ class PerformanceExpenseSyncService
                 'competence_year' => (int) $performedAt->format('Y'),
                 'description' => Str::limit((string) $chunk['description'], 190, ''),
                 'type' => 'variable',
+                'nature' => $this->natureFor($performanceRecord),
                 'amount' => $this->normalizeMoneyAmount($chunk['amount']),
                 'supplier' => $chunk['supplier'],
                 'notes' => $this->notesFor($performanceRecord, $chunk['notes_suffix']),
@@ -76,6 +76,7 @@ class PerformanceExpenseSyncService
                 ]);
                 $current->save();
                 $lastTouched = $current;
+
                 continue;
             }
 
@@ -232,6 +233,13 @@ class PerformanceExpenseSyncService
             $performanceRecord->id,
             $suffix ? ' '.$suffix : '',
         );
+    }
+
+    private function natureFor(PerformanceRecord $performanceRecord): string
+    {
+        return $performanceRecord->is_black || $performanceRecord->is_provvigione
+            ? 'special'
+            : 'ordinary';
     }
 
     private function normalizeMoneyAmount(mixed $raw): string
