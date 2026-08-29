@@ -25,6 +25,7 @@ class PatientController extends Controller
         $this->normalizeBooleanQuery($request, [
             'excluded_from_campaigns',
             'contactable_sms',
+            'contactable_whatsapp',
             'contactable_email',
             'only_without_history',
         ]);
@@ -33,6 +34,7 @@ class PatientController extends Controller
             'q' => ['nullable', 'string', 'max:190'],
             'excluded_from_campaigns' => ['nullable', 'boolean'],
             'contactable_sms' => ['nullable', 'boolean'],
+            'contactable_whatsapp' => ['nullable', 'boolean'],
             'contactable_email' => ['nullable', 'boolean'],
             'area_name' => ['nullable', 'string', 'max:120'],
             'only_without_history' => ['nullable', 'boolean'],
@@ -137,9 +139,11 @@ class PatientController extends Controller
             'email' => ['nullable', 'email', 'max:190'],
             'residence_address' => ['nullable', 'string', 'max:190'],
             'residence_city' => ['nullable', 'string', 'max:120'],
+            'residence_province' => ['nullable', 'string', 'max:120'],
             'residence_zip' => ['nullable', 'string', 'max:10', 'regex:/^\d{5}$/'],
-            'contactable_sms' => ['required', 'boolean'],
-            'contactable_email' => ['required', 'boolean'],
+            'contactable_sms' => ['sometimes', 'boolean'],
+            'contactable_whatsapp' => ['sometimes', 'boolean'],
+            'contactable_email' => ['sometimes', 'boolean'],
             'excluded_from_campaigns' => ['required', 'boolean'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);

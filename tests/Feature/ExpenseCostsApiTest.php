@@ -51,31 +51,11 @@ class ExpenseCostsApiTest extends TestCase
     }
 
     #[Test]
-    public function it_forces_fixed_type_for_automatic_cost_templates(): void
+    public function it_does_not_expose_automatic_cost_template_routes(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
 
-        $category = ExpenseCategory::factory()->create();
-
-        $response = $this->postJson('/api/v1/expense-templates', [
-            'category_id' => $category->id,
-            'name' => 'Canone struttura',
-            'type' => 'variable',
-            'recurrence' => 'monthly',
-            'default_amount' => '120,75',
-            'start_date' => '2026-04-01',
-            'day_of_generation' => 1,
-            'is_active' => true,
-        ])->assertCreated();
-
-        $this->assertSame('fixed', $response->json('type'));
-
-        $templateId = (int) $response->json('id');
-        $this->assertDatabaseHas('expense_templates', [
-            'id' => $templateId,
-            'type' => 'fixed',
-            'default_amount' => '120.75',
-        ]);
+        $this->getJson('/api/v1/expense-templates')->assertNotFound();
     }
 
     #[Test]

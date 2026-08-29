@@ -39,7 +39,6 @@ use App\Http\Controllers\Api\V1\EntityMediaController;
 use App\Http\Controllers\Api\V1\EventController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseRecordController;
-use App\Http\Controllers\Api\V1\ExpenseTemplateController;
 use App\Http\Controllers\Api\V1\JobApplicationController;
 use App\Http\Controllers\Api\V1\Management\CenterSettingController as ManagementCenterSettingController;
 use App\Http\Controllers\Api\V1\MarketingCampaignController;
@@ -264,7 +263,6 @@ Route::prefix('v1')->group(function (): void {
         Route::get('counting-periods-preview/summary', [CountingPeriodController::class, 'previewSummary']);
 
         Route::apiResource('expense-categories', ExpenseCategoryController::class)->except(['show']);
-        Route::apiResource('expense-templates', ExpenseTemplateController::class)->except(['show']);
         Route::get('expense-records/summary', [ExpenseRecordController::class, 'summary']);
         Route::apiResource('expense-records', ExpenseRecordController::class);
         Route::post('cash-movements/reset', [CashMovementController::class, 'reset']);

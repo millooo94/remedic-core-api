@@ -60,8 +60,10 @@ class PatientImportService
                     'email' => ['nullable', 'email', 'max:190'],
                     'residence_address' => ['nullable', 'string', 'max:190'],
                     'residence_city' => ['nullable', 'string', 'max:120'],
+                    'residence_province' => ['nullable', 'string', 'max:120'],
                     'residence_zip' => ['nullable', 'string', 'max:10', 'regex:/^\d{5}$/'],
                     'contactable_sms' => ['nullable', 'boolean'],
+                    'contactable_whatsapp' => ['nullable', 'boolean'],
                     'contactable_email' => ['nullable', 'boolean'],
                     'excluded_from_campaigns' => ['nullable', 'boolean'],
                     'notes' => ['nullable', 'string'],
@@ -92,6 +94,7 @@ class PatientImportService
                 $payload['email'] = $this->nullableTrimmedString($payload['email'] ?? null);
                 $payload['residence_address'] = $this->nullableTrimmedString($payload['residence_address'] ?? null);
                 $payload['residence_city'] = $this->nullableTrimmedString($payload['residence_city'] ?? null);
+                $payload['residence_province'] = $this->nullableTrimmedString($payload['residence_province'] ?? null);
                 $payload['residence_zip'] = $this->nullableTrimmedString($payload['residence_zip'] ?? null);
                 $geocoding = $this->patientGeocodingService->geocode($payload['residence_address'], $payload['residence_city'], $payload['residence_zip']);
                 $payload['residence_latitude'] = $geocoding['lat'];
@@ -99,8 +102,12 @@ class PatientImportService
                 $payload['geocoding_status'] = $geocoding['status'];
                 $payload['geocoded_at'] = $geocoding['status'] === 'ok' ? now() : null;
                 $payload['notes'] = $this->nullableTrimmedString($payload['notes'] ?? null);
-                $payload['contactable_sms'] = (bool) ($payload['contactable_sms'] ?? true);
-                $payload['contactable_email'] = (bool) ($payload['contactable_email'] ?? true);
+                $contactableSms = $payload['contactable_sms'] ?? null;
+                $contactableWhatsapp = $payload['contactable_whatsapp'] ?? null;
+                $contactableEmail = $payload['contactable_email'] ?? null;
+                $payload['contactable_sms'] = (bool) ($contactableSms ?? true);
+                $payload['contactable_whatsapp'] = (bool) ($contactableWhatsapp ?? true);
+                $payload['contactable_email'] = (bool) ($contactableEmail ?? false);
                 $payload['excluded_from_campaigns'] = (bool) ($payload['excluded_from_campaigns'] ?? false);
 
                 $existing = $this->findExistingPatient($payload);
@@ -112,6 +119,9 @@ class PatientImportService
                 }
 
                 if ($existing) {
+                    $payload['contactable_sms'] = $contactableSms === null ? $existing->contactable_sms : $payload['contactable_sms'];
+                    $payload['contactable_whatsapp'] = $contactableWhatsapp === null ? $existing->contactable_whatsapp : $payload['contactable_whatsapp'];
+                    $payload['contactable_email'] = $contactableEmail === null ? $existing->contactable_email : $payload['contactable_email'];
                     $existing->fill(array_merge($payload, [
                         'updated_by' => $actor->id,
                     ]));
@@ -206,6 +216,7 @@ class PatientImportService
         $email = $this->normalizeScalar($mapped['email'] ?? null);
         $residenceAddress = $this->normalizeScalar($mapped['residence_address'] ?? $mapped['indirizzo_residenza'] ?? $mapped['indirizzo'] ?? null);
         $residenceCity = $this->normalizeScalar($mapped['residence_city'] ?? $mapped['citta_residenza'] ?? $mapped['citta'] ?? null);
+        $residenceProvince = $this->normalizeScalar($mapped['residence_province'] ?? $mapped['provincia_residenza'] ?? $mapped['provincia'] ?? null);
         $residenceZip = $this->normalizeScalar($mapped['residence_zip'] ?? $mapped['cap'] ?? null);
         $lastVisit = $this->normalizeScalar($mapped['ultima_visita'] ?? null);
         $notes = $this->normalizeScalar($mapped['notes'] ?? $mapped['note'] ?? null);
@@ -220,8 +231,10 @@ class PatientImportService
             'email' => $email,
             'residence_address' => $residenceAddress,
             'residence_city' => $residenceCity,
+            'residence_province' => $residenceProvince,
             'residence_zip' => $residenceZip,
             'contactable_sms' => $this->normalizeBoolean($mapped['contactable_sms'] ?? $mapped['contattabile_sms'] ?? null),
+            'contactable_whatsapp' => $this->normalizeBoolean($mapped['contactable_whatsapp'] ?? $mapped['contattabile_whatsapp'] ?? null),
             'contactable_email' => $this->normalizeBoolean($mapped['contactable_email'] ?? $mapped['contattabile_email'] ?? null),
             'excluded_from_campaigns' => $this->normalizeBoolean($mapped['excluded_from_campaigns'] ?? $mapped['escluso_campagne'] ?? null),
             'notes' => $notes,

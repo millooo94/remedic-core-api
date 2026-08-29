@@ -2,7 +2,6 @@
 
 namespace App\Http\Resources\Api\V1;
 
-use App\Services\AutomaticExpenseGenerationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -10,9 +9,6 @@ class ExpenseTemplateResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $generationService = app(AutomaticExpenseGenerationService::class);
-        $nextGenerationDate = $generationService->nextGenerationDate($this->resource);
-
         return [
             'id' => $this->id,
             'category_id' => $this->category_id,
@@ -25,7 +21,7 @@ class ExpenseTemplateResource extends JsonResource
             'day_of_generation' => $this->day_of_generation,
             'is_active' => (bool) $this->is_active,
             'notes' => $this->notes,
-            'next_generation_date' => $nextGenerationDate?->toDateString(),
+            'next_generation_date' => null,
             'category' => $this->whenLoaded('category', fn () => new ExpenseCategoryResource($this->category)),
         ];
     }

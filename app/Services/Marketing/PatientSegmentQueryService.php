@@ -89,6 +89,7 @@ class PatientSegmentQueryService
                 'has_phone' => $this->applyPresenceRule($query, 'phone', $operator),
                 'has_email' => $this->applyPresenceRule($query, 'email', $operator),
                 'contactable_sms' => $this->applyBooleanRule($query, 'contactable_sms', $operator),
+                'contactable_whatsapp' => $this->applyBooleanRule($query, 'contactable_whatsapp', $operator),
                 'contactable_email' => $this->applyBooleanRule($query, 'contactable_email', $operator),
                 'excluded_from_campaigns' => $this->applyBooleanRule($query, 'excluded_from_campaigns', $operator),
                 'last_visit_date' => $this->applyLastVisitRule($query, $operator, $value),
@@ -112,6 +113,10 @@ class PatientSegmentQueryService
         return match ($channel) {
             'sms' => $query
                 ->where('contactable_sms', true)
+                ->whereNotNull('phone')
+                ->where('phone', '<>', ''),
+            'whatsapp' => $query
+                ->where('contactable_whatsapp', true)
                 ->whereNotNull('phone')
                 ->where('phone', '<>', ''),
             'email' => $query
@@ -138,6 +143,7 @@ class PatientSegmentQueryService
 
         return [
             'sms' => $patient->contactable_sms && $phone !== '',
+            'whatsapp' => $patient->contactable_whatsapp && $phone !== '',
             'email' => $patient->contactable_email && $email !== '',
         ];
     }

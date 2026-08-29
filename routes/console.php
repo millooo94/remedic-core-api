@@ -13,5 +13,4 @@ Schedule::command('reminders:send-weekly-center-summary')
     ->sundays()
     ->at('10:30')
     ->timezone('Europe/Rome');
-Schedule::command('costs:generate-automatic')->dailyAt('00:10');
 Schedule::command('marketing:send-scheduled-campaigns')->everyMinute();

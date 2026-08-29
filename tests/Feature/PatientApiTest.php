@@ -28,7 +28,9 @@ class PatientApiTest extends TestCase
             'year_of_birth' => 1978,
             'phone' => '3331234567',
             'email' => 'mario.rossi@example.test',
+            'residence_province' => 'Catania',
             'contactable_sms' => true,
+            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
             'notes' => 'Paziente marketing',
@@ -40,7 +42,9 @@ class PatientApiTest extends TestCase
             ->assertJsonPath('last_name', 'Rossi')
             ->assertJsonPath('full_name', 'Mario Rossi')
             ->assertJsonPath('sex', 'male')
+            ->assertJsonPath('residence_province', 'Catania')
             ->assertJsonPath('available_channels.sms', true)
+            ->assertJsonPath('available_channels.whatsapp', true)
             ->assertJsonPath('available_channels.email', true)
             ->assertJsonPath('performances_count', 0)
             ->assertJsonPath('last_visit_at', null);
@@ -50,6 +54,41 @@ class PatientApiTest extends TestCase
             'last_name' => 'Rossi',
             'full_name' => 'Rossi Mario',
             'sex' => 'male',
+        ]);
+    }
+
+    #[Test]
+    public function it_defaults_new_patient_contact_channels_without_changing_existing_patients(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => UserRole::Admin]));
+
+        $this->postJson('/api/v1/patients', [
+            'first_name' => 'Default',
+            'last_name' => 'Canali',
+            'excluded_from_campaigns' => false,
+        ])
+            ->assertOk()
+            ->assertJsonPath('contactable_whatsapp', true)
+            ->assertJsonPath('contactable_sms', true)
+            ->assertJsonPath('contactable_email', false);
+
+        $existing = Patient::factory()->create([
+            'contactable_whatsapp' => false,
+            'contactable_sms' => false,
+            'contactable_email' => true,
+        ]);
+
+        $this->putJson("/api/v1/patients/{$existing->id}", [
+            'first_name' => $existing->first_name,
+            'last_name' => $existing->last_name,
+            'excluded_from_campaigns' => $existing->excluded_from_campaigns,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('patients', [
+            'id' => $existing->id,
+            'contactable_whatsapp' => false,
+            'contactable_sms' => false,
+            'contactable_email' => true,
         ]);
     }
 
@@ -74,8 +113,10 @@ class PatientApiTest extends TestCase
             'email' => null,
             'residence_address' => null,
             'residence_city' => null,
+            'residence_province' => null,
             'residence_zip' => null,
             'contactable_sms' => true,
+            'contactable_whatsapp' => false,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
             'notes' => null,
@@ -99,6 +140,7 @@ class PatientApiTest extends TestCase
             'last_name' => 'Bianchi',
             'full_name' => 'Bianchi Lucia',
             'contactable_sms' => true,
+            'contactable_whatsapp' => true,
             'contactable_email' => true,
             'excluded_from_campaigns' => false,
         ]);

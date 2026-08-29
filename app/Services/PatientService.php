@@ -41,7 +41,8 @@ class PatientService
                         ->orWhere('phone', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%")
                         ->orWhere('tax_code', 'like', "%{$search}%")
-                        ->orWhere('residence_city', 'like', "%{$search}%");
+                        ->orWhere('residence_city', 'like', "%{$search}%")
+                        ->orWhere('residence_province', 'like', "%{$search}%");
 
                     if (count($terms) > 1) {
                         $nested->orWhere(function (Builder $termQuery) use ($terms, $firstLastExpression, $lastFirstExpression): void {
@@ -60,6 +61,7 @@ class PatientService
             })
             ->when(array_key_exists('excluded_from_campaigns', $filters) && $filters['excluded_from_campaigns'] !== null, fn (Builder $builder) => $builder->where('excluded_from_campaigns', (bool) $filters['excluded_from_campaigns']))
             ->when(array_key_exists('contactable_sms', $filters) && $filters['contactable_sms'] !== null, fn (Builder $builder) => $builder->where('contactable_sms', (bool) $filters['contactable_sms']))
+            ->when(array_key_exists('contactable_whatsapp', $filters) && $filters['contactable_whatsapp'] !== null, fn (Builder $builder) => $builder->where('contactable_whatsapp', (bool) $filters['contactable_whatsapp']))
             ->when(array_key_exists('contactable_email', $filters) && $filters['contactable_email'] !== null, fn (Builder $builder) => $builder->where('contactable_email', (bool) $filters['contactable_email']))
             ->when($filters['area_name'] ?? null, fn (Builder $builder, string $areaName) => $builder->whereHas('performanceRecords', fn (Builder $nested) => $nested->where('category_name_snapshot', $areaName)))
             ->when($filters['only_without_history'] ?? null, fn (Builder $builder) => $builder->doesntHave('performanceRecords'));
@@ -164,6 +166,7 @@ class PatientService
         );
         $residenceAddress = $this->nullableTrimmedString($payload['residence_address'] ?? null);
         $residenceCity = $this->nullableTrimmedString($payload['residence_city'] ?? null);
+        $residenceProvince = $this->nullableTrimmedString($payload['residence_province'] ?? null);
         $residenceZip = $this->nullableTrimmedString($payload['residence_zip'] ?? null);
         $geocoding = $this->patientGeocodingService->geocode($residenceAddress, $residenceCity, $residenceZip);
         $geocodedAt = $geocoding['status'] === 'ok' ? now() : null;
@@ -180,13 +183,21 @@ class PatientService
             'email' => $this->nullableTrimmedString($payload['email'] ?? null),
             'residence_address' => $residenceAddress,
             'residence_city' => $residenceCity,
+            'residence_province' => $residenceProvince,
             'residence_zip' => $residenceZip,
             'residence_latitude' => $geocoding['lat'],
             'residence_longitude' => $geocoding['lng'],
             'geocoding_status' => $geocoding['status'],
             'geocoded_at' => $geocodedAt,
-            'contactable_sms' => (bool) ($payload['contactable_sms'] ?? false),
-            'contactable_email' => (bool) ($payload['contactable_email'] ?? false),
+            'contactable_sms' => array_key_exists('contactable_sms', $payload)
+                ? (bool) $payload['contactable_sms']
+                : ($existing?->contactable_sms ?? true),
+            'contactable_whatsapp' => array_key_exists('contactable_whatsapp', $payload)
+                ? (bool) $payload['contactable_whatsapp']
+                : ($existing?->contactable_whatsapp ?? true),
+            'contactable_email' => array_key_exists('contactable_email', $payload)
+                ? (bool) $payload['contactable_email']
+                : ($existing?->contactable_email ?? false),
             'excluded_from_campaigns' => (bool) ($payload['excluded_from_campaigns'] ?? false),
             'notes' => $this->nullableTrimmedString($payload['notes'] ?? null),
             'created_by' => $existing?->created_by ?? $actor->id,
