@@ -2,10 +2,8 @@
 
 namespace App\Http\Requests\Api\V1\PerformanceRecords;
 
-use App\Enums\VisitShift;
 use App\Support\Numbers\ScaledNumber;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
 
@@ -28,7 +26,6 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
 
         $normalizedPayload = [
             'patient_ids' => $patientIds,
-            'visit_shift' => $this->input('visit_shift', VisitShift::Morning->value),
         ];
 
         if ($this->boolean('is_provvigione')) {
@@ -55,7 +52,6 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
             'service_name' => ['nullable', 'string', 'max:190'],
             'area_name' => ['nullable', 'string', 'max:120'],
             'performed_at' => ['required', 'date'],
-            'visit_shift' => ['required', Rule::enum(VisitShift::class)],
             'quantity' => ['required', 'integer', 'min:1'],
             'unit_amount' => ['required'],
             'direct_cost' => ['nullable'],
@@ -247,8 +243,7 @@ abstract class PerformanceRecordUpsertRequest extends FormRequest
         string $field,
         string $message,
         bool $nullable = false,
-    ): ?int
-    {
+    ): ?int {
         $value = $this->input($field);
 
         if ($nullable && ($value === null || $value === '')) {

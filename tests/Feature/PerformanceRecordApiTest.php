@@ -49,7 +49,7 @@ class PerformanceRecordApiTest extends TestCase
 
         $this->postJson('/api/v1/performance-records', [
             'performed_at' => '2026-04-10',
-            'visit_shift' => 'morning',
+            'visit_shift' => 'afternoon',
             'professional_id' => $professional->id,
             'service_id' => $service->id,
             'patient_ids' => [$patient->id],
@@ -69,7 +69,7 @@ class PerformanceRecordApiTest extends TestCase
             ->assertJsonPath('net_divisible_amount', '100.00')
             ->assertJsonPath('professional_amount', '70.00')
             ->assertJsonPath('center_amount', '30.00')
-            ->assertJsonPath('visit_shift', 'morning')
+            ->assertJsonMissingPath('visit_shift')
             ->assertJsonPath('payment_method', 'cash')
             ->assertJsonPath('payment_status', 'da_pagare')
             ->assertJsonPath('is_black', true)

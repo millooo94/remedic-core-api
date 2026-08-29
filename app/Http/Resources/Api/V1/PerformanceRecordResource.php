@@ -22,11 +22,6 @@ class PerformanceRecordResource extends JsonResource
         return [
             'id' => $this->id,
             'performed_at' => optional($this->performed_at)->toDateString(),
-            'visit_shift' => $this->visit_shift?->value ?? $this->visit_shift ?? 'morning',
-            'visit_shift_label' => match ($this->visit_shift?->value ?? $this->visit_shift ?? 'morning') {
-                'afternoon' => 'Pomeriggio/Sera',
-                default => 'Mattina',
-            },
             'patient_id' => $this->patient_id,
             'patient_ids' => $patientIds,
             'professional_id' => $this->professional_id,

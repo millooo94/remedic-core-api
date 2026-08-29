@@ -8,7 +8,6 @@ use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Enums\PerformanceSplitMode;
 use App\Enums\PerformanceSplitSubjectType;
-use App\Enums\VisitShift;
 use App\Models\AuditLog;
 use App\Models\Patient;
 use App\Models\PerformanceRecord;
@@ -247,7 +246,6 @@ class PerformanceRecordService
         return [
             'attributes' => [
                 'performed_at' => $performedAt->toDateString(),
-                'visit_shift' => $payload['visit_shift'] ?? $existing?->visit_shift?->value ?? VisitShift::Morning->value,
                 'patient_id' => $patientIds[0] ?? null,
                 'professional_id' => $professional->id,
                 'professional_name_snapshot' => $professional->full_name,
