@@ -25,13 +25,14 @@ class SitePopupProjectionService
             'source_type' => $popup->source_type->value,
             'promotion_id' => $popup->promotion_id,
             'event_id' => $popup->event_id,
-            'source' => $this->source($popup),
+            'source' => $this->source($popup, $request),
             'source_is_effectively_available' => $this->sourceAvailable($popup),
             'start_at' => $popup->start_at?->toIso8601String(),
             'end_at' => $popup->end_at?->toIso8601String(),
             'eyebrow' => $popup->eyebrow,
             'title' => $popup->title,
             'body' => $popup->body,
+            'image_path' => $popup->image_path,
             'image_url' => PublicMediaUrl::fromPublicDisk($popup->image_path, $request),
             'primary_cta' => $this->adminCta($popup->primary_cta_label, $popup->primary_cta_target),
             'secondary_cta' => $this->adminCta($popup->secondary_cta_label, $popup->secondary_cta_target),
@@ -42,14 +43,14 @@ class SitePopupProjectionService
     }
 
     /** @return array<string, mixed> */
-    public function lookups(SitePopup $popup): array
+    public function lookups(SitePopup $popup, Request $request): array
     {
         return [
             'promotions' => Promotion::query()->with(['service', 'checkup.items'])->orderByDesc('start_at')->get()
-                ->map(fn (Promotion $promotion): array => $this->promotionSummary($promotion))->values()->all(),
+                ->map(fn (Promotion $promotion): array => $this->promotionSummary($promotion, $request))->values()->all(),
             'events' => Event::query()->orderByDesc('start_at')->get()
-                ->map(fn (Event $event): array => $this->eventSummary($event))->values()->all(),
-            'current_source' => $this->source($popup->loadMissing(['promotion.service', 'promotion.checkup.items', 'event'])),
+                ->map(fn (Event $event): array => $this->eventSummary($event, $request))->values()->all(),
+            'current_source' => $this->source($popup->loadMissing(['promotion.service', 'promotion.checkup.items', 'event']), $request),
         ];
     }
 
@@ -69,27 +70,27 @@ class SitePopupProjectionService
             'image_url' => PublicMediaUrl::fromPublicDisk($popup->image_path, $request),
             'primary_cta' => $this->publicCta($popup->primary_cta_label, $popup->primary_cta_target, $request),
             'secondary_cta' => $this->publicCta($popup->secondary_cta_label, $popup->secondary_cta_target, $request),
-            'source' => $this->publicSource($popup),
+            'source' => $this->publicSource($popup, $request),
         ];
     }
 
     /** @return array{type: string, data: array<string, mixed>|null} */
-    private function source(SitePopup $popup): array
+    private function source(SitePopup $popup, Request $request): array
     {
         return match ($popup->source_type) {
             SitePopupSourceType::MANUAL => ['type' => 'manual', 'data' => null],
-            SitePopupSourceType::PROMOTION => ['type' => 'promotion', 'data' => $popup->promotion ? $this->promotionSummary($popup->promotion) : null],
-            SitePopupSourceType::EVENT => ['type' => 'event', 'data' => $popup->event ? $this->eventSummary($popup->event) : null],
+            SitePopupSourceType::PROMOTION => ['type' => 'promotion', 'data' => $popup->promotion ? $this->promotionSummary($popup->promotion, $request) : null],
+            SitePopupSourceType::EVENT => ['type' => 'event', 'data' => $popup->event ? $this->eventSummary($popup->event, $request) : null],
         };
     }
 
     /** Public source metadata intentionally excludes operational primary keys. */
-    private function publicSource(SitePopup $popup): array
+    private function publicSource(SitePopup $popup, Request $request): array
     {
         return match ($popup->source_type) {
             SitePopupSourceType::MANUAL => ['type' => 'manual', 'data' => null],
-            SitePopupSourceType::PROMOTION => ['type' => 'promotion', 'data' => $popup->promotion ? $this->publicPromotionSummary($popup->promotion) : null],
-            SitePopupSourceType::EVENT => ['type' => 'event', 'data' => $popup->event ? $this->publicEventSummary($popup->event) : null],
+            SitePopupSourceType::PROMOTION => ['type' => 'promotion', 'data' => $popup->promotion ? $this->publicPromotionSummary($popup->promotion, $request) : null],
+            SitePopupSourceType::EVENT => ['type' => 'event', 'data' => $popup->event ? $this->publicEventSummary($popup->event, $request) : null],
         };
     }
 
@@ -103,7 +104,7 @@ class SitePopupProjectionService
     }
 
     /** @return array<string, mixed> */
-    private function promotionSummary(Promotion $promotion): array
+    private function promotionSummary(Promotion $promotion, ?Request $request = null): array
     {
         $promotion->loadMissing(['service', 'checkup.items']);
         $target = $promotion->service_id !== null ? $promotion->service : $promotion->checkup;
@@ -113,7 +114,7 @@ class SitePopupProjectionService
         $saving = $standardPrice === null ? null : round($standardPrice - $promotionalPrice, 2);
 
         return [
-            'id' => $promotion->id, 'name' => $promotion->name, 'target_type' => $promotion->targetType(), 'target_name' => $target?->display_name,
+            'id' => $promotion->id, 'name' => $promotion->name, 'image_path' => $promotion->image_path, 'image_url' => $request ? PublicMediaUrl::fromPublicDisk($promotion->image_path, $request) : null, 'target_type' => $promotion->targetType(), 'target_name' => $target?->display_name,
             'target_is_operational' => $promotion->targetIsOperational(), 'standard_price' => $standardPrice, 'promotional_price' => $promotion->promotional_price,
             'saving_amount' => $saving, 'discount_percentage' => $standardPrice !== null && $standardPrice > 0 ? round(($saving / $standardPrice) * 100, 2) : null,
             'start_at' => $promotion->start_at?->toIso8601String(), 'end_at' => $promotion->end_at?->toIso8601String(), 'validity_basis' => $promotion->validity_basis?->value,
@@ -122,10 +123,10 @@ class SitePopupProjectionService
     }
 
     /** @return array<string, mixed> */
-    private function eventSummary(Event $event): array
+    private function eventSummary(Event $event, ?Request $request = null): array
     {
         return [
-            'id' => $event->id, 'name' => $event->name, 'event_type' => $event->event_type->value, 'operational_status' => $event->operational_status->value,
+            'id' => $event->id, 'name' => $event->name, 'image_path' => $event->image_path, 'image_url' => $request ? PublicMediaUrl::fromPublicDisk($event->image_path, $request) : null, 'event_type' => $event->event_type->value, 'operational_status' => $event->operational_status->value,
             'temporal_status' => $event->temporalStatus(), 'is_effectively_available' => $event->isEffectivelyAvailable(), 'start_at' => $event->start_at?->toIso8601String(), 'end_at' => $event->end_at?->toIso8601String(),
             'location_type' => $event->location_type->value, 'location_summary' => $this->locationSummary($event), 'registration_required' => $event->registration_required,
             'registration_mode' => $event->registration_mode->value, 'registration_deadline' => $event->registration_deadline?->toIso8601String(), 'is_registration_open' => $event->isRegistrationOpen(),
@@ -133,17 +134,17 @@ class SitePopupProjectionService
         ];
     }
 
-    private function publicPromotionSummary(Promotion $promotion): array
+    private function publicPromotionSummary(Promotion $promotion, Request $request): array
     {
-        $summary = $this->promotionSummary($promotion);
+        $summary = $this->promotionSummary($promotion, $request);
         unset($summary['id']);
 
         return $summary;
     }
 
-    private function publicEventSummary(Event $event): array
+    private function publicEventSummary(Event $event, Request $request): array
     {
-        $summary = $this->eventSummary($event);
+        $summary = $this->eventSummary($event, $request);
         unset($summary['id']);
 
         return $summary;

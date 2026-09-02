@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RobotsValue;
+use App\Enums\ServiceClassification;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,7 @@ class Service extends Model
     protected $fillable = [
         'legacy_backend_id',
         'category_id',
+        'classification',
         'canonical_name',
         'display_name',
         'importo_prestazione',
@@ -63,6 +65,7 @@ class Service extends Model
             'importo_prestazione' => 'decimal:2',
             'default_duration_minutes' => 'integer',
             'robots' => RobotsValue::class,
+            'classification' => ServiceClassification::class,
             'is_diagnostic' => 'boolean',
             'is_visit' => 'boolean',
             'is_featured' => 'boolean',

@@ -100,7 +100,7 @@ class SiteIndexPageController extends Controller
         if (in_array($page->internal_key, ['news_index', 'health_pills_index'], true)) {
             return $this->editorial->admin($page, request());
         }
-        $profiles = ProfessionalPublicProfile::query()->effectivelyVisible()->with(['professional.specializations.webProfile'])->orderBy('sort_order')->orderBy('id')->get();
+        $profiles = ProfessionalPublicProfile::query()->effectivelyVisible()->with(['professional.specializations.webProfile'])->orderBy('id')->get();
         $items = $profiles->map(function ($profile) use ($request) {
             $professional = $profile->professional;
             $areas = $professional->specializations->filter(fn ($area) => $area->is_active && $area->webProfile?->is_web_enabled)->sortBy(fn ($area) => [($area->pivot?->is_primary ?? false) ? 0 : 1, $area->pivot?->sort_order ?? PHP_INT_MAX]);

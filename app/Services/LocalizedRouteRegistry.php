@@ -37,4 +37,12 @@ class LocalizedRouteRegistry
             ? '/'.rawurlencode($slug)
             : '/'.$locale->value.'/'.rawurlencode($slug);
     }
+
+    /** Index routes own their locale-specific root segment and cannot be custom pages. */
+    public function isReservedPageSlug(string $slug, SupportedLocale $locale): bool
+    {
+        return collect(self::PATHS)
+            ->map(fn (array $paths): string => basename($paths[$locale->value]))
+            ->contains($slug);
+    }
 }

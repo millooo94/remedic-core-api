@@ -21,7 +21,9 @@ use App\Services\ServiceWebContentService;
 use App\Support\Services\ServiceSectionDefinition;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\Models\Role;
@@ -71,10 +73,10 @@ class ServiceWebProfileApiTest extends TestCase
             'is_web_active' => true,
             'is_featured' => true,
         ]);
-        $visible = $this->profiledService('Visibile', 'visibile', true, true, 2);
-        $inactiveMaster = $this->profiledService('Master inattivo', 'master-inattivo', false, true, 0);
-        $disabledProfile = $this->profiledService('Profilo spento', 'profilo-spento', true, false, 1);
-        $withoutAreaOrProfessional = $this->profiledService('Senza dipendenze', 'senza-dipendenze', true, true, 1);
+        $visible = $this->profiledService('Visibile', 'visibile', true, true);
+        $inactiveMaster = $this->profiledService('Master inattivo', 'master-inattivo', false, true);
+        $disabledProfile = $this->profiledService('Profilo spento', 'profilo-spento', true, false);
+        $withoutAreaOrProfessional = $this->profiledService('Senza dipendenze', 'senza-dipendenze', true, true);
 
         $response = $this->getJson('/api/v1/public/prestazioni')->assertOk();
         $this->assertSame(['senza-dipendenze', 'visibile'], collect($response->json('data'))->pluck('slug')->all());
@@ -164,7 +166,7 @@ class ServiceWebProfileApiTest extends TestCase
 
         $updated = $this->patchJson("/api/v1/admin/services/{$service->id}", $updatedPayload)
             ->assertOk()
-            ->assertJsonPath('web_profile.sections.0.key', 'equipe')
+            ->assertJsonPath('web_profile.sections.0.key', 'hero')
             ->assertJsonPath('web_profile.faqs.0.id', $faqId);
 
         $this->assertSame(
@@ -178,6 +180,51 @@ class ServiceWebProfileApiTest extends TestCase
         ]);
         $this->assertSame('Descrizione legacy da preservare', $service->refresh()->description);
         $this->assertSame('Visita cardiologica', $service->display_name);
+    }
+
+    #[Test]
+    public function admin_index_filters_services_by_master_specialization_and_professional(): void
+    {
+        $this->actingAsAdmin();
+        $cardiology = Specialization::query()->create(['name' => 'Cardiologia filtro', 'slug' => 'cardiologia-filtro', 'is_active' => true]);
+        $dermatology = Specialization::query()->create(['name' => 'Dermatologia filtro', 'slug' => 'dermatologia-filtro', 'is_active' => true]);
+        $doctor = Professional::factory()->create(['full_name' => 'Ada Rossi', 'is_active' => true]);
+        $matching = $this->masterService('Visita cardiologica');
+        $other = $this->masterService('Visita dermatologica');
+        $matching->specializations()->attach($cardiology->id, ['is_primary' => true, 'sort_order' => 0]);
+        $other->specializations()->attach($dermatology->id, ['is_primary' => true, 'sort_order' => 0]);
+        $matching->professionalServices()->create(['professional_id' => $doctor->id, 'is_active' => true]);
+
+        $this->getJson("/api/v1/admin/prestazioni?specialization_id={$cardiology->id}")
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $matching->id);
+        $this->getJson("/api/v1/admin/prestazioni?professional_id={$doctor->id}")
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $matching->id);
+    }
+
+    #[Test]
+    public function admin_index_filters_services_by_master_and_web_enabled_state(): void
+    {
+        $this->actingAsAdmin();
+        $active = $this->profiledService('Attiva abilitata', 'attiva-abilitata', true, true);
+        $this->profiledService('Attiva non abilitata', 'attiva-non-abilitata', true, false);
+        $this->profiledService('Inattiva abilitata', 'inattiva-abilitata', false, true);
+
+        $this->getJson('/api/v1/admin/prestazioni?is_active=1&is_web_enabled=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $active->id)
+            ->assertJsonMissingPath('data.0.web_profile.list_sort_order');
+    }
+
+    #[Test]
+    public function public_services_are_ordered_by_master_display_name_not_legacy_web_order(): void
+    {
+        $this->profiledService('Zeta', 'zeta', true, true);
+        $alpha = $this->profiledService('Alfa', 'alfa', true, true);
+        $this->getJson('/api/v1/public/prestazioni')
+            ->assertOk()
+            ->assertJsonPath('data.0.slug', 'alfa')
+            ->assertJsonPath('data.1.slug', 'zeta');
     }
 
     #[Test]
@@ -196,7 +243,7 @@ class ServiceWebProfileApiTest extends TestCase
         ]);
         app(MedicalAreaContentService::class)->initializeSections($areaProfile);
 
-        $service = $this->profiledService('ECG', 'ecg', true, true, 0, [
+        $service = $this->profiledService('ECG', 'ecg', true, true, [
             'importo_prestazione' => 99.90,
             'default_duration_minutes' => 20,
             'featured_image_path' => 'services/ecg.jpg',
@@ -287,6 +334,7 @@ class ServiceWebProfileApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        Schema::table('service_web_profiles', fn (Blueprint $table) => $table->integer('list_sort_order')->default(0));
         (require database_path('migrations/2026_08_24_105000_backfill_service_web_profiles_from_services.php'))->up();
         (require database_path('migrations/2026_08_24_106000_reparent_service_sections_and_faqs_to_web_profiles.php'))->up();
 
@@ -360,7 +408,6 @@ class ServiceWebProfileApiTest extends TestCase
         string $publicSlug,
         bool $active,
         bool $enabled,
-        int $order = 0,
         array $master = [],
     ): Service {
         $service = $this->masterService($name, array_merge([
@@ -373,7 +420,6 @@ class ServiceWebProfileApiTest extends TestCase
             'service_id' => $service->id,
             'public_slug' => $publicSlug,
             'is_web_enabled' => $enabled,
-            'list_sort_order' => $order,
         ]);
         app(ServiceWebContentService::class)->initializeSections($profile);
 
@@ -400,7 +446,6 @@ class ServiceWebProfileApiTest extends TestCase
             'public_slug' => $slug,
             'short_description' => 'Descrizione pubblica breve.',
             'is_web_enabled' => true,
-            'list_sort_order' => 3,
             'is_local_seo_enabled' => true,
             'robots' => 'index,follow',
             'sections' => collect(ServiceSectionDefinition::keys())->map(fn (string $key) => [

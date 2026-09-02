@@ -142,7 +142,7 @@ class MultilingualPublicContentApiTest extends TestCase
             'slug' => 'home',
             'template' => 'default',
             'is_active' => true,
-            'published_at' => now(),
+            'published_at' => null,
         ]);
 
         $this->getJson('/api/v1/public/site/home')
@@ -150,5 +150,36 @@ class MultilingualPublicContentApiTest extends TestCase
             ->assertJsonPath('data.locale', 'it')
             ->assertJsonPath('data.available_locales', ['it'])
             ->assertJsonPath('data.localized_routes', [['locale' => 'it', 'href' => '/']]);
+    }
+
+    #[Test]
+    public function canonical_home_projection_ignores_a_legacy_future_date_without_regressing_localized_routes(): void
+    {
+        $home = Page::query()->create([
+            'internal_key' => Page::HOME_INTERNAL_KEY,
+            'title' => 'Home',
+            'slug' => 'home',
+            'template' => 'default',
+            'is_active' => true,
+            'published_at' => now()->addDay(),
+        ]);
+        $italian = $home->translations()->where('locale', 'it')->firstOrFail();
+        $home->translations()->create([
+            'locale' => 'en',
+            'title' => 'Home',
+            'slug' => 'home',
+            'publication_state' => 'published',
+            'source_revision' => $italian->source_revision,
+            'reviewed_source_revision' => $italian->source_revision,
+        ]);
+
+        $this->getJson('/api/v1/public/site/home?locale=en')
+            ->assertOk()
+            ->assertJsonPath('data.locale', 'en')
+            ->assertJsonPath('data.available_locales', ['it', 'en'])
+            ->assertJsonPath('data.localized_routes', [
+                ['locale' => 'it', 'href' => '/'],
+                ['locale' => 'en', 'href' => '/en'],
+            ]);
     }
 }

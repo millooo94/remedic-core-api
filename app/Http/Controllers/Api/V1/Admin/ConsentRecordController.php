@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\Admin\ConsentRecordResource;
+use App\Models\ConsentConfigurationVersion;
 use App\Models\ConsentRecord;
 use App\Services\ConsentConfigurationInitializer;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class ConsentRecordController extends Controller
     public function show(ConsentRecord $consentRecord): ConsentRecordResource
     {
         $consentRecord->setAttribute('current_configuration_version', $this->configuration->initialize()->configuration_version);
+        $consentRecord->setAttribute('configuration_snapshot', ConsentConfigurationVersion::query()->where('configuration_version', $consentRecord->configuration_version)->value('snapshot'));
 
         return new ConsentRecordResource($consentRecord->load('events'));
     }

@@ -10,6 +10,8 @@ use App\Models\Service;
 use App\Models\User;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\Models\Role;
@@ -57,6 +59,36 @@ class PromotionApiTest extends TestCase
         $this->getJson('/api/v1/promotions/targets')->assertOk()->assertJsonPath('data.services.0.name', 'Visita')->assertJsonPath('data.checkups.0.name', 'Check');
         $service->update(['is_active' => false]);
         $this->getJson('/api/v1/promotions/'.$active->id)->assertJsonPath('lifecycle_status', 'active')->assertJsonPath('target_is_operational', false)->assertJsonPath('is_effectively_available', false);
+    }
+
+    #[Test]
+    public function it_manages_an_optional_editorial_image_and_projects_its_public_url(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+        $promotion = $this->create($this->service('Visita', 100), now()->subHour(), now()->addDay(), true);
+
+        $this->getJson('/api/v1/promotions/'.$promotion->id)->assertOk()
+            ->assertJsonPath('image_path', null)
+            ->assertJsonPath('image_url', null);
+
+        $this->post('/api/v1/promotions/'.$promotion->id.'/image', ['image' => UploadedFile::fake()->image('first.jpg')])
+            ->assertOk()
+            ->assertJsonPath('image_url', fn (string $url): bool => str_contains($url, "promotions/{$promotion->id}/images"));
+        $firstPath = $promotion->refresh()->image_path;
+        Storage::disk('public')->assertExists($firstPath);
+
+        $this->post('/api/v1/promotions/'.$promotion->id.'/image', ['image' => UploadedFile::fake()->image('second.jpg')])
+            ->assertOk();
+        $secondPath = $promotion->refresh()->image_path;
+        $this->assertNotSame($firstPath, $secondPath);
+        Storage::disk('public')->assertMissing($firstPath);
+        Storage::disk('public')->assertExists($secondPath);
+
+        $this->deleteJson('/api/v1/promotions/'.$promotion->id.'/image')->assertOk()
+            ->assertJsonPath('image_path', null)
+            ->assertJsonPath('image_url', null);
+        Storage::disk('public')->assertMissing($secondPath);
     }
 
     private function create(Service $service, $start, $end, bool $active): Promotion

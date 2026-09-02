@@ -49,6 +49,14 @@ class BlogPostController extends Controller
             $query->publicationState((string) $request->validated('publication_state'));
         }
 
+        if ($request->filled('content_type')) {
+            $query->where('content_type', $request->validated('content_type'));
+        }
+
+        if ($request->filled('editorial_category_id')) {
+            $query->where('editorial_category_id', $request->validated('editorial_category_id'));
+        }
+
         $sort = $request->sort();
         $direction = $request->direction();
 
@@ -166,7 +174,7 @@ class BlogPostController extends Controller
 
     private function relations(): array
     {
-        return ['sections', 'faqs', 'relatedServices', 'relatedArticles'];
+        return ['editorialCategory', 'sections', 'faqs', 'relatedServices', 'relatedArticles'];
     }
 
     private function pivotPayload(array $ids): array

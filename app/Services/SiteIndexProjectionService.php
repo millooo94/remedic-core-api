@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ServiceClassification;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\Service;
 use App\Models\SiteIndexPage;
@@ -21,35 +22,35 @@ class SiteIndexProjectionService
 
     public function diagnostics(SiteIndexPage $page, Request $request): array
     {
-        $items = $this->services('is_diagnostic', $request, $request->query('q'), $request->query('filter'));
+        $items = $this->services(ServiceClassification::Diagnostic, $request, $request->query('q'), $request->query('filter'));
 
-        return ['items' => $items, 'result_count' => count($items), 'available_filters' => $this->filters('is_diagnostic', $request)];
+        return ['items' => $items, 'result_count' => count($items), 'available_filters' => $this->filters(ServiceClassification::Diagnostic, $request)];
     }
 
     public function aesthetics(SiteIndexPage $page, Request $request): array
     {
         $category = trim((string) $request->query('filter')) ?: null;
-        $items = $this->services('is_aesthetic_medicine', $request, null, null, $category, $page);
+        $items = $this->services(ServiceClassification::AestheticMedicine, $request, null, null, $category, $page);
         $configuration = $page->configuration ?? [];
         $team = $this->featuredTeam($configuration['featured_professional_ids'] ?? [], $request);
 
-        return ['items' => $items, 'result_count' => count($items), 'available_filters' => collect(SiteIndexPageRegistry::AESTHETIC_CATEGORIES)->map(fn ($label, $key) => ['key' => $key, 'label' => data_get(collect($configuration['improvement_areas'] ?? [])->firstWhere('key', $key), 'label', $label)])->values()->all(), 'improvement_areas' => $configuration['improvement_areas'] ?? [], 'evaluation_steps' => $configuration['evaluation_steps'] ?? [], 'approach_principles' => $configuration['approach_principles'] ?? [], 'featured_team' => $team, 'faqs' => $page->faqs()->active()->ordered()->get()->map(fn ($faq) => ['question' => $faq->question, 'answer' => $faq->answer, 'is_structured_data' => (bool) $faq->is_structured_data])->all()];
+        return ['items' => $items, 'result_count' => count($items), 'available_filters' => collect(SiteIndexPageRegistry::AESTHETIC_CATEGORIES)->map(fn ($label, $key) => ['key' => $key, 'label' => data_get(collect($configuration['improvement_areas'] ?? [])->firstWhere('key', $key), 'label', $label)])->values()->all(), 'improvement_areas' => $configuration['improvement_areas'] ?? [], 'evaluation_steps' => $configuration['evaluation_steps'] ?? [], 'approach_principles' => $configuration['approach_principles'] ?? [], 'featured_team' => $team, 'faqs' => $page->faqs()->active()->orderBy('id')->get()->map(fn ($faq) => ['question' => $faq->question, 'answer' => $faq->answer, 'is_structured_data' => (bool) $faq->is_structured_data])->all()];
     }
 
     public function adminAesthetics(SiteIndexPage $page, Request $request): array
     {
         $data = $this->aesthetics($page, $request);
-        $data['unclassified_items'] = $this->services('is_aesthetic_medicine', $request, null, null, '__unclassified__', $page);
+        $data['unclassified_items'] = $this->services(ServiceClassification::AestheticMedicine, $request, null, null, '__unclassified__', $page);
         $data['available_professionals'] = $this->availableProfessionals($request);
 
         return $data;
     }
 
     /** @return list<array<string,mixed>> */
-    private function services(string $flag, Request $request, ?string $term = null, ?string $filter = null, ?string $aestheticCategory = null, ?SiteIndexPage $page = null): array
+    private function services(ServiceClassification $classification, Request $request, ?string $term = null, ?string $filter = null, ?string $aestheticCategory = null, ?SiteIndexPage $page = null): array
     {
         $locale = $this->locales->resolve($request);
-        $query = $this->services->query()->whereHas('webProfile', fn ($profile) => $profile->where($flag, true));
+        $query = $this->services->query()->where('classification', $classification->value);
         if ($aestheticCategory === '__unclassified__') {
             $query->whereHas('webProfile', fn ($profile) => $profile->whereNull('aesthetic_category'));
         } elseif ($aestheticCategory !== null) {
@@ -72,11 +73,11 @@ class SiteIndexProjectionService
         })->all();
     }
 
-    private function filters(string $flag, Request $request): array
+    private function filters(ServiceClassification $classification, Request $request): array
     {
         $locale = $this->locales->resolve($request);
 
-        return $this->services->query()->whereHas('webProfile', fn ($profile) => $profile->where($flag, true))->get()->flatMap(fn ($service) => $service->specializations)->filter(fn ($area) => $area->is_active && $area->webProfile?->is_web_enabled)->map(function ($area) use ($locale) {
+        return $this->services->query()->where('classification', $classification->value)->get()->flatMap(fn ($service) => $service->specializations)->filter(fn ($area) => $area->is_active && $area->webProfile?->is_web_enabled)->map(function ($area) use ($locale) {
             $profile = $this->localized->project($area->webProfile, $locale);
 
             return $profile === null ? null : ['key' => $profile->slug, 'label' => $profile->localizedTranslation?->title ?: $area->name];
@@ -85,7 +86,7 @@ class SiteIndexProjectionService
 
     private function availableProfessionals(Request $request): array
     {
-        return $this->professionalQuery($request)->orderBy('sort_order')->get()->map(fn ($profile) => $this->professional($profile, $request))->filter()->values()->all();
+        return $this->professionalQuery($request)->orderBy('id')->get()->map(fn ($profile) => $this->professional($profile, $request))->filter()->values()->all();
     }
 
     private function featuredTeam(array $ids, Request $request): array

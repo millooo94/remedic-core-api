@@ -8,6 +8,8 @@ use App\Models\ServicePricingItemPresentation;
 use App\Models\ServicePricingProfile;
 use App\Models\ServicePricingProfilePresentation;
 use App\Models\ServiceWebProfile;
+use App\Models\SiteIndexPage;
+use App\Services\SiteIndexPageInitializer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -51,9 +53,38 @@ class ServiceStructuredPricingApiTest extends TestCase
         $this->assertDatabaseCount('service_pricing_profiles', 0)->assertDatabaseCount('service_pricing_items', 0)->assertDatabaseCount('service_pricing_profile_presentations', 0)->assertDatabaseCount('service_pricing_item_presentations', 0);
     }
 
-    private function service(string $slug): Service
+    #[Test]
+    public function public_indexes_follow_master_classification_and_visibility_gates(): void
     {
-        $service = Service::query()->create(['canonical_name' => 'Laser '.$slug, 'display_name' => 'Laser '.$slug, 'slug' => $slug, 'is_active' => true]);
+        app(SiteIndexPageInitializer::class)->initialize();
+        SiteIndexPage::query()->whereIn('internal_key', ['diagnostics_index', 'aesthetic_medicine_index'])
+            ->update(['is_active' => true, 'published_at' => now()->subMinute()]);
+
+        $this->service('ecografia', 'diagnostic');
+        $this->service('biostimolazione', 'aesthetic_medicine');
+        $this->service('cardiologia', 'specialist_visit');
+        $inactiveDiagnostic = $this->service('ecografia-inattiva', 'diagnostic');
+        $inactiveDiagnostic->update(['is_active' => false]);
+        $webDisabledDiagnostic = $this->service('ecografia-web-disabilitata', 'diagnostic');
+        ServiceWebProfile::query()->where('service_id', $webDisabledDiagnostic->id)->update(['is_web_enabled' => false]);
+
+        $this->getJson('/api/v1/public/site-indexes/diagnostics_index')
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Laser ecografia'])
+            ->assertJsonMissing(['name' => 'Laser biostimolazione'])
+            ->assertJsonMissing(['name' => 'Laser cardiologia'])
+            ->assertJsonMissing(['name' => 'Laser ecografia-inattiva'])
+            ->assertJsonMissing(['name' => 'Laser ecografia-web-disabilitata']);
+        $this->getJson('/api/v1/public/site-indexes/aesthetic_medicine_index')
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Laser biostimolazione'])
+            ->assertJsonMissing(['name' => 'Laser ecografia'])
+            ->assertJsonMissing(['name' => 'Laser cardiologia']);
+    }
+
+    private function service(string $slug, ?string $classification = null): Service
+    {
+        $service = Service::query()->create(['canonical_name' => 'Laser '.$slug, 'display_name' => 'Laser '.$slug, 'slug' => $slug, 'classification' => $classification, 'is_active' => true]);
         ServiceWebProfile::query()->create(['service_id' => $service->id, 'public_slug' => $slug, 'is_web_enabled' => true]);
 
         return $service;

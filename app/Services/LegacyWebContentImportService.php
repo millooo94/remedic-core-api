@@ -172,7 +172,6 @@ class LegacyWebContentImportService
                 'site_url',
                 'default_meta_title',
                 'default_meta_description',
-                'default_locality_phrase',
                 'default_og_image_path',
             ]);
 

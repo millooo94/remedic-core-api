@@ -98,7 +98,7 @@ class PageDifferentialContentApiTest extends TestCase
 
         $this->assertSame($heroCreatedAt, $hero->created_at->toISOString());
         $this->assertSame('Hero aggiornato', $hero->title);
-        $this->assertSame(1, $hero->sort_order);
+        $this->assertSame(0, $hero->sort_order);
         $this->assertFalse($hero->is_active);
         $this->assertDatabaseMissing('sections', ['id' => $body->id]);
         $this->assertDatabaseHas('sections', ['id' => $newSectionId, 'key' => 'nuova-sezione-compatibile']);
@@ -129,8 +129,8 @@ class PageDifferentialContentApiTest extends TestCase
 
         $this->getJson("/api/v1/public/pages/{$page->slug}")
             ->assertOk()
-            ->assertJsonPath('data.sections.0.key', 'body')
-            ->assertJsonPath('data.sections.1.key', 'hero')
+            ->assertJsonPath('data.sections.0.key', 'hero')
+            ->assertJsonPath('data.sections.1.key', 'body')
             ->assertJsonPath('data.faq.0.question', 'Seconda domanda')
             ->assertJsonPath('data.faq.1.question', 'Prima domanda');
     }
@@ -150,6 +150,41 @@ class PageDifferentialContentApiTest extends TestCase
         $this->assertDatabaseHas('sections', ['id' => $section->id, 'key' => 'legacy-hero', 'is_active' => true]);
         $this->assertDatabaseHas('faq_items', ['id' => $faq->id, 'question' => 'Domanda', 'is_active' => true]);
         $this->deleteJson("/api/v1/admin/pages/{$legacy->id}")->assertConflict();
+    }
+
+    #[Test]
+    public function homepage_cannot_be_disabled_and_ignores_published_at_without_affecting_other_pages(): void
+    {
+        $home = Page::query()->create([
+            'internal_key' => Page::HOME_INTERNAL_KEY,
+            'title' => 'Homepage',
+            'slug' => Page::HOME_SLUG,
+            'template' => 'default',
+            'hero_image_path' => 'pages/home/legacy.jpg',
+            'hero_image_alt' => 'Immagine legacy',
+            'is_active' => true,
+            'published_at' => now()->addDay(),
+        ]);
+        $draft = Page::query()->create([
+            'title' => 'Pagina bozza',
+            'slug' => 'pagina-bozza',
+            'template' => 'default',
+            'is_active' => true,
+            'published_at' => null,
+        ]);
+
+        $this->putJson("/api/v1/admin/pages/{$home->id}", [
+            'title' => 'Homepage aggiornata',
+            'is_active' => false,
+        ])
+            ->assertOk()
+            ->assertJsonPath('is_active', true)
+            ->assertJsonPath('publication_state', 'published')
+            ->assertJsonPath('effective_public_visibility', true);
+
+        $this->assertDatabaseHas('pages', ['id' => $home->id, 'title' => 'Homepage aggiornata', 'slug' => Page::HOME_SLUG, 'hero_image_path' => 'pages/home/legacy.jpg', 'hero_image_alt' => 'Immagine legacy', 'is_active' => true]);
+        $this->getJson('/api/v1/public/site/home')->assertOk();
+        $this->getJson("/api/v1/public/pages/{$draft->slug}")->assertNotFound();
     }
 
     /** @return array{Page, Section, Section, FaqItem, FaqItem} */

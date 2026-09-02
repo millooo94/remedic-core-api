@@ -134,7 +134,7 @@ class CheckupWebProfileApiTest extends TestCase
         $payload['faqs'][0]['id'] = $faqId;
         $payload['faqs'][0]['answer'] = 'Solo se indicato.';
         $updated = $this->patchJson("/api/v1/admin/check-up/{$checkup->id}", $payload)->assertOk()
-            ->assertJsonPath('web_profile.sections.0.key', 'related_checkups')
+            ->assertJsonPath('web_profile.sections.0.key', 'hero')
             ->assertJsonPath('web_profile.faqs.0.id', $faqId);
         $this->assertSame($sectionIds->sortKeys()->all(), collect($updated->json('web_profile.sections'))->pluck('id', 'key')->sortKeys()->all());
         $this->assertDatabaseHas('redirects', [
@@ -142,6 +142,27 @@ class CheckupWebProfileApiTest extends TestCase
             'source_type' => Redirect::SOURCE_TYPE_CHECKUP_WEB_PROFILE,
         ]);
         $this->assertSame('Riservato', $checkup->refresh()->organizational_notes);
+    }
+
+    #[Test]
+    public function admin_index_filters_checkups_by_included_service_specialization_and_professional(): void
+    {
+        $this->actingAsAdmin();
+        $cardiology = Specialization::query()->create(['name' => 'Cardiologia filtro', 'slug' => 'cardiologia-filtro', 'is_active' => true]);
+        $dermatology = Specialization::query()->create(['name' => 'Dermatologia filtro', 'slug' => 'dermatologia-filtro', 'is_active' => true]);
+        $doctor = Professional::factory()->create(['full_name' => 'Ada Rossi', 'is_active' => true]);
+        $matchingService = $this->service('ECG');
+        $otherService = $this->service('Mappatura nei');
+        $matchingService->specializations()->attach($cardiology->id, ['is_primary' => true, 'sort_order' => 0]);
+        $otherService->specializations()->attach($dermatology->id, ['is_primary' => true, 'sort_order' => 0]);
+        $matchingService->professionalServices()->create(['professional_id' => $doctor->id, 'is_active' => true]);
+        $matching = $this->profiledCheckup('Prevenzione cuore', 'prevenzione-cuore', true, true, [$matchingService]);
+        $this->profiledCheckup('Prevenzione pelle', 'prevenzione-pelle', true, true, [$otherService]);
+
+        $this->getJson("/api/v1/admin/check-up?specialization_id={$cardiology->id}")
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $matching->id);
+        $this->getJson("/api/v1/admin/check-up?professional_id={$doctor->id}")
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $matching->id);
     }
 
     #[Test]
@@ -268,7 +289,7 @@ class CheckupWebProfileApiTest extends TestCase
         }
         $profile = CheckupWebProfile::query()->create([
             'checkup_id' => $checkup->id, 'public_slug' => $slug,
-            'is_web_enabled' => $enabled, 'list_sort_order' => 0,
+            'is_web_enabled' => $enabled,
         ]);
         app(CheckupWebContentService::class)->initializeSections($profile);
 
@@ -280,7 +301,7 @@ class CheckupWebProfileApiTest extends TestCase
         return [
             'public_slug' => $slug, 'short_description' => 'Descrizione pubblica.',
             'category_label' => 'Prevenzione', 'is_web_enabled' => true,
-            'list_sort_order' => 3, 'is_local_seo_enabled' => true, 'robots' => 'index,follow',
+            'is_local_seo_enabled' => true, 'robots' => 'index,follow',
             'sections' => collect(CheckupSectionDefinition::keys())->map(fn (string $key) => [
                 'key' => $key, 'title' => $key === 'hero' ? null : CheckupSectionDefinition::DEFINITIONS[$key],
                 'intro' => null, 'is_active' => true,

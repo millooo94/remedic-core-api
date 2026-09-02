@@ -14,11 +14,11 @@ class ServicePricingProfile extends Model
     use HasFactory;
     use HasOrderedScope;
 
-    protected $fillable = ['service_id', 'label', 'is_active', 'sort_order'];
+    protected $fillable = ['service_id', 'label', 'image_path', 'is_ungrouped', 'is_active', 'sort_order'];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean', 'sort_order' => 'integer'];
+        return ['is_ungrouped' => 'boolean', 'is_active' => 'boolean', 'sort_order' => 'integer'];
     }
 
     public function service(): BelongsTo

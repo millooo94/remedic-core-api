@@ -20,8 +20,8 @@ class MedicalAreaPublicService
             ->effectivelyVisible()
             ->with([
                 'translations',
-                'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
-                'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'sections' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
+                'faqs' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
                 'specialization.services' => fn ($query) => $query
                     ->effectivelyVisible()
                     ->orderBy('service_specialization.sort_order')
@@ -37,11 +37,11 @@ class MedicalAreaPublicService
                 'specialization.professionals.publicProfile.translations',
                 'specialization.professionals.specializations',
             ])
-            ->orderBy('list_sort_order')
             ->orderBy(
                 fn ($query) => $query->select('name')->from('specializations')
                     ->whereColumn('specializations.id', 'specialization_web_profiles.specialization_id')
-            );
+            )
+            ->orderBy('specialization_web_profiles.specialization_id');
 
         return app(LocalizedContentResolver::class)->publicTranslations($query, $locale);
     }
@@ -56,8 +56,8 @@ class MedicalAreaPublicService
             'slug' => $profile->slug,
             'href' => app(LocalizedRouteRegistry::class)->path('medical_areas', $locale, $profile->slug),
             'name' => $profile->localizedTranslation?->title ?: $master->name,
-            'short_description' => $profile->short_description ?: '',
-            'description' => $profile->short_description ?: '',
+            'short_description' => $master->short_description ?: '',
+            'description' => $master->short_description ?: '',
             'services_count' => $master->services->count(),
             'professionals_count' => $master->professionals->count(),
             'icon_url' => PublicMediaUrl::fromPublicDisk($master->icon_path, $request),
@@ -76,7 +76,7 @@ class MedicalAreaPublicService
         $faqs = $profile->faqs->values();
         $sections = $profile->sections
             ->whereIn('key', MedicalAreaSectionDefinition::keys())
-            ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+            ->sortBy('id')
             ->filter(function ($section) use ($services, $professionals, $faqs): bool {
                 return match ($section->key) {
                     'services' => $services->isNotEmpty(),
@@ -121,10 +121,11 @@ class MedicalAreaPublicService
 
                 return [
                     'key' => $section->key,
-                    'order' => (int) $section->sort_order,
                     'data' => $data,
                 ];
-            })->values()->all();
+            })->values()
+            ->map(fn (array $section, int $order) => [...$section, 'order' => $order])
+            ->all();
 
         return [
             ...$this->listItem($profile, $request),

@@ -85,7 +85,6 @@ class CheckupWebProfileResource extends JsonResource
             'short_description' => $profile->short_description,
             'category_label' => $profile->category_label,
             'is_web_enabled' => (bool) $profile->is_web_enabled,
-            'list_sort_order' => (int) $profile->list_sort_order,
             'seo_title' => $profile->seo_title,
             'local_seo_title' => $profile->local_seo_title,
             'seo_description' => $profile->seo_description,
@@ -99,18 +98,17 @@ class CheckupWebProfileResource extends JsonResource
             'og_description' => $profile->og_description,
             'og_image_path' => $this->featured_image_path,
             'sections' => $profile->sections->whereIn('key', CheckupSectionDefinition::keys())
-                ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+                ->sortBy('id')
                 ->map(fn ($section) => [
                     'id' => $section->id, 'key' => $section->key,
                     'label' => CheckupSectionDefinition::DEFINITIONS[$section->key],
                     'title' => $section->title, 'intro' => $section->content,
                     'data' => $section->extra_json ?? new \stdClass,
-                    'sort_order' => (int) $section->sort_order,
                     'is_active' => (bool) $section->is_active,
                 ])->values()->all(),
             'faqs' => $profile->faqs->map(fn ($faq) => [
                 'id' => $faq->id, 'question' => $faq->question, 'answer' => $faq->answer,
-                'sort_order' => (int) $faq->sort_order, 'is_active' => (bool) $faq->is_active,
+                'is_active' => (bool) $faq->is_active,
                 'is_structured_data' => (bool) $faq->is_structured_data,
             ])->values()->all(),
             'created_at' => optional($profile->created_at)?->toIso8601String(),

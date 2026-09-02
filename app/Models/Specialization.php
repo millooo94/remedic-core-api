@@ -15,6 +15,8 @@ class Specialization extends Model
     use HasFactory;
     use HasSectionsAndFaqs;
 
+    public const AESTHETIC_MEDICINE_SLUG = 'medicina-estetica';
+
     protected $fillable = [
         'legacy_backend_id',
         'name',
@@ -92,6 +94,11 @@ class Specialization extends Model
     public function isEffectivelyVisible(): bool
     {
         return (bool) $this->is_active && (bool) $this->webProfile?->is_web_enabled;
+    }
+
+    public function isAestheticMedicine(): bool
+    {
+        return $this->slug === self::AESTHETIC_MEDICINE_SLUG;
     }
 
     /** @return array<string, int> */

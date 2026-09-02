@@ -4,6 +4,10 @@ namespace App\Http\Requests\Api\V1\Admin\Pages;
 
 use App\Enums\PageTemplate;
 use App\Enums\RobotsValue;
+use App\Enums\SupportedLocale;
+use App\Models\Page;
+use App\Rules\AvailableCustomPageSlug;
+use App\Rules\CustomPageHtml;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,12 +20,19 @@ class UpdatePageRequest extends FormRequest
 
     public function rules(): array
     {
-        $pageId = (int) $this->route('page')->id;
+        /** @var Page $page */
+        $page = $this->route('page');
+        $pageId = (int) $page->id;
+        $isHomepage = $page->isHomePage();
 
-        return [
+        $rules = [
             'title' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', Rule::unique('pages', 'slug')->ignore($pageId)],
-            'template' => ['required', Rule::enum(PageTemplate::class)],
+            'slug' => [$isHomepage ? 'sometimes' : 'required', 'string', 'max:255', Rule::unique('pages', 'slug')->ignore($pageId), ...($page->isCustom() ? [new AvailableCustomPageSlug(SupportedLocale::IT)] : [])],
+            'template' => [$isHomepage ? 'sometimes' : 'required', Rule::enum(PageTemplate::class)],
+            'content_kind' => ['sometimes', Rule::in(['standard', 'custom'])],
+            'custom_html' => [Rule::prohibitedIf(! $page->isCustom()), 'nullable', 'string', new CustomPageHtml],
+            'custom_css' => [Rule::prohibitedIf(! $page->isCustom()), 'nullable', 'string'],
+            'custom_javascript' => [Rule::prohibitedIf(! $page->isCustom()), 'nullable', 'string'],
             'excerpt' => ['nullable', 'string'],
             'intro_text' => ['nullable', 'string'],
             'hero_image_path' => ['nullable', 'string', 'max:2048'],
@@ -50,7 +61,6 @@ class UpdatePageRequest extends FormRequest
             'sections.*.content' => ['nullable', 'string'],
             'sections.*.extra_json' => ['nullable', 'array'],
             'sections.*.data' => ['nullable', 'array'],
-            'sections.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'sections.*.is_active' => ['sometimes', 'boolean'],
             'removed_section_keys' => ['sometimes', 'array'],
             'removed_section_keys.*' => ['required', 'string', 'max:255', 'distinct'],
@@ -58,11 +68,16 @@ class UpdatePageRequest extends FormRequest
             'faqs.*.id' => ['nullable', 'integer'],
             'faqs.*.question' => ['required', 'string', 'max:255'],
             'faqs.*.answer' => ['required', 'string'],
-            'faqs.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'faqs.*.is_active' => ['sometimes', 'boolean'],
             'faqs.*.is_structured_data' => ['sometimes', 'boolean'],
             'removed_faq_ids' => ['sometimes', 'array'],
             'removed_faq_ids.*' => ['required', 'integer', 'distinct'],
         ];
+
+        if ($isHomepage) {
+            unset($rules['published_at']);
+        }
+
+        return $rules;
     }
 }

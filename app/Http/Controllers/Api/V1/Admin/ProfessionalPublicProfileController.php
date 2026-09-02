@@ -55,7 +55,6 @@ class ProfessionalPublicProfileController extends Controller
         $direction = $request->direction();
         match ($sort) {
             'slug' => $query->orderBy('slug', $direction),
-            'sort_order' => $query->orderBy('sort_order', $direction),
             'updated_at' => $query->orderBy('updated_at', $direction),
             default => $query->join('professionals', 'professionals.id', '=', 'professional_public_profiles.professional_id')
                 ->orderBy('professionals.full_name', $direction)

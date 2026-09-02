@@ -28,6 +28,7 @@ class ConsentRecordResource extends JsonResource
                 'marketing' => (bool) $event->marketing,
                 'occurred_at' => optional($event->occurred_at)?->toIso8601String(),
             ])->values()),
+            'configuration_snapshot' => $this->when(isset($this->configuration_snapshot), $this->configuration_snapshot),
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
         ];

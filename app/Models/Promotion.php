@@ -11,7 +11,7 @@ class Promotion extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'service_id', 'checkup_id', 'promotional_price', 'start_at', 'end_at', 'validity_basis', 'is_active', 'internal_notes'];
+    protected $fillable = ['name', 'image_path', 'service_id', 'checkup_id', 'promotional_price', 'start_at', 'end_at', 'validity_basis', 'is_active', 'internal_notes'];
 
     protected function casts(): array
     {

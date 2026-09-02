@@ -17,6 +17,7 @@ class StoreSpecializationRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:190'],
+            'short_description' => ['nullable', 'string', 'max:40'],
             'professional_title_male' => ['nullable', 'string', 'max:190'],
             'professional_title_female' => ['nullable', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:190', Rule::unique('specializations', 'slug')],
@@ -37,6 +38,7 @@ class StoreSpecializationRequest extends FormRequest
 
         $this->merge([
             'name' => $name,
+            'short_description' => $this->normalizeOptionalString($this->input('short_description')),
             'professional_title_male' => $this->normalizeOptionalString($this->input('professional_title_male')),
             'professional_title_female' => $this->normalizeOptionalString($this->input('professional_title_female')),
             'slug' => Str::slug($slug !== '' ? $slug : $name),

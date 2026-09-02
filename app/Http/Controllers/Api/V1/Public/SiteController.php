@@ -115,7 +115,7 @@ class SiteController extends Controller
     public function homePage(Request $request): JsonResponse
     {
         $locale = $this->locales->resolve($request);
-        $page = Page::query()->with(['translations', 'sections.translations', 'faqs.translations'])->where('internal_key', Page::HOME_INTERNAL_KEY)->active()->published()->firstOrFail();
+        $page = Page::query()->with(['translations', 'sections.translations', 'faqs.translations'])->where('internal_key', Page::HOME_INTERNAL_KEY)->firstOrFail();
         $page = $this->localized->project($page, $locale) ?? abort(404);
         abort_unless($this->localized->hasCompleteStructure($page, $locale), 404);
         $data = $this->homePage->project($page, $request);
@@ -455,7 +455,7 @@ class SiteController extends Controller
         $query = ProfessionalPublicProfile::query()
             ->with([
                 'translations',
-                'sections' => fn ($query) => $query->active()->ordered(),
+                'sections' => fn ($query) => $query->active()->orderBy('id'),
                 'professional' => fn ($query) => $query->where('is_active', true),
                 'professional.specializations' => fn ($query) => $query
                     ->where('specializations.is_active', true)
@@ -483,8 +483,7 @@ class SiteController extends Controller
                 'scientificActivities' => fn ($query) => $query->where('is_active', true),
             ])
             ->effectivelyVisible()
-            ->orderBy('sort_order')
-            ->orderBy('slug');
+            ->orderBy('id');
 
         return $this->localized->publicTranslations($query, $locale);
     }
@@ -497,7 +496,9 @@ class SiteController extends Controller
                 'translations',
                 'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
                 'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'editorialCategory',
                 'relatedServices.webProfile',
+                'relatedArticles.editorialCategory',
                 'relatedArticles.translations',
             ])
             ->active()
@@ -517,8 +518,8 @@ class SiteController extends Controller
         $query = Page::query()
             ->with([
                 'translations',
-                'sections' => fn ($query) => $query->active()->ordered()->with('translations'),
-                'faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'sections' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
+                'faqs' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
             ])
             ->active()
             ->published()
@@ -587,7 +588,6 @@ class SiteController extends Controller
                 'site_url' => $settings->site_url,
                 'title' => $settings->default_meta_title,
                 'description' => $settings->default_meta_description,
-                'locality_phrase' => $settings->default_locality_phrase,
             ],
             'consent' => [
                 'enabled' => (bool) $consent->is_enabled,
@@ -832,10 +832,10 @@ class SiteController extends Controller
 
         return $profile->sections
             ->filter(fn ($section) => isset($payloads[$section->key]) && ($renderable[$section->key] ?? false))
-            ->sortBy(fn ($section) => [$section->sort_order, $section->id])
-            ->map(fn ($section) => [
+            ->sortBy('id')->values()
+            ->map(fn ($section, int $order) => [
                 'key' => $section->key,
-                'order' => (int) $section->sort_order,
+                'order' => $order,
                 'data' => $section->key === 'services'
                     ? [
                         'title' => $section->title ?: 'Prestazioni',
@@ -874,7 +874,7 @@ class SiteController extends Controller
             'href' => $this->routes->path($post->content_type === 'health_pill' ? 'health_tips' : 'news', $locale, $post->slug),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
-            'category' => $post->category_label ?: 'Blog',
+            'category' => $post->editorialCategory?->name ?: $post->category_label ?: 'Blog',
             'excerpt' => $post->excerpt ?: '',
             'date' => optional($post->published_at)->translatedFormat('j F Y') ?: 'Bozza',
             'author' => $post->author_name ?: 'Redazione Remedic',
@@ -903,8 +903,8 @@ class SiteController extends Controller
                     'image_url' => $this->resolveMediaPathOrUrl($article->cover_image, request()),
                     'published_at' => $article->published_at?->toIso8601String(),
                     'date' => $article->published_at?->translatedFormat('j F Y'),
-                    'category_key' => $article->editorial_category,
-                    'category_label' => BlogPost::editorialCategories($article->content_type)[$article->editorial_category] ?? $article->category_label,
+                    'category_id' => $article->editorial_category_id,
+                    'category_label' => $article->editorialCategory?->name ?? $article->category_label,
                     'content_type' => $article->content_type,
                     'href' => $this->routes->path($route, $locale, $article->slug),
                 ];
@@ -929,7 +929,7 @@ class SiteController extends Controller
             'localized_routes' => $this->localizedRoutes->content($post, $route, fn (BlogPost $localized): string => $localized->slug),
             'title' => $post->title,
             'subtitle' => $post->subtitle ?: $post->excerpt ?: '',
-            'category' => $post->category_label,
+            'category' => $post->editorialCategory?->name ?? $post->category_label,
             'excerpt' => $post->excerpt ?: '',
             'content' => $post->intro_text ?: $post->excerpt ?: '',
             'sections' => $post->sections->map(function (Section $section): array {
@@ -957,8 +957,8 @@ class SiteController extends Controller
             ])->values()->all(),
             'cover_image' => $this->resolveMediaPathOrUrl($post->cover_image, request()),
             'content_type' => $post->content_type,
-            'editorial_category' => $post->editorial_category,
-            'editorial_category_label' => BlogPost::editorialCategories($post->content_type)[$post->editorial_category] ?? null,
+            'editorial_category_id' => $post->editorial_category_id,
+            'editorial_category_label' => $post->editorialCategory?->name,
             'seo' => [...$this->seo->resolve([
                 'title' => $post->title,
                 'description' => $post->excerpt ?: $post->intro_text,
@@ -996,6 +996,12 @@ class SiteController extends Controller
             'localized_routes' => $this->localizedRoutes->page($page),
             'title' => $page->title,
             'template' => $page->template?->value ?? $page->template,
+            'content_kind' => $page->content_kind ?? 'standard',
+            ...($page->isCustom() ? ['custom_content' => [
+                'html' => $page->custom_html,
+                'css' => $page->custom_css,
+                'javascript' => $page->custom_javascript,
+            ]] : []),
             'excerpt' => $page->excerpt,
             'intro_text' => $page->intro_text,
             'hero_image_url' => $this->resolveMediaPathOrUrl($page->hero_image_path, request()),

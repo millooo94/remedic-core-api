@@ -21,7 +21,6 @@ class ServiceWebProfileFactory extends Factory
             'public_slug' => $slug,
             'short_description' => fake()->sentence(),
             'is_web_enabled' => false,
-            'list_sort_order' => 0,
             'is_local_seo_enabled' => true,
             'robots' => 'index,follow',
         ];

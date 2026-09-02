@@ -11,7 +11,6 @@ class SiteSetting extends Model
 
     protected $attributes = [
         'seo_indexing_enabled' => true,
-        'seo_sitemap_enabled' => true,
     ];
 
     protected $fillable = [
@@ -39,7 +38,6 @@ class SiteSetting extends Model
         'latitude',
         'longitude',
         'area_served_text',
-        'default_locality_phrase',
         'facebook_url',
         'instagram_url',
         'tiktok_url',
@@ -49,7 +47,6 @@ class SiteSetting extends Model
         'logo_path',
         'default_og_image_path',
         'seo_indexing_enabled',
-        'seo_sitemap_enabled',
         'opening_hours',
         'vat_number',
         'legal_company_name',
@@ -90,7 +87,6 @@ class SiteSetting extends Model
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',
             'seo_indexing_enabled' => 'boolean',
-            'seo_sitemap_enabled' => 'boolean',
             'cmp_enabled' => 'boolean',
             'cmp_banner_enabled' => 'boolean',
             'cmp_consent_cookie_ttl_days' => 'integer',

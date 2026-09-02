@@ -52,7 +52,7 @@ class LocalizedContentResolver
 
         $copy = clone $owner;
         $map = ['slug' => $owner instanceof ServiceWebProfile || $owner instanceof CheckupWebProfile ? 'public_slug' : 'slug', 'public_slug' => 'slug', 'short_bio' => 'short_description', 'bio_content' => 'body'];
-        foreach (['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'] as $field) {
+        foreach (['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description'] as $field) {
             if ($translation->{$field} !== null) {
                 $copy->setAttribute($map[$field] ?? $field, $translation->{$field});
             }

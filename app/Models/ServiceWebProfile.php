@@ -18,7 +18,6 @@ class ServiceWebProfile extends Model
 
     protected $attributes = [
         'is_web_enabled' => false,
-        'list_sort_order' => 0,
         'is_local_seo_enabled' => true,
         'robots' => 'index,follow',
     ];
@@ -31,7 +30,6 @@ class ServiceWebProfile extends Model
         'is_diagnostic',
         'is_aesthetic_medicine',
         'aesthetic_category',
-        'list_sort_order',
         'seo_title',
         'local_seo_title',
         'seo_description',
@@ -43,6 +41,9 @@ class ServiceWebProfile extends Model
         'robots',
         'og_title',
         'og_description',
+        'twitter_title',
+        'twitter_description',
+        'twitter_image_path',
         'legacy_content',
     ];
 
@@ -53,7 +54,6 @@ class ServiceWebProfile extends Model
             'is_diagnostic' => 'boolean',
             'is_aesthetic_medicine' => 'boolean',
             'is_local_seo_enabled' => 'boolean',
-            'list_sort_order' => 'integer',
             'robots' => RobotsValue::class,
             'legacy_content' => 'array',
         ];

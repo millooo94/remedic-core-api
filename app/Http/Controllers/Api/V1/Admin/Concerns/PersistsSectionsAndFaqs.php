@@ -12,14 +12,13 @@ trait PersistsSectionsAndFaqs
             $sections = $payload['sections'] ?? [];
             $model->sections()->delete();
 
-            foreach ($sections as $index => $section) {
+            foreach ($sections as $section) {
                 $model->sections()->create([
                     'key' => $section['key'],
                     'title' => $section['title'] ?? null,
                     'subtitle' => $section['subtitle'] ?? null,
                     'content' => $section['content'] ?? null,
                     'extra_json' => $section['extra_json'] ?? null,
-                    'sort_order' => $section['sort_order'] ?? $index,
                     'is_active' => $section['is_active'] ?? true,
                 ]);
             }
@@ -29,11 +28,10 @@ trait PersistsSectionsAndFaqs
             $faqs = $payload['faqs'] ?? [];
             $model->faqs()->delete();
 
-            foreach ($faqs as $index => $faq) {
+            foreach ($faqs as $faq) {
                 $model->faqs()->create([
                     'question' => isset($faq['question']) ? trim((string) $faq['question']) : '',
                     'answer' => isset($faq['answer']) ? trim((string) $faq['answer']) : '',
-                    'sort_order' => $faq['sort_order'] ?? $index,
                     'is_active' => $this->normalizeBooleanValue($faq['is_active'] ?? null, true),
                     'is_structured_data' => $this->normalizeBooleanValue($faq['is_structured_data'] ?? null, true),
                 ]);

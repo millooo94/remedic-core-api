@@ -11,7 +11,8 @@ class ContentTranslation extends Model
 {
     protected $fillable = [
         'translatable_type', 'translatable_id', 'locale', 'title', 'slug', 'excerpt', 'intro_text', 'short_description',
-        'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description',
+        'subtitle', 'category_label', 'body', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description',
+        'local_seo_title', 'local_seo_description', 'local_seo_h1',
         'label', 'description',
         'publication_state', 'source_revision', 'reviewed_source_revision',
     ];

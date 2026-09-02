@@ -23,9 +23,9 @@ class SitePopupController extends Controller
         return response()->json(['data' => $this->projection->admin($this->initializer->initialize(), $request)]);
     }
 
-    public function sources(): JsonResponse
+    public function sources(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->projection->lookups($this->initializer->initialize())]);
+        return response()->json(['data' => $this->projection->lookups($this->initializer->initialize(), $request)]);
     }
 
     public function update(Request $request)
@@ -49,8 +49,8 @@ class SitePopupController extends Controller
             abort_unless(Carbon::parse($data['end_at'])->gt(Carbon::parse($data['start_at'])), 422, 'La data di fine deve essere successiva alla data di inizio.');
         }
         $popup = $this->initializer->initialize();
-        if ($data['is_active'] && $data['source_type'] === SitePopupSourceType::MANUAL->value) {
-            abort_unless(filled($data['title']) || filled($data['body']) || $popup->image_path !== null || filled($data['primary_cta_label']), 422, 'Un popup attivo deve contenere almeno un contenuto.');
+        if ($data['is_active']) {
+            abort_unless(filled($data['title']) || filled($data['body']) || filled($popup->image_path) || (filled($data['primary_cta_label']) && filled($data['primary_cta_target'])), 422, 'Un popup attivo deve contenere almeno un contenuto.');
         }
         $popup->update($data);
 

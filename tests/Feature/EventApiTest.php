@@ -5,11 +5,14 @@ namespace Tests\Feature;
 use App\Enums\AdminRole;
 use App\Enums\UserRole;
 use App\Models\Checkup;
+use App\Models\Event;
 use App\Models\Promotion;
 use App\Models\Service;
 use App\Models\User;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\Models\Role;
@@ -48,6 +51,36 @@ class EventApiTest extends TestCase
         $this->deleteJson('/api/v1/events/'.$event['id'])->assertNoContent();
         $this->getJson('/api/v1/events')->assertJsonCount(0, 'data');
         $this->postJson('/api/v1/events/'.$event['id'].'/restore')->assertOk()->assertJsonPath('is_archived', false);
+    }
+
+    #[Test]
+    public function it_manages_an_optional_editorial_image_and_projects_its_public_url(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+        $event = $this->postJson('/api/v1/events', $this->payload())->assertCreated()->json();
+
+        $this->getJson('/api/v1/events/'.$event['id'])->assertOk()
+            ->assertJsonPath('image_path', null)
+            ->assertJsonPath('image_url', null);
+
+        $this->post('/api/v1/events/'.$event['id'].'/image', ['image' => UploadedFile::fake()->image('first.jpg')])
+            ->assertOk()
+            ->assertJsonPath('image_url', fn (string $url): bool => str_contains($url, "events/{$event['id']}/images"));
+        $firstPath = Event::query()->findOrFail($event['id'])->image_path;
+        Storage::disk('public')->assertExists($firstPath);
+
+        $this->post('/api/v1/events/'.$event['id'].'/image', ['image' => UploadedFile::fake()->image('second.jpg')])
+            ->assertOk();
+        $secondPath = Event::query()->findOrFail($event['id'])->image_path;
+        $this->assertNotSame($firstPath, $secondPath);
+        Storage::disk('public')->assertMissing($firstPath);
+        Storage::disk('public')->assertExists($secondPath);
+
+        $this->deleteJson('/api/v1/events/'.$event['id'].'/image')->assertOk()
+            ->assertJsonPath('image_path', null)
+            ->assertJsonPath('image_url', null);
+        Storage::disk('public')->assertMissing($secondPath);
     }
 
     private function payload(array $overrides = []): array

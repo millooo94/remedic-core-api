@@ -68,7 +68,6 @@ class MedicalAreaResource extends JsonResource
             'slug' => $profile->slug,
             'short_description' => $profile->short_description,
             'is_web_enabled' => (bool) $profile->is_web_enabled,
-            'list_sort_order' => (int) $profile->list_sort_order,
             'seo_title' => $profile->seo_title,
             'local_seo_title' => $profile->local_seo_title,
             'seo_description' => $profile->seo_description,
@@ -83,7 +82,7 @@ class MedicalAreaResource extends JsonResource
             'og_image_path' => $this->featured_image_path,
             'sections' => $profile->sections
                 ->whereIn('key', MedicalAreaSectionDefinition::keys())
-                ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+                ->sortBy('id')
                 ->map(fn ($section) => [
                     'id' => $section->id,
                     'key' => $section->key,
@@ -91,14 +90,12 @@ class MedicalAreaResource extends JsonResource
                     'title' => $section->title,
                     'intro' => $section->content,
                     'data' => $section->extra_json ?? new \stdClass,
-                    'sort_order' => (int) $section->sort_order,
                     'is_active' => (bool) $section->is_active,
                 ])->values()->all(),
             'faqs' => $profile->faqs->map(fn ($faq) => [
                 'id' => $faq->id,
                 'question' => $faq->question,
                 'answer' => $faq->answer,
-                'sort_order' => (int) $faq->sort_order,
                 'is_active' => (bool) $faq->is_active,
                 'is_structured_data' => (bool) $faq->is_structured_data,
             ])->values()->all(),

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GlobalSeoTranslation extends Model
 {
-    protected $fillable = ['locale', 'default_meta_title', 'default_meta_description', 'default_social_image_path', 'publication_state'];
+    protected $fillable = ['locale', 'default_meta_title', 'default_meta_description', 'publication_state'];
 
     protected function casts(): array
     {

@@ -70,7 +70,7 @@ class PageContentService
             }
 
             $attributes = Arr::only($sectionPayload, [
-                'title', 'subtitle', 'content', 'extra_json', 'sort_order', 'is_active',
+                'title', 'subtitle', 'content', 'extra_json', 'is_active',
             ]);
 
             if (PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)) {
@@ -163,7 +163,7 @@ class PageContentService
             'title' => array_key_exists('title', $payload) ? $payload['title'] : $section->title,
             'content' => array_key_exists('intro', $data) ? $data['intro'] : (array_key_exists('body', $data) ? $data['body'] : $section->content),
             'extra_json' => $extra,
-            'sort_order' => $payload['sort_order'] ?? $section->sort_order,
+            'sort_order' => $section->sort_order,
             'is_active' => $payload['is_active'] ?? $section->is_active,
         ];
     }
@@ -187,7 +187,7 @@ class PageContentService
             $extra['blocks'] = $this->normalizeLegalBlocks($data['blocks'], $index);
         }
 
-        return ['title' => $payload['title'] ?? $section->title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $payload['sort_order'] ?? $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+        return ['title' => $payload['title'] ?? $section->title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
     }
 
     /** @param array<string,mixed> $payload @param array<string,mixed> $data @return array<string,mixed> */
@@ -221,7 +221,7 @@ class PageContentService
             }
         }
 
-        return ['title' => PageSectionRegistry::definition(HomePageRegistry::INTERNAL_KEY, $section->key)['label'], 'content' => null, 'extra_json' => $extra, 'sort_order' => $payload['sort_order'] ?? $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+        return ['title' => PageSectionRegistry::definition(HomePageRegistry::INTERNAL_KEY, $section->key)['label'], 'content' => null, 'extra_json' => $extra, 'sort_order' => $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
     }
 
     /** @return list<array<string,mixed>> */
@@ -585,7 +585,7 @@ class PageContentService
             $faq->fill([
                 'question' => trim((string) $faqPayload['question']),
                 'answer' => trim((string) $faqPayload['answer']),
-                'sort_order' => $faqPayload['sort_order'] ?? $index,
+                'sort_order' => $index,
                 'is_active' => $faqPayload['is_active'] ?? true,
                 'is_structured_data' => $faqPayload['is_structured_data'] ?? true,
             ]);

@@ -18,8 +18,6 @@ class SiteSettingResource extends JsonResource
             'default_og_image_path' => $this->default_og_image_path,
             'default_og_image_url' => PublicMediaUrl::fromPublicDisk($this->default_og_image_path, $request),
             'seo_indexing_enabled' => (bool) $this->seo_indexing_enabled,
-            'seo_sitemap_enabled' => (bool) $this->seo_sitemap_enabled,
-            'default_locality_phrase' => $this->default_locality_phrase,
             'center' => [
                 'clinic_name' => $this->clinic_name ?: $this->brand_name ?: $this->site_name,
                 'clinic_phone' => $this->clinic_phone,

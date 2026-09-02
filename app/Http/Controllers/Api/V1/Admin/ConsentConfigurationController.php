@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Enums\SupportedLocale;
 use App\Http\Controllers\Controller;
 use App\Models\ConsentCategory;
+use App\Models\ConsentConfigurationVersion;
 use App\Models\ContentTranslation;
 use App\Models\SiteSetting;
 use App\Services\ConsentCategoryInitializer;
@@ -56,7 +57,9 @@ class ConsentConfigurationController extends Controller
         $this->rejectUnknown($request, []);
         $configuration = DB::transaction(function () {
             $configuration = $this->initializer->initialize();
-            $configuration->increment('configuration_version');
+            $next = $configuration->configuration_version + 1;
+            ConsentConfigurationVersion::query()->firstOrCreate(['configuration_version' => $next], ['snapshot' => $this->snapshot($next), 'published_at' => now()]);
+            $configuration->update(['configuration_version' => $next]);
 
             return $configuration->refresh();
         });
@@ -73,14 +76,26 @@ class ConsentConfigurationController extends Controller
             'categories' => $this->categories(),
             'privacy' => ['label' => 'Privacy Policy', ...$this->navigation->target('privacy')],
             'cookie_policy' => ['label' => 'Cookie Policy', ...$this->navigation->target('cookie_policy')],
+            'locales' => collect(['it', 'en', 'es', 'fr'])->map(fn (string $locale) => ['locale' => $locale, 'status' => $this->localeComplete($locale) ? 'published' : 'missing'])->all(),
         ];
     }
 
-    /** @return list<array{key: string, label: string, description: string, required: bool, translations: list<array{locale: string, label: ?string, description: ?string, status: string}>}> */
+    private function localeComplete(string $locale): bool
+    {
+        return $this->categories->initialize()->every(fn (ConsentCategory $category) => $locale === 'it' ? filled($category->name) && filled($category->description) : $category->translations()->where('locale', $locale)->where('publication_state', 'published')->whereNotNull('label')->whereNotNull('description')->exists());
+    }
+
+    private function snapshot(int $version): array
+    {
+        return ['configuration_version' => $version, 'published_at' => now()->toISOString(), 'is_enabled' => (bool) $this->initializer->initialize()->is_enabled, 'locales' => collect(['it', 'en', 'es', 'fr'])->mapWithKeys(fn (string $locale) => [$locale => $this->categories->initialize()->map(fn (ConsentCategory $category) => ['key' => $category->key, 'label' => $locale === 'it' ? $category->name : $category->translations()->where('locale', $locale)->value('label'), 'description' => $locale === 'it' ? $category->description : $category->translations()->where('locale', $locale)->value('description')])->all()])->all(), 'privacy' => $this->navigation->target('privacy'), 'cookie_policy' => $this->navigation->target('cookie_policy')];
+    }
+
+    /** @return list<array{id: int, key: string, label: string, description: string, required: bool, translations: list<array{locale: string, label: ?string, description: ?string, status: string}>}> */
     private function categories(): array
     {
         return $this->categories->initialize()->each(fn (ConsentCategory $category) => $category->load('translations'))->map(function (ConsentCategory $category): array {
             return [
+                'id' => $category->id,
                 'key' => $category->key,
                 'label' => $category->name,
                 'description' => $category->description,

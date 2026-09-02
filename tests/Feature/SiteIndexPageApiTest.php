@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\BlogPost;
 use App\Models\Checkup;
 use App\Models\CheckupWebProfile;
+use App\Models\EditorialCategory;
 use App\Models\FaqItem;
 use App\Models\Page;
 use App\Models\Professional;
@@ -96,12 +97,12 @@ class SiteIndexPageApiTest extends TestCase
     {
         $this->publishIndexes('medical_areas_index', 'equipe_index');
         $area = Specialization::query()->create(['name' => 'Cardiologia', 'slug' => 'cardiologia-master', 'is_active' => true]);
-        SpecializationWebProfile::query()->create(['specialization_id' => $area->id, 'slug' => 'cardiologia', 'short_description' => 'Cuore', 'is_web_enabled' => true, 'list_sort_order' => 2]);
+        SpecializationWebProfile::query()->create(['specialization_id' => $area->id, 'slug' => 'cardiologia', 'short_description' => 'Cuore', 'is_web_enabled' => true]);
         $hidden = Specialization::query()->create(['name' => 'Nascosta', 'slug' => 'nascosta-master', 'is_active' => false]);
         SpecializationWebProfile::query()->create(['specialization_id' => $hidden->id, 'slug' => 'nascosta', 'is_web_enabled' => true]);
         $professional = Professional::factory()->create(['full_name' => 'Ada Rossi', 'honorific_prefix' => 'Dott.ssa', 'avatar_path' => 'professionals/ada.jpg', 'is_active' => true]);
         $professional->specializations()->attach($area->id, ['is_primary' => true, 'sort_order' => 0]);
-        ProfessionalPublicProfile::query()->create(['professional_id' => $professional->id, 'slug' => 'ada-rossi', 'title_prefix' => 'Cardiologa', 'is_web_enabled' => true, 'sort_order' => 1]);
+        ProfessionalPublicProfile::query()->create(['professional_id' => $professional->id, 'slug' => 'ada-rossi', 'title_prefix' => 'Cardiologa', 'is_web_enabled' => true]);
 
         $this->getJson('/api/v1/public/site-indexes/medical_areas_index?q=cardio')->assertOk()
             ->assertJsonPath('data.result_count', 1)
@@ -125,7 +126,7 @@ class SiteIndexPageApiTest extends TestCase
         foreach (range(1, 7) as $number) {
             $checkup = Checkup::query()->create(['display_name' => "Check-up {$number}", 'price_amount' => 100, 'indicative_duration_minutes' => 30, 'is_active' => true]);
             $checkup->items()->create(['service_id' => $service->id, 'sort_order' => 0]);
-            CheckupWebProfile::query()->create(['checkup_id' => $checkup->id, 'public_slug' => "checkup-{$number}", 'category_label' => 'Prevenzione', 'short_description' => 'Percorso', 'is_web_enabled' => true, 'list_sort_order' => $number]);
+            CheckupWebProfile::query()->create(['checkup_id' => $checkup->id, 'public_slug' => "checkup-{$number}", 'category_label' => 'Prevenzione', 'short_description' => 'Percorso', 'is_web_enabled' => true]);
         }
 
         $this->getJson('/api/v1/public/site-indexes/checkups_index')->assertOk()
@@ -142,13 +143,15 @@ class SiteIndexPageApiTest extends TestCase
     public function news_and_health_pill_indexes_project_published_blog_posts_with_canonical_hrefs(): void
     {
         $this->publishIndexes('news_index', 'health_pills_index');
-        $news = BlogPost::query()->create(['title' => 'Nuova tecnologia', 'slug' => 'nuova-tecnologia', 'content_type' => 'news', 'editorial_category' => 'technology', 'excerpt' => 'Aggiornamento', 'is_active' => true, 'published_at' => now()->subMinute()]);
-        BlogPost::query()->create(['title' => 'Pillola cuore', 'slug' => 'pillola-cuore', 'content_type' => 'health_pill', 'editorial_category' => 'cardiology', 'is_active' => true, 'published_at' => now()->subMinute()]);
-        BlogPost::query()->create(['title' => 'Bozza', 'slug' => 'bozza-news', 'content_type' => 'news', 'editorial_category' => 'technology', 'is_active' => true, 'published_at' => null]);
+        $technology = EditorialCategory::query()->where('content_type', 'news')->firstOrFail();
+        $cardiology = EditorialCategory::query()->where('content_type', 'health_pill')->firstOrFail();
+        $news = BlogPost::query()->create(['title' => 'Nuova tecnologia', 'slug' => 'nuova-tecnologia', 'content_type' => 'news', 'editorial_category_id' => $technology->id, 'excerpt' => 'Aggiornamento', 'is_active' => true, 'published_at' => now()->subMinute()]);
+        BlogPost::query()->create(['title' => 'Pillola cuore', 'slug' => 'pillola-cuore', 'content_type' => 'health_pill', 'editorial_category_id' => $cardiology->id, 'is_active' => true, 'published_at' => now()->subMinute()]);
+        BlogPost::query()->create(['title' => 'Bozza', 'slug' => 'bozza-news', 'content_type' => 'news', 'editorial_category_id' => $technology->id, 'is_active' => true, 'published_at' => null]);
 
-        $this->getJson('/api/v1/public/site-indexes/news_index?q=tecnologia&category=technology')->assertOk()
+        $this->getJson('/api/v1/public/site-indexes/news_index?q=tecnologia&category_id='.$technology->id)->assertOk()
             ->assertJsonPath('data.result_count', 1)->assertJsonPath('data.featured.href', '/news/nuova-tecnologia');
-        $this->getJson('/api/v1/public/site-indexes/health_pills_index?category=cardiology')->assertOk()
+        $this->getJson('/api/v1/public/site-indexes/health_pills_index?category_id='.$cardiology->id)->assertOk()
             ->assertJsonPath('data.items.0.href', '/pillole-di-salute/pillola-cuore');
         $this->getJson('/api/v1/public/news/nuova-tecnologia')->assertOk()
             ->assertJsonPath('data.href', '/news/nuova-tecnologia')
@@ -165,12 +168,12 @@ class SiteIndexPageApiTest extends TestCase
         $this->publishIndexes('diagnostics_index', 'aesthetic_medicine_index');
         $area = Specialization::query()->create(['name' => 'Radiologia', 'slug' => 'radiologia-master', 'is_active' => true]);
         SpecializationWebProfile::query()->create(['specialization_id' => $area->id, 'slug' => 'radiologia', 'is_web_enabled' => true]);
-        $diagnostic = Service::query()->create(['category_id' => null, 'display_name' => 'Risonanza magnetica', 'canonical_name' => 'Risonanza magnetica', 'slug' => 'risonanza-master', 'default_duration_minutes' => 30, 'is_active' => true]);
+        $diagnostic = Service::query()->create(['category_id' => null, 'classification' => 'diagnostic', 'display_name' => 'Risonanza magnetica', 'canonical_name' => 'Risonanza magnetica', 'slug' => 'risonanza-master', 'default_duration_minutes' => 30, 'is_active' => true]);
         $diagnostic->specializations()->attach($area->id, ['is_primary' => true, 'sort_order' => 0]);
         ServiceWebProfile::query()->create(['service_id' => $diagnostic->id, 'public_slug' => 'risonanza', 'short_description' => 'Esame', 'is_web_enabled' => true, 'is_diagnostic' => true]);
-        $aesthetic = Service::query()->create(['category_id' => null, 'display_name' => 'Biorivitalizzazione', 'canonical_name' => 'Biorivitalizzazione', 'slug' => 'biorivitalizzazione-master', 'default_duration_minutes' => 30, 'is_active' => true]);
+        $aesthetic = Service::query()->create(['category_id' => null, 'classification' => 'aesthetic_medicine', 'display_name' => 'Biorivitalizzazione', 'canonical_name' => 'Biorivitalizzazione', 'slug' => 'biorivitalizzazione-master', 'default_duration_minutes' => 30, 'is_active' => true]);
         ServiceWebProfile::query()->create(['service_id' => $aesthetic->id, 'public_slug' => 'biorivitalizzazione', 'is_web_enabled' => true, 'is_aesthetic_medicine' => true, 'aesthetic_category' => 'skin_quality']);
-        $hidden = Service::query()->create(['category_id' => null, 'display_name' => 'Nascosto', 'canonical_name' => 'Nascosto', 'slug' => 'nascosto-master', 'default_duration_minutes' => 30, 'is_active' => false]);
+        $hidden = Service::query()->create(['category_id' => null, 'classification' => 'diagnostic', 'display_name' => 'Nascosto', 'canonical_name' => 'Nascosto', 'slug' => 'nascosto-master', 'default_duration_minutes' => 30, 'is_active' => false]);
         ServiceWebProfile::query()->create(['service_id' => $hidden->id, 'public_slug' => 'nascosto', 'is_web_enabled' => true, 'is_diagnostic' => true]);
 
         $this->getJson('/api/v1/public/site-indexes/diagnostics_index?q=risonanza&filter=radiologia')->assertOk()

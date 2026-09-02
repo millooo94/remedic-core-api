@@ -15,6 +15,9 @@ class HomePageInitializer
             ['internal_key' => HomePageRegistry::INTERNAL_KEY],
             ['title' => 'Homepage', 'slug' => Page::HOME_SLUG, 'template' => 'default', 'canonical_url' => '/', 'faq_enabled' => true, 'is_active' => true, 'published_at' => null],
         );
+        if (! $page->is_active) {
+            $page->forceFill(['is_active' => true])->save();
+        }
         $this->content->initializeMissingSections($page);
         $page->faqs()->firstOrCreate(
             ['question' => 'Come posso prenotare una visita presso Remedic?'],

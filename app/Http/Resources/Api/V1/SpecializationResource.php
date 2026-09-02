@@ -13,9 +13,11 @@ class SpecializationResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'short_description' => $this->short_description,
             'professional_title_male' => $this->professional_title_male,
             'professional_title_female' => $this->professional_title_female,
             'slug' => $this->slug,
+            'is_aesthetic_medicine' => $this->isAestheticMedicine(),
             'color_hex' => $this->color_hex,
             'icon_path' => $this->icon_path,
             'icon_url' => PublicMediaUrl::fromPublicDisk($this->icon_path, $request),

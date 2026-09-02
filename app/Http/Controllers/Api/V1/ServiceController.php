@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ServiceClassification;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Services\StoreServiceRequest;
 use App\Http\Requests\Api\V1\Services\UpdateServiceRequest;
@@ -16,6 +17,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ServiceController extends Controller
 {
@@ -99,6 +101,17 @@ class ServiceController extends Controller
 
     private function persist(Service $service, array $payload): Service
     {
+        if (
+            $service->exists
+            && $service->classification === ServiceClassification::AestheticMedicine
+            && $payload['classification'] !== ServiceClassification::AestheticMedicine->value
+            && $service->pricingProfiles()->whereHas('items')->exists()
+        ) {
+            throw ValidationException::withMessages([
+                'classification' => ['Rimuovi prima le voci del tariffario per cambiare la tipologia della prestazione.'],
+            ]);
+        }
+
         $specializationIds = $this->extractSpecializationIds($payload);
         $primarySpecialization = $this->resolvePrimarySpecialization($specializationIds, $payload);
         $displayName = trim((string) ($payload['display_name'] ?? ''));
@@ -115,6 +128,7 @@ class ServiceController extends Controller
             // derive classification from the primary specialization and preserve
             // an existing category_id without creating or synchronizing one.
             'category_id' => $service->exists ? $service->category_id : null,
+            'classification' => $payload['classification'],
             'canonical_name' => $canonicalName,
             'display_name' => $displayName,
             'importo_prestazione' => array_key_exists('importo_prestazione', $payload)

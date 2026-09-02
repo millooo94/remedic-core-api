@@ -11,6 +11,8 @@ use App\Models\Page;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\ServiceWebProfile;
 use App\Models\SpecializationWebProfile;
+use App\Rules\AvailableCustomPageSlug;
+use App\Rules\CustomPageHtml;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -49,7 +51,7 @@ class LocalizedContentController extends Controller
         $locale = $this->locale($locale);
         $translation = $owner->translations()->where('locale', $locale->value)->firstOrFail();
         $data = $request->validate([
-            'title' => ['nullable', 'string', 'max:255'], 'slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'], 'excerpt' => ['nullable', 'string'], 'intro_text' => ['nullable', 'string'], 'short_description' => ['nullable', 'string'], 'subtitle' => ['nullable', 'string', 'max:255'], 'category_label' => ['nullable', 'string', 'max:255'], 'body' => ['nullable', 'string'], 'seo_title' => ['nullable', 'string', 'max:255'], 'seo_description' => ['nullable', 'string'], 'seo_h1' => ['nullable', 'string', 'max:255'], 'og_title' => ['nullable', 'string', 'max:255'], 'og_description' => ['nullable', 'string'], 'publication_state' => ['nullable', Rule::in(['draft', 'published'])],
+            'title' => ['nullable', 'string', 'max:255'], 'slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', ...($owner instanceof Page && $owner->isCustom() ? [new AvailableCustomPageSlug($locale)] : [])], 'excerpt' => ['nullable', 'string'], 'intro_text' => ['nullable', 'string'], 'short_description' => ['nullable', 'string'], 'subtitle' => ['nullable', 'string', 'max:255'], 'category_label' => ['nullable', 'string', 'max:255'], 'body' => ['nullable', 'string'], 'custom_html' => [Rule::prohibitedIf(! ($owner instanceof Page && $owner->isCustom())), 'nullable', 'string', new CustomPageHtml], 'seo_title' => ['nullable', 'string', 'max:255'], 'seo_description' => ['nullable', 'string'], 'seo_h1' => ['nullable', 'string', 'max:255'], 'og_title' => ['nullable', 'string', 'max:255'], 'og_description' => ['nullable', 'string'], 'twitter_title' => ['nullable', 'string', 'max:255'], 'twitter_description' => ['nullable', 'string'], 'local_seo_title' => ['nullable', 'string', 'max:255'], 'local_seo_description' => ['nullable', 'string'], 'local_seo_h1' => ['nullable', 'string', 'max:255'], 'publication_state' => ['nullable', Rule::in(['draft', 'published'])],
         ]);
         DB::transaction(function () use ($owner, $translation, $locale, $data): void {
             $translation->fill($data);
@@ -58,7 +60,7 @@ class LocalizedContentController extends Controller
                 throw ValidationException::withMessages(['publication_state' => 'Titolo e slug sono obbligatori per pubblicare.']);
             }
             if ($locale === SupportedLocale::IT) {
-                $revision = hash('sha256', json_encode($translation->only(['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'])));
+                $revision = hash('sha256', json_encode($translation->only(['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'])));
                 $translation->forceFill(['source_revision' => $revision, 'reviewed_source_revision' => $revision])->save();
                 $owner->translations()->where('locale', '!=', 'it')->update(['source_revision' => $revision]);
             } else {

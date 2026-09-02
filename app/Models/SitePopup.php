@@ -55,7 +55,15 @@ class SitePopup extends Model
 
     public function isEligible(): bool
     {
-        return $this->status() === 'active';
+        return $this->status() === 'active' && $this->hasMinimumEditorialContent();
+    }
+
+    public function hasMinimumEditorialContent(): bool
+    {
+        return filled($this->title)
+            || filled($this->body)
+            || filled($this->image_path)
+            || (filled($this->primary_cta_label) && filled($this->primary_cta_target));
     }
 
     public function hasValidSource(): bool

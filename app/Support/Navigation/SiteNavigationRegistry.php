@@ -28,7 +28,7 @@ final class SiteNavigationRegistry
     public const FOOTER_COLUMNS = [
         'center' => ['title' => 'IL CENTRO', 'targets' => ['center', 'why_choose_us', 'plus_health_protocol', 'conventions_network', 'careers']],
         'services' => ['title' => 'SERVIZI', 'targets' => ['medical_areas_index', 'diagnostics_index', 'aesthetic_medicine_index', 'checkups_index', 'equipe_index']],
-        'information' => ['title' => 'INFORMAZIONI', 'targets' => ['contact', 'news_index', 'health_pills_index']],
+        'information' => ['title' => 'ASSISTENZA', 'targets' => ['contact', 'news_index', 'health_pills_index']],
     ];
 
     /** @var array<string, string> */
@@ -59,6 +59,9 @@ final class SiteNavigationRegistry
             'footer' => [
                 'brand_description' => 'Centro medico multidisciplinare. Più specialità, un unico percorso di cura coordinato attorno a te.',
                 'booking_label' => 'Prenota ora',
+                'contact_visibility' => ['address' => true, 'phone' => true, 'email' => true, 'hours' => true],
+                'legal_visibility' => ['privacy' => true, 'cookie_policy' => true, 'terms_of_service' => true, 'cookie_preferences' => true],
+                'social_visibility' => [],
                 'columns' => collect(self::FOOTER_COLUMNS)->mapWithKeys(static fn (array $column, string $key): array => [$key => [
                     'key' => $key,
                     'title' => $column['title'],

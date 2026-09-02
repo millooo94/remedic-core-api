@@ -14,7 +14,7 @@ class Event extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'event_type', 'operational_status', 'start_at', 'end_at', 'location_type', 'external_venue_name', 'external_venue_address', 'online_url', 'registration_required', 'registration_deadline', 'registration_mode', 'external_registration_url', 'capacity', 'participation_price', 'cancellation_reason', 'internal_notes'];
+    protected $fillable = ['name', 'image_path', 'event_type', 'operational_status', 'start_at', 'end_at', 'location_type', 'external_venue_name', 'external_venue_address', 'online_url', 'registration_required', 'registration_deadline', 'registration_mode', 'external_registration_url', 'capacity', 'participation_price', 'cancellation_reason', 'internal_notes'];
 
     protected function casts(): array
     {

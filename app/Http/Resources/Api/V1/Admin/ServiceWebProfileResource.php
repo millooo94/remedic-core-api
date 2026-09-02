@@ -79,7 +79,6 @@ class ServiceWebProfileResource extends JsonResource
             'is_diagnostic' => (bool) $profile->is_diagnostic,
             'is_aesthetic_medicine' => (bool) $profile->is_aesthetic_medicine,
             'aesthetic_category' => $profile->aesthetic_category,
-            'list_sort_order' => (int) $profile->list_sort_order,
             'seo_title' => $profile->seo_title,
             'local_seo_title' => $profile->local_seo_title,
             'seo_description' => $profile->seo_description,
@@ -92,9 +91,13 @@ class ServiceWebProfileResource extends JsonResource
             'og_title' => $profile->og_title,
             'og_description' => $profile->og_description,
             'og_image_path' => $this->featured_image_path,
+            'twitter_title' => $profile->twitter_title,
+            'twitter_description' => $profile->twitter_description,
+            'twitter_image_path' => $profile->twitter_image_path,
+            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($profile->twitter_image_path, request()),
             'sections' => $profile->sections
                 ->whereIn('key', ServiceSectionDefinition::keys())
-                ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+                ->sortBy('id')
                 ->map(fn ($section) => [
                     'id' => $section->id,
                     'key' => $section->key,
@@ -102,14 +105,12 @@ class ServiceWebProfileResource extends JsonResource
                     'title' => $section->title,
                     'intro' => $section->content,
                     'data' => $section->extra_json ?? new \stdClass,
-                    'sort_order' => (int) $section->sort_order,
                     'is_active' => (bool) $section->is_active,
                 ])->values()->all(),
             'faqs' => $profile->faqs->map(fn ($faq) => [
                 'id' => $faq->id,
                 'question' => $faq->question,
                 'answer' => $faq->answer,
-                'sort_order' => (int) $faq->sort_order,
                 'is_active' => (bool) $faq->is_active,
                 'is_structured_data' => (bool) $faq->is_structured_data,
             ])->values()->all(),

@@ -112,9 +112,15 @@ class EquipeApiTest extends TestCase
             'professional_id' => $professional->id,
             'slug' => 'mario-rossi',
             'is_web_enabled' => false,
+            'local_seo_title' => 'Cardiologo a Roma',
+            'local_seo_h1' => 'Dott. Mario Rossi a Roma',
+            'local_seo_description' => 'Contenuto locale.',
+            'is_local_seo_enabled' => true,
         ])->assertCreated()
             ->assertJsonPath('professional.honorific_prefix', 'Dott.')
             ->assertJsonPath('professional.avatar_path', 'professionals/master.jpg')
+            ->assertJsonPath('local_seo_title', 'Cardiologo a Roma')
+            ->assertJsonPath('is_local_seo_enabled', true)
             ->assertJsonCount(7, 'sections')
             ->assertJsonMissingPath('professional.email');
 
@@ -146,7 +152,7 @@ class EquipeApiTest extends TestCase
     }
 
     #[Test]
-    public function typed_sections_reorder_publish_and_slug_redirect_without_sensitive_data_or_faqs(): void
+    public function typed_sections_keep_registry_order_publish_and_slug_redirect_without_sensitive_data_or_faqs(): void
     {
         $this->actingAsWebAdmin();
         $specialization = Specialization::query()->firstOrCreate(
@@ -192,7 +198,7 @@ class EquipeApiTest extends TestCase
             'key' => $section['key'], 'is_active' => $section['key'] !== 'biography',
         ])->all();
         $this->patchJson("/api/v1/admin/equipe/{$profileId}/sections", ['sections' => $sections])
-            ->assertOk()->assertJsonPath('sections.0.key', 'services');
+            ->assertOk()->assertJsonPath('sections.0.key', 'hero');
 
         $public = $this->getJson('/api/v1/public/equipe/giulia-ferri-nuovo')->assertOk()
             ->assertJsonPath('data.title', 'Dott.ssa')

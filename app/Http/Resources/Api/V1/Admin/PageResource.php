@@ -23,6 +23,10 @@ class PageResource extends JsonResource
             'title' => $this->title,
             'slug' => $this->slug,
             'template' => $this->template?->value ?? $this->template,
+            'content_kind' => $this->content_kind ?? 'standard',
+            'custom_html' => $this->when($this->isCustom(), $this->custom_html),
+            'custom_css' => $this->when($this->isCustom(), $this->custom_css),
+            'custom_javascript' => $this->when($this->isCustom(), $this->custom_javascript),
             'excerpt' => $this->excerpt,
             'intro_text' => $this->intro_text,
             'hero_image_path' => $this->hero_image_path,
@@ -56,7 +60,6 @@ class PageResource extends JsonResource
                 'id' => $faq->id,
                 'question' => $faq->question,
                 'answer' => $faq->answer,
-                'sort_order' => $faq->sort_order,
                 'is_active' => (bool) $faq->is_active,
                 'is_structured_data' => (bool) $faq->is_structured_data,
             ])->values()->all()),
@@ -72,7 +75,6 @@ class PageResource extends JsonResource
             'id' => $section->id,
             'key' => $section->key,
             'title' => $section->title,
-            'sort_order' => $section->sort_order,
             'is_active' => (bool) $section->is_active,
         ];
         $definition = PageSectionRegistry::definition((string) $this->internal_key, $section->key);

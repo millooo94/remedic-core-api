@@ -3,11 +3,10 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\Checkups\UpsertCheckupWebProfileRequest;
+use App\Http\Requests\Api\V1\Admin\WebCheckupIndexRequest;
 use App\Http\Resources\Api\V1\Admin\CheckupWebProfileResource;
 use App\Models\Checkup;
-use App\Models\CheckupWebProfile;
 use App\Models\Redirect;
 use App\Services\AutomaticSlugRedirectService;
 use App\Services\CheckupWebContentService;
@@ -20,14 +19,9 @@ class AdminWebCheckupController extends Controller
         private readonly AutomaticSlugRedirectService $redirects,
     ) {}
 
-    public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
+    public function index(WebCheckupIndexRequest $request): AnonymousResourceCollection
     {
         $query = Checkup::query();
-        match ($request->validated('archive_state', 'active')) {
-            'archived' => $query->onlyTrashed(),
-            'all' => $query->withTrashed(),
-            default => null,
-        };
         $query->with($this->relations());
         if ($search = $request->search()) {
             $query->where(fn ($builder) => $builder->where('display_name', 'like', "%{$search}%")
@@ -39,21 +33,14 @@ class AdminWebCheckupController extends Controller
             $query->whereHas('webProfile', fn ($profile) => $profile
                 ->where('is_web_enabled', $request->boolean('is_web_enabled')));
         }
-        if ($request->has('is_configured')) {
-            $request->boolean('is_configured')
-                ? $query->whereHas('webProfile')
-                : $query->whereDoesntHave('webProfile');
-        }
         if ($request->has('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
         }
-        if ($request->has('effective_public_visibility')) {
-            $request->boolean('effective_public_visibility')
-                ? $query->effectivelyVisible()
-                : $query->where(fn ($nested) => $nested
-                    ->whereNotNull('deleted_at')
-                    ->orWhere('is_active', false)
-                    ->orWhereDoesntHave('webProfile', fn ($profile) => $profile->where('is_web_enabled', true)));
+        if ($request->has('specialization_id')) {
+            $query->whereHas('items.service.specializations', fn ($specialization) => $specialization->whereKey((int) $request->validated('specialization_id')));
+        }
+        if ($request->has('professional_id')) {
+            $query->whereHas('items.service.professionalServices', fn ($professionalService) => $professionalService->where('professional_id', (int) $request->validated('professional_id')));
         }
         if ($request->has('is_operationally_available')) {
             $request->boolean('is_operationally_available')
@@ -106,8 +93,6 @@ class AdminWebCheckupController extends Controller
         $model = $checkup->refresh()->load($this->relations());
         $model->setRelation('relatedWebCheckups', Checkup::query()->effectivelyVisible()
             ->with('webProfile')->whereKeyNot($model->id)
-            ->orderBy(CheckupWebProfile::query()->select('list_sort_order')
-                ->whereColumn('checkup_web_profiles.checkup_id', 'checkups.id')->limit(1))
             ->orderBy('display_name')->orderBy('id')->limit(3)->get());
 
         return $model;

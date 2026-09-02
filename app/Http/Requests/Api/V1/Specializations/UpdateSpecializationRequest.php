@@ -25,6 +25,7 @@ class UpdateSpecializationRequest extends StoreSpecializationRequest
 
         return [
             'name' => ['required', 'string', 'max:190'],
+            'short_description' => ['nullable', 'string', 'max:40'],
             'professional_title_male' => ['nullable', 'string', 'max:190'],
             'professional_title_female' => ['nullable', 'string', 'max:190'],
             'slug' => ['required', 'string', 'max:190', Rule::unique('specializations', 'slug')->ignore($specialization?->id)],

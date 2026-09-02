@@ -33,13 +33,16 @@ class ProfessionalPublicProfile extends Model
         'seo_title',
         'seo_description',
         'seo_h1',
+        'local_seo_title',
+        'local_seo_description',
+        'local_seo_h1',
+        'is_local_seo_enabled',
         'canonical_url',
         'robots',
         'og_title',
         'og_description',
         'is_active',
         'is_web_enabled',
-        'sort_order',
     ];
 
     protected function casts(): array
@@ -50,7 +53,7 @@ class ProfessionalPublicProfile extends Model
             'robots' => RobotsValue::class,
             'is_active' => 'boolean',
             'is_web_enabled' => 'boolean',
-            'sort_order' => 'integer',
+            'is_local_seo_enabled' => 'boolean',
         ];
     }
 

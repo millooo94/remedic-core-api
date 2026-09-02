@@ -63,10 +63,10 @@ trait HasContentTranslations
     private static function localizedSourceFields(Model $owner): array
     {
         return match ($owner::class) {
-            Page::class => ['title', 'slug', 'excerpt', 'intro_text', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
+            Page::class => ['title', 'slug', 'excerpt', 'intro_text', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description'],
             SpecializationWebProfile::class => ['slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
-            ServiceWebProfile::class => ['public_slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
-            ProfessionalPublicProfile::class => ['slug', 'short_bio', 'bio_content', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
+            ServiceWebProfile::class => ['public_slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'],
+            ProfessionalPublicProfile::class => ['slug', 'short_bio', 'bio_content', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'],
             CheckupWebProfile::class => ['public_slug', 'short_description', 'category_label', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
             ConsentCategory::class => ['name', 'description'],
             BlogPost::class => ['title', 'slug', 'subtitle', 'category_label', 'excerpt', 'intro_text', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],

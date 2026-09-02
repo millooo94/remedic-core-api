@@ -20,12 +20,20 @@ class SiteNavigationProjectionService
     public function admin(SiteNavigation $navigation, Request $request): array
     {
         $configuration = $this->configuration($navigation);
+        $configuration['center_mega_menu']['sections'] = collect($configuration['center_mega_menu']['sections'] ?? [])
+            ->map(fn (array $section): array => [...$section, 'icon_url' => PublicMediaUrl::fromPublicDisk($section['icon_path'] ?? null, $request)])
+            ->map(function (array $section): array {
+                unset($section['icon_path']);
+
+                return $section;
+            })->all();
 
         return [
+            'id' => $navigation->getKey(),
             'configuration' => $configuration,
             'targets' => $this->targets(),
             'media' => ['center_mega_menu_promo_image_url' => PublicMediaUrl::fromPublicDisk($navigation->center_mega_menu_promo_image_path, $request), 'medical_areas_mega_menu_promo_image_url' => PublicMediaUrl::fromPublicDisk($navigation->medical_areas_mega_menu_promo_image_path, $request)],
-            'area_candidates' => SpecializationWebProfile::query()->with('specialization')->orderBy('list_sort_order')->get()->map(fn (SpecializationWebProfile $profile): array => ['specialization_id' => $profile->specialization_id, 'name' => $profile->specialization->name, 'icon_url' => PublicMediaUrl::fromPublicDisk($profile->specialization->icon_path, $request), 'public_slug' => $profile->slug, 'short_description' => $profile->short_description, 'publication_state' => $profile->isEffectivelyVisible() ? 'published' : 'not_public'])->all(),
+            'area_candidates' => SpecializationWebProfile::query()->with('specialization')->orderBy('specialization_id')->get()->map(fn (SpecializationWebProfile $profile): array => ['specialization_id' => $profile->specialization_id, 'name' => $profile->specialization->name, 'icon_url' => PublicMediaUrl::fromPublicDisk($profile->specialization->icon_path, $request), 'public_slug' => $profile->slug, 'short_description' => $profile->specialization->short_description, 'publication_state' => $profile->isEffectivelyVisible() ? 'published' : 'not_public'])->all(),
             'center_location' => $this->center(),
         ];
     }
@@ -62,11 +70,13 @@ class SiteNavigationProjectionService
                 continue;
             }
 
-            $target = $this->target((string) $definition['target'], $locale);
-            if ($target['href'] === null) {
+            $href = ($item['link_type'] ?? 'internal') === 'external'
+                ? (filled($item['external_url'] ?? null) ? (string) $item['external_url'] : null)
+                : $this->target((string) ($item['target'] ?? $definition['target']), $locale)['href'];
+            if ($href === null) {
                 continue;
             }
-            $items[] = ['key' => $item['key'], 'type' => $definition['type'], 'label' => $item['label'] ?: $definition['label'], 'href' => $target['href']];
+            $items[] = ['key' => $item['key'], 'type' => $definition['type'], 'label' => $item['label'] ?: $definition['label'], 'href' => $href];
         }
 
         return [
@@ -139,29 +149,49 @@ class SiteNavigationProjectionService
     private function publicCenterMenu(array $menu, SiteNavigation $navigation, Request $request, SupportedLocale $locale): array
     {
         $groups = [];
-        foreach ($menu['groups'] as $key => $group) {
-            $items = [];
-            foreach ($group['items'] as $item) {
-                if (! $item['is_active']) {
+        if (($menu['sections'] ?? []) !== []) {
+            foreach ($menu['sections'] as $section) {
+                $href = ($section['link_type'] ?? 'internal') === 'external'
+                    ? ($section['external_url'] ?? null)
+                    : $this->target((string) ($section['target'] ?? ''), $locale)['href'];
+                if (! filled($href)) {
                     continue;
                 }
-                $target = $this->target($item['target'], $locale);
-                if ($target['href'] === null) {
-                    continue;
-                }
-                $items[] = ['target' => $item['target'], 'label' => $item['label'] ?: SiteNavigationRegistry::TARGETS[$item['target']], 'description' => $item['description'], 'href' => $target['href']];
+                $groups[] = ['key' => $section['key'], 'label' => $section['label'], 'items' => [[
+                    'target' => $section['target'] ?? null,
+                    'label' => $section['label'],
+                    'description' => $section['subtitle'],
+                    'href' => $href,
+                    'icon_url' => PublicMediaUrl::fromPublicDisk($section['icon_path'] ?? null, $request),
+                ]]];
             }
-            if ($items !== []) {
-                $groups[] = ['key' => $key, 'label' => SiteNavigationRegistry::CENTER_GROUPS[$key]['label'], 'items' => $items];
+        } else {
+            foreach ($menu['groups'] as $key => $group) {
+                $items = [];
+                foreach ($group['items'] as $item) {
+                    if (! $item['is_active']) {
+                        continue;
+                    }
+                    $target = $this->target($item['target'], $locale);
+                    if ($target['href'] === null) {
+                        continue;
+                    }
+                    $items[] = ['target' => $item['target'], 'label' => $item['label'] ?: SiteNavigationRegistry::TARGETS[$item['target']], 'description' => $item['description'], 'href' => $target['href']];
+                }
+                if ($items !== []) {
+                    $groups[] = ['key' => $key, 'label' => SiteNavigationRegistry::CENTER_GROUPS[$key]['label'], 'items' => $items];
+                }
             }
         }
         $promo = $menu['promo'];
-        $cta = $this->target($promo['cta_target'], $locale);
-        if ($cta['href'] === null) {
+        $href = ($promo['cta_link_type'] ?? 'internal') === 'external'
+            ? ($promo['cta_external_url'] ?? null)
+            : $this->target((string) ($promo['cta_target'] ?? ''), $locale)['href'];
+        if ($href === null) {
             $promo['cta_label'] = null;
             $promo['cta_target'] = null;
         } else {
-            $promo['href'] = $cta['href'];
+            $promo['href'] = $href;
         }
         $promo['image_url'] = PublicMediaUrl::fromPublicDisk($navigation->center_mega_menu_promo_image_path, $request);
         $location = $this->centerData->resolve(SiteSetting::current());
@@ -188,7 +218,7 @@ class SiteNavigationProjectionService
         return collect($ordered)->map(static function (string $key) use ($byKey): array {
             $item = $byKey->get($key, []);
 
-            return ['key' => $key, 'is_active' => (bool) ($item['is_active'] ?? true), 'label' => filled($item['label'] ?? null) ? (string) $item['label'] : null];
+            return ['key' => $key, 'is_active' => (bool) ($item['is_active'] ?? true), 'label' => filled($item['label'] ?? null) ? (string) $item['label'] : null, 'link_type' => ($item['link_type'] ?? 'internal') === 'external' ? 'external' : 'internal', 'target' => isset($item['target']) ? (string) $item['target'] : (SiteNavigationRegistry::HEADER[$key]['target'] ?? null), 'external_url' => filled($item['external_url'] ?? null) ? (string) $item['external_url'] : null];
         })->all();
     }
 
@@ -216,7 +246,17 @@ class SiteNavigationProjectionService
         }
         $promo = is_array($menu['promo'] ?? null) ? $menu['promo'] : [];
 
-        return ['groups' => $groups, 'promo' => ['eyebrow' => (string) ($promo['eyebrow'] ?? 'ESPLORA'), 'title' => (string) ($promo['title'] ?? 'Conosci Remedic'), 'body' => filled($promo['body'] ?? null) ? (string) $promo['body'] : null, 'cta_label' => (string) ($promo['cta_label'] ?? 'Scopri il centro'), 'cta_target' => (string) ($promo['cta_target'] ?? 'center')]];
+        $sections = collect($menu['sections'] ?? [])->filter(fn ($section): bool => is_array($section))->map(fn (array $section): array => ['key' => (string) ($section['key'] ?? ''), 'label' => (string) ($section['label'] ?? ''), 'subtitle' => filled($section['subtitle'] ?? null) ? (string) $section['subtitle'] : null, 'icon_path' => filled($section['icon_path'] ?? null) ? (string) $section['icon_path'] : null, 'link_type' => ($section['link_type'] ?? 'internal') === 'external' ? 'external' : 'internal', 'target' => filled($section['target'] ?? null) ? (string) $section['target'] : null, 'external_url' => filled($section['external_url'] ?? null) ? (string) $section['external_url'] : null])->values()->all();
+        if ($sections === []) {
+            $sections = [
+                ['key' => 'know_remedic', 'label' => 'Conosci Remedic', 'subtitle' => null, 'icon_path' => null, 'link_type' => 'internal', 'target' => 'center', 'external_url' => null],
+                ['key' => 'territory', 'label' => 'Remedic e il territorio', 'subtitle' => null, 'icon_path' => null, 'link_type' => 'internal', 'target' => 'conventions_network', 'external_url' => null],
+                ['key' => 'prevention', 'label' => 'Prevenzione', 'subtitle' => null, 'icon_path' => null, 'link_type' => 'internal', 'target' => 'checkups_index', 'external_url' => null],
+                ['key' => 'information_health', 'label' => 'Informazione e salute', 'subtitle' => null, 'icon_path' => null, 'link_type' => 'internal', 'target' => 'news_index', 'external_url' => null],
+            ];
+        }
+
+        return ['groups' => $groups, 'sections' => $sections, 'promo' => ['eyebrow' => (string) ($promo['eyebrow'] ?? 'ESPLORA'), 'title' => (string) ($promo['title'] ?? 'Conosci Remedic'), 'body' => filled($promo['body'] ?? null) ? (string) $promo['body'] : null, 'cta_label' => (string) ($promo['cta_label'] ?? 'Scopri il centro'), 'cta_target' => filled($promo['cta_target'] ?? null) ? (string) $promo['cta_target'] : 'center', 'cta_link_type' => ($promo['cta_link_type'] ?? 'internal') === 'external' ? 'external' : 'internal', 'cta_external_url' => filled($promo['cta_external_url'] ?? null) ? (string) $promo['cta_external_url'] : null]];
     }
 
     /** @param array<string, mixed> $menu @return array<string, mixed> */
@@ -232,7 +272,9 @@ class SiteNavigationProjectionService
 
             return ['public_slug' => $item['slug'], 'href' => $item['href'], 'name' => $item['name'], 'icon_url' => $item['icon_url'], 'short_description' => $item['short_description']];
         })->filter()->values()->all();
-        $target = $this->target('medical_areas_index', $locale);
+        $target = ($menu['promo']['cta_link_type'] ?? 'internal') === 'external'
+            ? ['href' => $menu['promo']['cta_external_url'] ?? null]
+            : $this->target((string) ($menu['promo']['cta_target'] ?? 'medical_areas_index'), $locale);
         $promo = $target['href'] === null ? null : [...$menu['promo'], 'href' => $target['href']];
         if ($promo !== null) {
             $promo['image_url'] = PublicMediaUrl::fromPublicDisk($navigation->medical_areas_mega_menu_promo_image_path, $request);
@@ -248,24 +290,29 @@ class SiteNavigationProjectionService
         foreach ($footer['columns'] as $key => $column) {
             $items = [];
             foreach ($column['items'] as $item) {
-                $target = $this->target($item['target'], $locale);
-                if ($item['is_active'] && $target['href'] !== null) {
-                    $items[] = ['target' => $item['target'], 'label' => $item['label'] ?: SiteNavigationRegistry::TARGETS[$item['target']], 'href' => $target['href']];
+                $href = ($item['link_type'] ?? 'internal') === 'external'
+                    ? ($item['external_url'] ?? null)
+                    : $this->target((string) ($item['target'] ?? ''), $locale)['href'];
+                if (($item['is_active'] ?? true) && filled($href)) {
+                    $items[] = ['target' => $item['target'] ?? null, 'label' => $item['label'], 'href' => $href];
                 }
             }
             $columns[] = ['key' => $key, 'title' => $column['title'], 'items' => $items];
         }
         $center = $this->center();
-        $legalLinks = collect(['privacy' => 'Privacy Policy', 'cookie_policy' => 'Cookie Policy', 'terms_of_service' => 'Termini di servizio'])->map(function (string $label, string $target) use ($locale): ?array {
+        $legalLinks = collect(['privacy' => 'Privacy Policy', 'cookie_policy' => 'Cookie Policy', 'terms_of_service' => 'Termini di servizio'])->map(function (string $label, string $target) use ($locale, $footer): ?array {
+            if (($footer['legal_visibility'][$target] ?? true) === false) {
+                return null;
+            }
             $resolved = $this->target($target, $locale);
 
             return $resolved['href'] ? ['target' => $target, 'label' => $label, 'href' => $resolved['href']] : null;
         })->filter()->values()->all();
-        if ($this->target('cookie_preferences')['is_public']) {
+        if (($footer['legal_visibility']['cookie_preferences'] ?? true) && $this->target('cookie_preferences')['is_public']) {
             $legalLinks[] = ['target' => 'cookie_preferences', 'label' => SiteNavigationRegistry::TARGETS['cookie_preferences'], 'action' => 'cookie_preferences'];
         }
 
-        return ['brand' => ['description' => $footer['brand_description'], 'booking' => ['action' => 'booking', 'label' => $footer['booking_label']]], 'columns' => $columns, 'center' => $center, 'legal' => ['year' => now()->year, 'legal_company_name' => $center['legal_company_name'], 'vat_number' => $center['vat_number'], 'links' => $legalLinks], 'social' => $center['social']];
+        return ['brand' => ['description' => $footer['brand_description'], 'booking' => ['action' => 'booking', 'label' => $footer['booking_label']]], 'columns' => $columns, 'center' => $center, 'legal' => ['year' => now()->year, 'legal_company_name' => $center['legal_company_name'], 'vat_number' => $center['vat_number'], 'links' => $legalLinks], 'social' => $center['social'], 'contact_visibility' => $footer['contact_visibility'], 'legal_visibility' => $footer['legal_visibility'], 'social_visibility' => $footer['social_visibility']];
     }
 
     /** @return array<string, mixed> */
@@ -285,7 +332,7 @@ class SiteNavigationProjectionService
         $ids = array_values(array_unique(array_filter($menu['specialization_ids'] ?? [], static fn (mixed $id): bool => is_int($id) || ctype_digit((string) $id))));
         $promo = is_array($menu['promo'] ?? null) ? $menu['promo'] : [];
 
-        return ['specialization_ids' => array_map('intval', array_slice($ids, 0, 12)), 'promo' => ['eyebrow' => (string) ($promo['eyebrow'] ?? 'ESPLORA'), 'title' => (string) ($promo['title'] ?? 'Tutte le aree mediche'), 'body' => filled($promo['body'] ?? null) ? (string) $promo['body'] : null, 'cta_label' => (string) ($promo['cta_label'] ?? 'Scopri tutte le aree mediche')]];
+        return ['title' => filled($menu['title'] ?? null) ? (string) $menu['title'] : 'Aree mediche', 'specialization_ids' => array_map('intval', array_slice($ids, 0, 12)), 'promo' => ['eyebrow' => (string) ($promo['eyebrow'] ?? 'ESPLORA'), 'title' => (string) ($promo['title'] ?? 'Tutte le aree mediche'), 'body' => filled($promo['body'] ?? null) ? (string) $promo['body'] : null, 'cta_label' => (string) ($promo['cta_label'] ?? 'Scopri tutte le aree mediche'), 'cta_target' => filled($promo['cta_target'] ?? null) ? (string) $promo['cta_target'] : 'medical_areas_index', 'cta_link_type' => ($promo['cta_link_type'] ?? 'internal') === 'external' ? 'external' : 'internal', 'cta_external_url' => filled($promo['cta_external_url'] ?? null) ? (string) $promo['cta_external_url'] : null]];
     }
 
     /** @param mixed $footer @return array<string, mixed> */
@@ -295,16 +342,28 @@ class SiteNavigationProjectionService
         $columns = [];
         foreach (SiteNavigationRegistry::FOOTER_COLUMNS as $key => $definition) {
             $saved = is_array($footer['columns'][$key]['items'] ?? null) ? $footer['columns'][$key]['items'] : [];
-            $byTarget = collect($saved)->keyBy('target');
-            $targets = collect($saved)->pluck('target')->filter(fn ($target): bool => in_array($target, $definition['targets'], true))->unique()->values()->all();
-            $targets = [...$targets, ...array_values(array_filter($definition['targets'], fn (string $target): bool => ! in_array($target, $targets, true)))];
-            $columns[$key] = ['key' => $key, 'title' => filled($footer['columns'][$key]['title'] ?? null) ? (string) $footer['columns'][$key]['title'] : $definition['title'], 'items' => collect($targets)->map(static function (string $target) use ($byTarget): array {
-                $item = $byTarget->get($target, []);
+            if ($saved === []) {
+                $saved = array_map(static fn (string $target): array => ['target' => $target, 'label' => null, 'is_active' => true], $definition['targets']);
+            }
+            $title = $footer['columns'][$key]['title'] ?? null;
+            $columns[$key] = ['key' => $key, 'title' => filled($title) && ! ($key === 'information' && strtoupper((string) $title) === 'INFORMAZIONI') ? (string) $title : $definition['title'], 'items' => collect($saved)->filter(fn (mixed $item): bool => is_array($item))->take(5)->map(static function (array $item): array {
+                $internal = ($item['link_type'] ?? 'internal') !== 'external';
+                $target = $internal && filled($item['target'] ?? null) ? (string) $item['target'] : null;
 
-                return ['target' => $target, 'is_active' => (bool) ($item['is_active'] ?? true), 'label' => filled($item['label'] ?? null) ? (string) $item['label'] : null];
-            })->all()];
+                return ['label' => filled($item['label'] ?? null) ? (string) $item['label'] : ($target ? SiteNavigationRegistry::TARGETS[$target] : ''), 'link_type' => $internal ? 'internal' : 'external', 'target' => $target, 'external_url' => $internal ? null : (filled($item['external_url'] ?? null) ? (string) $item['external_url'] : null)];
+            })->filter(fn (array $item): bool => filled($item['label']))->values()->all()];
         }
 
-        return ['brand_description' => (string) ($footer['brand_description'] ?? SiteNavigationRegistry::defaults()['footer']['brand_description']), 'booking_label' => (string) ($footer['booking_label'] ?? 'Prenota ora'), 'columns' => $columns];
+        $contactVisibility = is_array($footer['contact_visibility'] ?? null) ? $footer['contact_visibility'] : [];
+        $legalVisibility = is_array($footer['legal_visibility'] ?? null) ? $footer['legal_visibility'] : [];
+        $socialVisibility = is_array($footer['social_visibility'] ?? null) ? $footer['social_visibility'] : [];
+
+        return ['brand_description' => (string) ($footer['brand_description'] ?? SiteNavigationRegistry::defaults()['footer']['brand_description']), 'booking_label' => (string) ($footer['booking_label'] ?? 'Prenota ora'), 'contact_visibility' => $this->visibilityMap($contactVisibility, ['address', 'phone', 'email', 'hours']), 'legal_visibility' => $this->visibilityMap($legalVisibility, ['privacy', 'cookie_policy', 'terms_of_service', 'cookie_preferences']), 'social_visibility' => collect($socialVisibility)->filter(static fn (mixed $visible, mixed $platform): bool => is_string($platform) && is_bool($visible))->all(), 'columns' => $columns];
+    }
+
+    /** @param array<string, mixed> $visibility @param list<string> $keys @return array<string, bool> */
+    private function visibilityMap(array $visibility, array $keys): array
+    {
+        return collect($keys)->mapWithKeys(static fn (string $key): array => [$key => ($visibility[$key] ?? true) !== false])->all();
     }
 }

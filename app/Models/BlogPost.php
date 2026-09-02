@@ -9,6 +9,7 @@ use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class BlogPost extends Model
@@ -25,6 +26,7 @@ class BlogPost extends Model
         'category_label',
         'content_type',
         'editorial_category',
+        'editorial_category_id',
         'excerpt',
         'intro_text',
         'cover_image',
@@ -90,19 +92,6 @@ class BlogPost extends Model
         return $query->where('content_type', 'health_pill');
     }
 
-    public const NEWS_CATEGORIES = ['services' => 'Servizi', 'professionals' => 'Professionisti', 'initiatives' => 'Iniziative', 'technology' => 'Tecnologia', 'network' => 'Network', 'center' => 'Centro'];
-
-    public const HEALTH_PILL_CATEGORIES = ['nutrition' => 'Nutrizione', 'cardiology' => 'Cardiologia', 'wellness' => 'Benessere', 'prevention' => 'Prevenzione', 'respiration' => 'Respirazione'];
-
-    public static function editorialCategories(?string $contentType): array
-    {
-        return match ($contentType) {
-            'news' => self::NEWS_CATEGORIES,
-            'health_pill' => self::HEALTH_PILL_CATEGORIES,
-            default => [],
-        };
-    }
-
     public function canonicalHref(): string
     {
         return match ($this->content_type) {
@@ -118,6 +107,11 @@ class BlogPost extends Model
             ->withPivot('sort_order')
             ->orderByPivot('sort_order')
             ->orderBy('services.id');
+    }
+
+    public function editorialCategory(): BelongsTo
+    {
+        return $this->belongsTo(EditorialCategory::class);
     }
 
     public function relatedArticles(): BelongsToMany

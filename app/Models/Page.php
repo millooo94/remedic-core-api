@@ -67,6 +67,10 @@ class Page extends Model
         'title',
         'slug',
         'template',
+        'content_kind',
+        'custom_html',
+        'custom_css',
+        'custom_javascript',
         'excerpt',
         'intro_text',
         'hero_image_path',
@@ -128,16 +132,28 @@ class Page extends Model
 
     public function isPublished(): bool
     {
+        if ($this->isHomePage()) {
+            return true;
+        }
+
         return $this->published_at !== null && $this->published_at->lessThanOrEqualTo(now());
     }
 
     public function isPubliclyAvailable(): bool
     {
+        if ($this->isHomePage()) {
+            return true;
+        }
+
         return (bool) $this->is_active && $this->isPublished();
     }
 
     public function publicationState(): PublicationState
     {
+        if ($this->isHomePage()) {
+            return PublicationState::Published;
+        }
+
         if (! $this->is_active) {
             return PublicationState::Suspended;
         }
@@ -154,5 +170,15 @@ class Page extends Model
     public function isLegacyCheckupPage(): bool
     {
         return in_array($this->slug, self::LEGACY_CHECKUP_SLUGS, true);
+    }
+
+    public function isHomePage(): bool
+    {
+        return $this->internal_key === self::HOME_INTERNAL_KEY;
+    }
+
+    public function isCustom(): bool
+    {
+        return $this->content_kind === 'custom';
     }
 }

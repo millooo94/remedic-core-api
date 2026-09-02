@@ -86,6 +86,29 @@ class StateNormalizationApiTest extends TestCase
     }
 
     #[Test]
+    public function blog_posts_can_be_filtered_by_editorial_content_type(): void
+    {
+        $this->actingAsAdmin();
+
+        $pill = $this->blogPost('health-pill', true, now()->subDay());
+        $pill->update(['content_type' => 'health_pill']);
+        $news = $this->blogPost('news-item', true, now()->subDay());
+        $news->update(['content_type' => 'news']);
+
+        $this->getJson('/api/v1/admin/blog-posts?content_type=health_pill&per_page=100')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $pill->id)
+            ->assertJsonPath('data.0.content_type', 'health_pill');
+
+        $this->getJson('/api/v1/admin/blog-posts?content_type=news&per_page=100')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $news->id)
+            ->assertJsonPath('data.0.content_type', 'news');
+    }
+
+    #[Test]
     public function content_deletion_cleans_morph_children_and_protects_legacy_checkup_pages(): void
     {
         $this->actingAsAdmin();

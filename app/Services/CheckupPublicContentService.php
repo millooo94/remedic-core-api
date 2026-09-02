@@ -18,8 +18,8 @@ class CheckupPublicContentService
         $locale = app(PublicLocaleResolver::class)->resolve(request());
         $query = Checkup::query()->effectivelyVisible()->with([
             'webProfile.translations',
-            'webProfile.sections' => fn ($query) => $query->active()->ordered()->with('translations'),
-            'webProfile.faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
+            'webProfile.sections' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
+            'webProfile.faqs' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
             'items.service.webProfile', 'items.service.webProfile.translations', 'items.service.specializations.webProfile', 'items.service.specializations.webProfile.translations',
             'items.service.professionalServices' => fn ($query) => $query
                 ->where('is_active', true)->where('is_visible_public', true)
@@ -30,9 +30,7 @@ class CheckupPublicContentService
             'items.service.professionalServices.professional.publicProfile',
             'items.service.professionalServices.professional.publicProfile.translations',
             'items.service.professionalServices.professional.specializations',
-        ])->orderBy(CheckupWebProfile::query()->select('list_sort_order')
-            ->whereColumn('checkup_web_profiles.checkup_id', 'checkups.id')->limit(1))
-            ->orderBy('display_name')->orderBy('id');
+        ])->orderBy('display_name')->orderBy('id');
 
         return $query->whereHas('webProfile', fn (Builder $profiles) => app(LocalizedContentResolver::class)->publicTranslations($profiles, $locale));
     }
@@ -94,9 +92,11 @@ class CheckupPublicContentService
             ->map(fn (Checkup $other) => $this->listItem($other, $request))->values();
 
         $sections = $profile->sections->whereIn('key', CheckupSectionDefinition::keys())
-            ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+            ->sortBy('id')
             ->map(fn ($section) => $this->section($section, $checkup, $profile, $included, $professionals, $faqs, $related, $request))
-            ->filter()->values()->all();
+            ->filter()->values()
+            ->map(fn (array $section, int $order) => [...$section, 'order' => $order])
+            ->all();
 
         $seo = [...app(PublicSeoResolver::class)->resolve([
             'title' => $profile->localizedTranslation?->title ?: $checkup->display_name,
@@ -158,7 +158,7 @@ class CheckupPublicContentService
             default => ['title' => $section->title, 'intro' => $section->content, ...($section->extra_json ?? [])],
         };
 
-        return $data === null ? null : ['key' => $section->key, 'order' => (int) $section->sort_order, 'data' => $data];
+        return $data === null ? null : ['key' => $section->key, 'data' => $data];
     }
 
     private function includedService($item, Request $request): ?array

@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests\Api\V1\Services;
 
+use App\Enums\ServiceClassification;
 use App\Models\Professional;
 use App\Models\Service;
 use App\Models\Specialization;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreServiceRequest extends FormRequest
@@ -19,6 +21,7 @@ class StoreServiceRequest extends FormRequest
     {
         return [
             'category_id' => ['nullable', 'integer', 'exists:service_categories,id'],
+            'classification' => ['required', Rule::enum(ServiceClassification::class)],
             'category_name' => ['nullable', 'string', 'max:190'],
             'canonical_name' => ['nullable', 'string', 'max:190'],
             'display_name' => ['required', 'string', 'max:190'],
@@ -94,6 +97,25 @@ class StoreServiceRequest extends FormRequest
                 $validator->errors()->add('specialization_ids', 'Seleziona almeno una specializzazione.');
 
                 return;
+            }
+
+            if ($this->input('classification') === ServiceClassification::AestheticMedicine->value) {
+                $aestheticMedicineId = Specialization::query()
+                    ->where('slug', Specialization::AESTHETIC_MEDICINE_SLUG)
+                    ->value('id');
+
+                if (
+                    $aestheticMedicineId === null
+                    || $specializationIds->count() !== 1
+                    || $specializationIds->first() !== (int) $aestheticMedicineId
+                ) {
+                    $validator->errors()->add(
+                        'specialization_ids',
+                        'Le prestazioni di Medicina estetica devono usare esclusivamente la specializzazione Medicina estetica.',
+                    );
+
+                    return;
+                }
             }
 
             if (! is_array($links) || count($links) === 0) {

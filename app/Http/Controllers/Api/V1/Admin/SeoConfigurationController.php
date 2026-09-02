@@ -22,7 +22,6 @@ class SeoConfigurationController extends Controller
             'default_meta_title' => ['nullable', 'string', 'max:255'],
             'default_meta_description' => ['nullable', 'string'],
             'seo_indexing_enabled' => ['required', 'boolean'],
-            'seo_sitemap_enabled' => ['required', 'boolean'],
         ]);
         $settings = SiteSetting::ensureSingleton();
         $settings->fill($payload)->save();

@@ -18,7 +18,7 @@ class HomePagePublicProjection
     /** @return array<string,mixed> */
     public function project(Page $page, Request $request): array
     {
-        $sections = $page->sections()->active()->ordered()->get()->map(function ($section) use ($request): array {
+        $sections = $page->sections()->active()->orderBy('id')->get()->values()->map(function ($section, int $order) use ($request): array {
             $data = $section->extra_json ?? [];
             $data = match ($section->key) {
                 'medical_areas' => [...$data, 'items' => $this->areas->query()->limit($this->limit($data))->get()->map(fn ($item) => $this->areas->listItem($item, $request))->values()->all()],
@@ -28,7 +28,7 @@ class HomePagePublicProjection
                 'aesthetic_medicine' => [...$data, 'items' => $this->services->query()->whereHas('webProfile', fn ($q) => $q->where('is_aesthetic_medicine', true))->limit($this->limit($data))->get()->map(fn ($item) => $this->services->listItem($item, $request))->values()->all()],
                 'health_pills' => [...$data, 'items' => $this->posts($data)],
                 'conventions' => [...$data, ...$this->partners($data, $request)],
-                'faq' => [...$data, 'items' => $section->sectionable->faqs()->where('is_active', true)->orderBy('sort_order')->orderBy('id')->get()->map(fn ($faq) => ['question' => $faq->question, 'answer' => $faq->answer, 'is_structured_data' => (bool) $faq->is_structured_data])->all()],
+                'faq' => [...$data, 'items' => $section->sectionable->faqs()->where('is_active', true)->orderBy('id')->get()->map(fn ($faq) => ['question' => $faq->question, 'answer' => $faq->answer, 'is_structured_data' => (bool) $faq->is_structured_data])->all()],
                 'contact' => [...$data, 'center' => $this->center->resolve(SiteSetting::current())],
                 default => $data,
             };
@@ -53,7 +53,7 @@ class HomePagePublicProjection
                 $data['component_type'] = 'newsletter_signup';
             }
 
-            return ['key' => $section->key, 'order' => (int) $section->sort_order, 'data' => $data];
+            return ['key' => $section->key, 'order' => $order, 'data' => $data];
         })->values()->all();
 
         return ['slug' => $page->slug, 'canonical_url' => '/', 'sections' => $sections];
@@ -94,7 +94,7 @@ class HomePagePublicProjection
     {
         $locale = $this->locales->resolve($request);
 
-        return $this->localized->publicTranslations(ProfessionalPublicProfile::query()->effectivelyVisible()->with(['translations', 'professional.specializations']), $locale)->orderBy('sort_order')->orderBy('id')->limit($limit)->get()->map(function ($profile) use ($request, $locale) {
+        return $this->localized->publicTranslations(ProfessionalPublicProfile::query()->effectivelyVisible()->with(['translations', 'professional.specializations']), $locale)->orderBy('id')->limit($limit)->get()->map(function ($profile) use ($request, $locale) {
             $profile = $this->localized->project($profile, $locale) ?? abort(404);
             $p = $profile->professional;
             $area = $p->specializations->sortBy(fn ($s) => [($s->pivot->is_primary ?? false) ? 0 : 1, $s->pivot->sort_order ?? 999])->first();

@@ -18,7 +18,6 @@ class SpecializationWebProfile extends Model
 
     protected $attributes = [
         'is_web_enabled' => false,
-        'list_sort_order' => 0,
         'is_local_seo_enabled' => true,
         'robots' => 'index,follow',
     ];
@@ -28,7 +27,6 @@ class SpecializationWebProfile extends Model
         'slug',
         'short_description',
         'is_web_enabled',
-        'list_sort_order',
         'seo_title',
         'local_seo_title',
         'seo_description',
@@ -48,7 +46,6 @@ class SpecializationWebProfile extends Model
         return [
             'is_web_enabled' => 'boolean',
             'is_local_seo_enabled' => 'boolean',
-            'list_sort_order' => 'integer',
             'robots' => RobotsValue::class,
             'legacy_content' => 'array',
         ];

@@ -64,7 +64,6 @@ class SeoController extends Controller
         return response()->json(['data' => [
             'indexing_enabled' => (bool) $settings->seo_indexing_enabled,
             'directives' => $settings->seo_indexing_enabled ? ['index', 'follow'] : ['noindex', 'nofollow'],
-            'sitemap_enabled' => (bool) $settings->seo_sitemap_enabled,
             'sitemap_endpoint' => '/api/v1/public/seo/sitemap',
         ]]);
     }
@@ -73,9 +72,6 @@ class SeoController extends Controller
     {
         $locale = $this->locales->resolve($request);
         $settings = SiteSetting::current();
-        if (! $settings->seo_sitemap_enabled) {
-            return response()->json(['data' => ['enabled' => false, 'items' => []]]);
-        }
         $items = collect([['path' => $this->routes->homepage($locale), 'type' => 'homepage', 'last_modified' => $settings->updated_at]])
             ->concat($this->localized->publicTranslations(Page::query()->with('translations')->active()->published(), $locale)->where(fn ($query) => $query->whereNull('internal_key')->orWhere('internal_key', '!=', Page::HOME_INTERNAL_KEY))->get()->reject(fn (Page $page): bool => $page->isLegacyCheckupPage())->map(function (Page $page) use ($locale): array {
                 $translation = $page->translations->firstWhere('locale', $locale);

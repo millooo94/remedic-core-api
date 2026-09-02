@@ -34,7 +34,6 @@ class UpsertCheckupWebProfileRequest extends FormRequest
             'short_description' => ['nullable', 'string'],
             'category_label' => ['nullable', 'string', 'max:255'],
             'is_web_enabled' => ['required', 'boolean'],
-            'list_sort_order' => ['required', 'integer', 'min:0'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'local_seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string'],

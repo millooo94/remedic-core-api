@@ -34,10 +34,13 @@ class LocalizedSingletonController extends Controller
             throw ValidationException::withMessages(['locale' => 'Italiano gestito dal backfill.']);
         }
 
-        $item = $this->query($kind, $id)->firstOrCreate(['locale' => $locale->value], [
-            'publication_state' => 'draft',
-            'source_revision' => $this->sourceRevision($kind, $id),
-        ]);
+        $attributes = ['publication_state' => 'draft'];
+        // Global SEO translations do not carry a source-revision column. They
+        // are independently editable fallbacks, unlike translated singletons.
+        if ($kind !== 'seo') {
+            $attributes['source_revision'] = $this->sourceRevision($kind, $id);
+        }
+        $item = $this->query($kind, $id)->firstOrCreate(['locale' => $locale->value], $attributes);
 
         return response()->json(['data' => $this->payload($item)], 201);
     }

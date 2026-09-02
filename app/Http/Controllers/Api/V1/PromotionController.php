@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\PromotionValidityBasis;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Media\UploadMasterImageRequest;
 use App\Http\Resources\Api\V1\PromotionResource;
 use App\Models\Checkup;
 use App\Models\Promotion;
 use App\Models\Service;
+use App\Services\ManagedMediaService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +18,8 @@ use Illuminate\Validation\ValidationException;
 
 class PromotionController extends Controller
 {
+    public function __construct(private readonly ManagedMediaService $media) {}
+
     public function index(Request $request)
     {
         $filters = $request->validate(['search' => ['nullable', 'string', 'max:190'], 'target_type' => ['nullable', Rule::in(['service', 'checkup'])], 'lifecycle_status' => ['nullable', Rule::in(['inactive', 'scheduled', 'active', 'expired'])], 'archive_state' => ['nullable', Rule::in(['active', 'archived', 'all'])]]);
@@ -74,6 +78,20 @@ class PromotionController extends Controller
         $model->restore();
 
         return new PromotionResource($model->load(['service', 'checkup']));
+    }
+
+    public function uploadImage(UploadMasterImageRequest $request, Promotion $promotion): PromotionResource
+    {
+        $this->media->replace($promotion, 'image_path', $request->file('image'), "promotions/{$promotion->id}/images");
+
+        return new PromotionResource($promotion->refresh()->load(['service', 'checkup']));
+    }
+
+    public function deleteImage(Promotion $promotion): PromotionResource
+    {
+        $this->media->delete($promotion, 'image_path', ["promotions/{$promotion->id}/images"]);
+
+        return new PromotionResource($promotion->refresh()->load(['service', 'checkup']));
     }
 
     public function targets(): array

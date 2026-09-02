@@ -27,6 +27,8 @@ class BackofficeIndexRequest extends FormRequest
             'effective_public_visibility' => ['sometimes', 'nullable', 'boolean'],
             'is_operationally_available' => ['sometimes', 'nullable', 'boolean'],
             'publication_state' => ['sometimes', 'nullable', Rule::enum(PublicationState::class)],
+            'content_type' => ['sometimes', 'nullable', Rule::in(['health_pill', 'news'])],
+            'editorial_category_id' => ['sometimes', 'nullable', 'integer', 'exists:editorial_categories,id'],
             'archive_state' => ['sometimes', 'nullable', Rule::in(['active', 'archived', 'all'])],
             'is_automatic' => ['sometimes', 'nullable', 'boolean'],
         ];

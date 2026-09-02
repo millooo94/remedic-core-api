@@ -127,7 +127,7 @@ final class PublicSearchIndexer
         $faqs = $copy->relationLoaded('faqs') ? $copy->faqs->where('is_active', true)->map(fn (FaqItem $faq) => $faq->question.' '.$faq->answer)->implode(' ') : '';
         $body = implode(' ', array_filter([
             $title, $subtitle, $copy->excerpt ?? null, $copy->intro_text ?? null, $copy->short_description ?? null,
-            $copy->body ?? null, is_array($copy->content ?? null) ? implode(' ', $copy->content) : ($copy->content ?? null), $sections, $faqs,
+            $copy->body ?? null, $copy->custom_html ?? null, is_array($copy->content ?? null) ? implode(' ', $copy->content) : ($copy->content ?? null), $sections, $faqs,
         ]));
         $normalized = $this->normalizer->normalize($body);
 

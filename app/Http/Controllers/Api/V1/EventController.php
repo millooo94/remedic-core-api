@@ -7,18 +7,23 @@ use App\Enums\EventOperationalStatus;
 use App\Enums\EventRegistrationMode;
 use App\Enums\EventType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Media\UploadMasterImageRequest;
 use App\Models\Checkup;
 use App\Models\Event;
 use App\Models\Professional;
 use App\Models\Promotion;
 use App\Models\Service;
 use App\Models\Specialization;
+use App\Services\ManagedMediaService;
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class EventController extends Controller
 {
+    public function __construct(private readonly ManagedMediaService $media) {}
+
     public function index(Request $r)
     {
         $q = Event::query();
@@ -72,6 +77,20 @@ class EventController extends Controller
         return response()->json($this->data($e->load($this->relations())));
     }
 
+    public function uploadImage(UploadMasterImageRequest $request, Event $event)
+    {
+        $this->media->replace($event, 'image_path', $request->file('image'), "events/{$event->id}/images");
+
+        return response()->json($this->data($event->refresh()->load($this->relations())));
+    }
+
+    public function deleteImage(Event $event)
+    {
+        $this->media->delete($event, 'image_path', ["events/{$event->id}/images"]);
+
+        return response()->json($this->data($event->refresh()->load($this->relations())));
+    }
+
     public function lookups()
     {
         return response()->json(['data' => ['professionals' => Professional::query()->orderBy('full_name')->get(['id', 'full_name', 'is_active']), 'specializations' => Specialization::query()->orderBy('name')->get(['id', 'name', 'is_active']), 'services' => Service::query()->orderBy('display_name')->get(['id', 'display_name', 'is_active']), 'checkups' => Checkup::query()->orderBy('display_name')->get(['id', 'display_name', 'is_active']), 'promotions' => Promotion::query()->orderBy('name')->get(['id', 'name', 'is_active'])]]);
@@ -107,6 +126,6 @@ class EventController extends Controller
 
     private function data(Event $e): array
     {
-        return ['id' => $e->id, 'name' => $e->name, 'event_type' => $e->event_type->value, 'operational_status' => $e->operational_status->value, 'temporal_status' => $e->temporalStatus(), 'is_effectively_available' => $e->isEffectivelyAvailable(), 'start_at' => $e->start_at->toIso8601String(), 'end_at' => $e->end_at->toIso8601String(), 'location_type' => $e->location_type->value, 'external_venue_name' => $e->external_venue_name, 'external_venue_address' => $e->external_venue_address, 'online_url' => $e->online_url, 'registration_required' => $e->registration_required, 'registration_deadline' => $e->registration_deadline?->toIso8601String(), 'registration_mode' => $e->registration_mode->value, 'external_registration_url' => $e->external_registration_url, 'is_registration_open' => $e->isRegistrationOpen(), 'capacity' => $e->capacity, 'participation_price' => $e->participation_price, 'cancellation_reason' => $e->cancellation_reason, 'internal_notes' => $e->internal_notes, 'is_archived' => $e->trashed(), 'relations' => collect($this->relations())->mapWithKeys(fn ($k) => [$k => $e->$k->map(fn ($x) => ['id' => $x->id, 'name' => $x->full_name ?? $x->display_name ?? $x->name, 'is_active' => $x->is_active])->values()])->all()];
+        return ['id' => $e->id, 'name' => $e->name, 'image_path' => $e->image_path, 'image_url' => PublicMediaUrl::fromPublicDisk($e->image_path, request()), 'event_type' => $e->event_type->value, 'operational_status' => $e->operational_status->value, 'temporal_status' => $e->temporalStatus(), 'is_effectively_available' => $e->isEffectivelyAvailable(), 'start_at' => $e->start_at->toIso8601String(), 'end_at' => $e->end_at->toIso8601String(), 'location_type' => $e->location_type->value, 'external_venue_name' => $e->external_venue_name, 'external_venue_address' => $e->external_venue_address, 'online_url' => $e->online_url, 'registration_required' => $e->registration_required, 'registration_deadline' => $e->registration_deadline?->toIso8601String(), 'registration_mode' => $e->registration_mode->value, 'external_registration_url' => $e->external_registration_url, 'is_registration_open' => $e->isRegistrationOpen(), 'capacity' => $e->capacity, 'participation_price' => $e->participation_price, 'cancellation_reason' => $e->cancellation_reason, 'internal_notes' => $e->internal_notes, 'is_archived' => $e->trashed(), 'relations' => collect($this->relations())->mapWithKeys(fn ($k) => [$k => $e->$k->map(fn ($x) => ['id' => $x->id, 'name' => $x->full_name ?? $x->display_name ?? $x->name, 'is_active' => $x->is_active])->values()])->all()];
     }
 }

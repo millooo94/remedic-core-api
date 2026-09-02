@@ -23,8 +23,8 @@ class ServicePublicContentService
             ->effectivelyVisible()
             ->with([
                 'webProfile.translations',
-                'webProfile.sections' => fn ($query) => $query->active()->ordered()->with('translations'),
-                'webProfile.faqs' => fn ($query) => $query->active()->ordered()->with('translations'),
+                'webProfile.sections' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
+                'webProfile.faqs' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
                 'specializations.webProfile',
                 'specializations.webProfile.translations',
                 'professionalServices' => fn ($query) => $query
@@ -41,12 +41,6 @@ class ServicePublicContentService
                 'pricingProfiles.presentation.translations',
                 'pricingProfiles.items.presentation.translations',
             ])
-            ->orderBy(
-                ServiceWebProfile::query()
-                    ->select('list_sort_order')
-                    ->whereColumn('service_web_profiles.service_id', 'services.id')
-                    ->limit(1)
-            )
             ->orderBy('display_name')
             ->orderBy('id');
 
@@ -95,10 +89,10 @@ class ServicePublicContentService
 
         $sections = $profile->sections
             ->whereIn('key', ServiceSectionDefinition::keys())
-            ->sortBy(fn ($section) => [$section->sort_order, $section->id])
+            ->sortBy('id')
             ->map(fn ($section) => $this->section($section, $service, $profile, $primary, $areas, $professionals, $faqs, $request))
-            ->filter()
-            ->values()
+            ->filter()->values()
+            ->map(fn (array $section, int $order) => [...$section, 'order' => $order])
             ->all();
 
         return [
@@ -215,7 +209,6 @@ class ServicePublicContentService
 
         return $data === null ? null : [
             'key' => $section->key,
-            'order' => (int) $section->sort_order,
             'data' => $data,
         ];
     }

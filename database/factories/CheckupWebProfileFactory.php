@@ -20,7 +20,6 @@ class CheckupWebProfileFactory extends Factory
             'short_description' => fake()->sentence(),
             'category_label' => null,
             'is_web_enabled' => false,
-            'list_sort_order' => 0,
             'is_local_seo_enabled' => true,
             'robots' => 'index,follow',
         ];

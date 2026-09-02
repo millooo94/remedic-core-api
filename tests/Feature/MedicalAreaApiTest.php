@@ -19,7 +19,9 @@ use App\Services\MedicalAreaContentService;
 use App\Services\ServiceWebContentService;
 use App\Support\MedicalAreas\MedicalAreaSectionDefinition;
 use Database\Seeders\BackofficeAccessSeeder;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\Models\Role;
@@ -92,14 +94,15 @@ class MedicalAreaApiTest extends TestCase
         $sectionIds = collect($created->json('web_profile.sections'))->pluck('id', 'key');
         $payload = $this->payload('cardiologia-nuova');
         $payload['sections'] = array_reverse($payload['sections']);
-        $payload['sections'][5]['data'] = [
+        $scopeIndex = array_search('scope', array_column($payload['sections'], 'key'), true);
+        $payload['sections'][$scopeIndex]['data'] = [
             'items' => [['icon_key' => 'heart', 'title' => 'Prevenzione', 'description' => 'Valutazione del rischio.']],
             'bottom_note' => 'Un percorso personalizzato.',
         ];
         $updated = $this->patchJson("/api/v1/admin/aree-mediche/{$master->id}", $payload)
             ->assertOk()
-            ->assertJsonPath('web_profile.sections.0.key', 'equipe')
-            ->assertJsonPath('web_profile.sections.5.data.items.0.title', 'Prevenzione');
+            ->assertJsonPath('web_profile.sections.0.key', 'hero')
+            ->assertJsonPath('web_profile.sections.1.data.items.0.title', 'Prevenzione');
 
         $this->assertSame(
             $sectionIds->sortKeys()->all(),
@@ -183,9 +186,9 @@ class MedicalAreaApiTest extends TestCase
     {
         $first = $this->master(['name' => 'Zeta']);
         $second = $this->master(['name' => 'Alfa', 'slug' => 'alfa-master']);
-        foreach ([[$first, 'zeta', 2, true], [$second, 'alfa', 1, true]] as [$master, $slug, $order, $enabled]) {
+        foreach ([[$first, 'zeta', true], [$second, 'alfa', true]] as [$master, $slug, $enabled]) {
             $profile = SpecializationWebProfile::query()->create([
-                'specialization_id' => $master->id, 'slug' => $slug, 'list_sort_order' => $order, 'is_web_enabled' => $enabled,
+                'specialization_id' => $master->id, 'slug' => $slug, 'is_web_enabled' => $enabled,
             ]);
             app(MedicalAreaContentService::class)->initializeSections($profile);
         }
@@ -237,6 +240,7 @@ class MedicalAreaApiTest extends TestCase
             'question' => 'Domanda legacy?', 'answer' => 'Risposta legacy.', 'sort_order' => 0,
         ]);
 
+        Schema::table('specialization_web_profiles', fn (Blueprint $table) => $table->integer('list_sort_order')->default(0));
         $backfill = require database_path('migrations/2026_08_24_101000_backfill_specialization_web_profiles_from_specializations.php');
         $backfill->up();
         $reparent = require database_path('migrations/2026_08_24_102000_reparent_specialization_sections_and_faqs_to_web_profiles.php');
@@ -331,7 +335,6 @@ class MedicalAreaApiTest extends TestCase
             'slug' => $slug,
             'short_description' => 'Descrizione breve',
             'is_web_enabled' => true,
-            'list_sort_order' => 3,
             'is_local_seo_enabled' => true,
             'robots' => 'index,follow',
             'sections' => collect($definitions)->map(fn ($definition) => [

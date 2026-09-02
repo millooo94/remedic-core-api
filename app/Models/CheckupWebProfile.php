@@ -18,14 +18,13 @@ class CheckupWebProfile extends Model
 
     protected $attributes = [
         'is_web_enabled' => false,
-        'list_sort_order' => 0,
         'is_local_seo_enabled' => true,
         'robots' => 'index,follow',
     ];
 
     protected $fillable = [
         'checkup_id', 'public_slug', 'short_description', 'category_label',
-        'is_web_enabled', 'list_sort_order', 'seo_title', 'local_seo_title',
+        'is_web_enabled', 'seo_title', 'local_seo_title',
         'seo_description', 'local_seo_description', 'seo_h1', 'local_seo_h1',
         'is_local_seo_enabled', 'canonical_url', 'robots', 'og_title',
         'og_description', 'legacy_content',
@@ -35,7 +34,6 @@ class CheckupWebProfile extends Model
     {
         return [
             'is_web_enabled' => 'boolean',
-            'list_sort_order' => 'integer',
             'is_local_seo_enabled' => 'boolean',
             'robots' => RobotsValue::class,
             'legacy_content' => 'array',

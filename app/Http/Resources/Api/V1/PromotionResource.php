@@ -5,6 +5,7 @@ namespace App\Http\Resources\Api\V1;
 use App\Models\Checkup;
 use App\Models\Promotion;
 use App\Models\Service;
+use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -27,6 +28,8 @@ class PromotionResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'image_path' => $this->image_path,
+            'image_url' => PublicMediaUrl::fromPublicDisk($this->image_path, $request),
             'target_type' => $this->targetType(),
             'target_id' => $this->service_id ?? $this->checkup_id,
             'target_name' => $service?->display_name ?? $checkup?->display_name,

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\GlobalSeoTranslation;
 use App\Models\SiteSetting;
 use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\Request;
@@ -12,12 +13,14 @@ class PublicSeoResolver
     public function resolve(array $content, string $path, Request $request, string $type = 'website'): array
     {
         $settings = SiteSetting::current();
+        $locale = (string) $request->query('locale', 'it');
+        $translation = $locale === 'it' ? null : GlobalSeoTranslation::query()->where('locale', $locale)->where('publication_state', 'published')->first();
         $siteName = trim((string) ($settings->site_name ?: $settings->brand_name ?: $settings->clinic_name ?: 'Remedic'));
-        $fallbackTitle = trim((string) $settings->default_meta_title) ?: $siteName;
+        $fallbackTitle = trim((string) ($translation?->default_meta_title ?: $settings->default_meta_title)) ?: $siteName;
         $title = trim((string) ($content['seo_title'] ?? '')) ?: trim((string) ($content['title'] ?? '')) ?: $fallbackTitle;
         $description = $this->plainText($content['seo_description'] ?? null)
             ?: $this->plainText($content['description'] ?? null)
-            ?: $this->plainText($settings->default_meta_description);
+            ?: $this->plainText($translation?->default_meta_description ?: $settings->default_meta_description);
         $canonicalUrl = $this->canonicalUrl($settings->site_url, $path);
         $image = $content['image_url'] ?? null;
         if (! filled($image)) {

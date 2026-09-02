@@ -570,7 +570,6 @@ class AdminBackofficeApiTest extends TestCase
             'short_description' => 'Descrizione aggiornata',
             'is_local_seo_enabled' => false,
             'is_web_enabled' => false,
-            'list_sort_order' => 5,
             'sections' => collect(MedicalAreaSectionDefinition::DEFINITIONS)
                 ->map(fn (string $label, string $key) => [
                     'key' => $key, 'title' => $label, 'intro' => null, 'is_active' => true, 'data' => [],
@@ -646,7 +645,6 @@ class AdminBackofficeApiTest extends TestCase
             'short_description' => 'Breve aggiornata',
             'is_web_enabled' => false,
             'is_local_seo_enabled' => false,
-            'list_sort_order' => 2,
             'robots' => 'index,follow',
             'sections' => $sections,
             'faqs' => [],

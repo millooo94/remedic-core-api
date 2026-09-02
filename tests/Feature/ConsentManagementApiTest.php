@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Enums\AdminRole;
 use App\Enums\ConsentEventType;
+use App\Enums\ConsentExecutionMode;
 use App\Enums\UserRole;
 use App\Models\ConsentCategory;
 use App\Models\ConsentConfiguration;
+use App\Models\ConsentConfigurationVersion;
 use App\Models\ConsentRecord;
+use App\Models\ConsentService;
 use App\Models\Page;
 use App\Models\User;
 use App\Services\ConsentCategoryInitializer;
@@ -40,9 +43,9 @@ class ConsentManagementApiTest extends TestCase
     }
 
     #[Test]
-    public function configuration_uses_complete_reviewed_copy_for_each_requested_locale_without_italian_fallback(): void
+    public function configuration_uses_complete_reviewed_copy_with_safe_italian_fallback(): void
     {
-        $this->getJson('/api/v1/public/consent/configuration?locale=en')->assertNotFound();
+        $this->getJson('/api/v1/public/consent/configuration?locale=en')->assertOk()->assertJsonPath('data.categories.0.label', 'Necessari');
         $this->getJson('/api/v1/public/consent/configuration?locale=de')->assertUnprocessable();
 
         foreach (['en', 'es', 'fr'] as $locale) {
@@ -67,7 +70,7 @@ class ConsentManagementApiTest extends TestCase
 
         $category = ConsentCategory::query()->where('key', 'statistics')->firstOrFail();
         $category->translations()->where('locale', 'en')->update(['description' => null]);
-        $this->getJson('/api/v1/public/consent/configuration?locale=en')->assertNotFound();
+        $this->getJson('/api/v1/public/consent/configuration?locale=en')->assertOk()->assertJsonPath('data.categories.2.label', 'Statistiche');
     }
 
     #[Test]
@@ -98,6 +101,52 @@ class ConsentManagementApiTest extends TestCase
         $this->patchJson('/api/v1/public/consents/'.$id, ['configuration_version' => 1, 'preferences' => true, 'statistics' => true, 'marketing' => true], ['X-Consent-Token' => $token])->assertConflict();
         $this->patchJson('/api/v1/public/consents/'.$id, ['configuration_version' => 2, 'preferences' => true, 'statistics' => true, 'marketing' => true], ['X-Consent-Token' => $token])->assertOk()->assertJsonPath('data.requires_renewal', false);
         $this->assertSame(ConsentEventType::RENEWED, ConsentRecord::query()->firstOrFail()->events()->reorder()->latest('id')->firstOrFail()->event_type);
+        $this->assertDatabaseHas('consent_configuration_versions', ['configuration_version' => 2]);
+        $this->assertSame(2, ConsentConfigurationVersion::query()->firstOrFail()->snapshot['configuration_version']);
+    }
+
+    #[Test]
+    public function public_configuration_exposes_only_active_services_with_runtime_safe_config(): void
+    {
+        $categories = app(ConsentCategoryInitializer::class)->initialize()->keyBy('key');
+        ConsentService::query()->create([
+            'consent_category_id' => $categories->get('statistics')->id,
+            'key' => 'google-analytics',
+            'name' => 'Google Analytics',
+            'provider' => 'Google',
+            'execution_mode' => ConsentExecutionMode::SCRIPT,
+            'public_config' => ['driver' => 'ga4', 'measurement_id' => 'G-TEST123', 'position' => 'head', 'internal_note' => 'do not expose'],
+            'is_active' => true,
+        ]);
+        ConsentService::query()->create([
+            'consent_category_id' => $categories->get('marketing')->id,
+            'key' => 'disabled-pixel',
+            'name' => 'Disabled Pixel',
+            'execution_mode' => ConsentExecutionMode::SCRIPT,
+            'public_config' => ['driver' => 'meta_pixel', 'pixel_id' => '123456'],
+            'is_active' => false,
+        ]);
+
+        $this->getJson('/api/v1/public/consent/configuration')
+            ->assertOk()
+            ->assertJsonPath('data.services.0.key', 'google-analytics')
+            ->assertJsonPath('data.services.0.category', 'statistics')
+            ->assertJsonPath('data.services.0.config.measurement_id', 'G-TEST123')
+            ->assertJsonMissingPath('data.services.0.config.internal_note')
+            ->assertJsonCount(1, 'data.services');
+    }
+
+    #[Test]
+    public function admin_can_create_structured_service_and_invalid_provider_ids_are_rejected(): void
+    {
+        $category = app(ConsentCategoryInitializer::class)->initialize()->firstWhere('key', 'statistics');
+        $this->admin();
+        $payload = ['consent_category_id' => $category->id, 'key' => 'google-analytics', 'name' => 'Google Analytics', 'provider' => 'Google', 'execution_mode' => 'script', 'public_config' => ['driver' => 'ga4', 'measurement_id' => 'G-TEST123', 'position' => 'head'], 'is_active' => true];
+        $this->postJson('/api/v1/admin/consent-services', $payload)->assertCreated();
+        $this->assertSame('G-TEST123', ConsentService::query()->where('key', 'google-analytics')->firstOrFail()->public_config['measurement_id']);
+        $this->postJson('/api/v1/admin/consent-services', [...$payload, 'key' => 'invalid-analytics', 'public_config' => ['driver' => 'ga4', 'measurement_id' => 'not-a-ga-id']])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['public_config.measurement_id']);
     }
 
     #[Test]
@@ -108,6 +157,7 @@ class ConsentManagementApiTest extends TestCase
         $this->putJson('/api/v1/admin/consent-configuration', ['is_enabled' => true, 'categories' => [[
             'key' => 'preferences', 'translations' => [['locale' => 'en', 'label' => 'Preferences', 'description' => 'Stores non-essential choices.']],
         ]]])->assertOk()->assertJsonPath('data.is_enabled', true)->assertJsonPath('data.configuration_version', 1)->assertJsonFragment(['locale' => 'en', 'label' => 'Preferences']);
+        $this->getJson('/api/v1/admin/consent-configuration')->assertOk()->assertJsonPath('data.categories.0.key', 'necessary')->assertJsonPath('data.categories.0.id', ConsentCategory::query()->where('key', 'necessary')->value('id'));
         $this->getJson('/api/v1/admin/consent-records')->assertOk()->assertJsonPath('meta.total', 0);
         $this->getJson('/api/v1/public/navigation')->assertOk()->assertJsonFragment(['action' => 'cookie_preferences']);
     }

@@ -30,7 +30,7 @@ class TranslationOrchestrator
     ];
 
     /** Slugs, URLs, relations, prices and structure deliberately never enter this list. */
-    private const FIELDS = ['title', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'label', 'description'];
+    private const FIELDS = ['title', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1', 'label', 'description'];
 
     public function __construct(private readonly TranslationProvider $provider) {}
 

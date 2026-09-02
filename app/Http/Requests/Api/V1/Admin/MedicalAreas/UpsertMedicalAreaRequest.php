@@ -36,7 +36,6 @@ class UpsertMedicalAreaRequest extends FormRequest
             'slug' => ['required', 'string', 'max:255', Rule::unique('specialization_web_profiles', 'slug')->ignore($profileId)],
             'short_description' => ['nullable', 'string'],
             'is_web_enabled' => ['required', 'boolean'],
-            'list_sort_order' => ['required', 'integer', 'min:0'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'local_seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string'],

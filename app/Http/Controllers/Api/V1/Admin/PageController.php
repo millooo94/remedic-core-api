@@ -146,6 +146,11 @@ class PageController extends Controller
     private function persist(Page $page, array $payload): Page
     {
         $previousSlug = $page->exists ? (string) $page->slug : null;
+        if ($page->exists && array_key_exists('content_kind', $payload) && $payload['content_kind'] !== $page->content_kind) {
+            throw ValidationException::withMessages([
+                'content_kind' => 'Il tipo di pagina non puÃ² essere convertito dopo la creazione.',
+            ]);
+        }
         $relationsPayload = array_intersect_key($payload, array_flip([
             'sections',
             'removed_section_keys',
@@ -154,6 +159,16 @@ class PageController extends Controller
         ]));
 
         unset($payload['sections'], $payload['removed_section_keys'], $payload['faqs'], $payload['removed_faq_ids']);
+
+        if (($payload['content_kind'] ?? $page->content_kind) === 'custom') {
+            $payload['faq_enabled'] = false;
+            $relationsPayload = [];
+        }
+
+        if ($page->isHomePage()) {
+            unset($payload['slug'], $payload['template'], $payload['hero_image_path'], $payload['hero_image_alt'], $payload['published_at']);
+            $payload['is_active'] = true;
+        }
 
         if (! $page->exists && ! array_key_exists('internal_key', $payload)) {
             $payload['internal_key'] = match ($payload['slug'] ?? null) {
@@ -172,6 +187,13 @@ class PageController extends Controller
         if (PageSectionRegistry::hasDefinitionsFor((string) ($payload['internal_key'] ?? $page->internal_key))
             && (string) ($payload['internal_key'] ?? $page->internal_key) !== HomePageRegistry::INTERNAL_KEY) {
             $payload['faq_enabled'] = false;
+        }
+
+        if ((string) ($payload['internal_key'] ?? $page->internal_key) === HomePageRegistry::INTERNAL_KEY) {
+            $payload['is_active'] = true;
+            if (! $page->exists) {
+                unset($payload['published_at']);
+            }
         }
 
         $page->fill($payload);

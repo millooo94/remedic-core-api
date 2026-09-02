@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\V1\Admin\AdminWebServiceController;
 use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostController;
 use App\Http\Controllers\Api\V1\Admin\ConsentConfigurationController as AdminConsentConfigurationController;
 use App\Http\Controllers\Api\V1\Admin\ConsentRecordController as AdminConsentRecordController;
+use App\Http\Controllers\Api\V1\Admin\ConsentServiceController as AdminConsentServiceController;
+use App\Http\Controllers\Api\V1\Admin\EditorialCategoryController;
 use App\Http\Controllers\Api\V1\Admin\HomePageController as AdminHomePageController;
 use App\Http\Controllers\Api\V1\Admin\InternalNotificationController;
 use App\Http\Controllers\Api\V1\Admin\LocalizedContentController;
@@ -24,7 +26,6 @@ use App\Http\Controllers\Api\V1\Admin\SiteNavigationController as AdminSiteNavig
 use App\Http\Controllers\Api\V1\Admin\SiteNavigationMediaController as AdminSiteNavigationMediaController;
 use App\Http\Controllers\Api\V1\Admin\SitePopupController as AdminSitePopupController;
 use App\Http\Controllers\Api\V1\Admin\SitePopupMediaController as AdminSitePopupMediaController;
-use App\Http\Controllers\Api\V1\Admin\SiteSettingController as AdminSiteSettingController;
 use App\Http\Controllers\Api\V1\Admin\TranslationGenerationController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\ApplicationTypeController;
@@ -192,6 +193,10 @@ Route::prefix('v1')->group(function (): void {
                 Route::put('{service}/pricing/profiles/{profile}', [ServiceStructuredPricingController::class, 'updateProfile']);
                 Route::delete('{service}/pricing/profiles/{profile}', [ServiceStructuredPricingController::class, 'destroyProfile']);
                 Route::post('{service}/pricing/profiles/reorder', [ServiceStructuredPricingController::class, 'reorderProfiles']);
+                Route::post('{service}/pricing/profiles/{profile}/image', [ServiceStructuredPricingController::class, 'uploadProfileImage']);
+                Route::delete('{service}/pricing/profiles/{profile}/image', [ServiceStructuredPricingController::class, 'deleteProfileImage']);
+                Route::post('{service}/pricing/items', [ServiceStructuredPricingController::class, 'storeFlatItem']);
+                Route::post('{service}/pricing/items/reorder', [ServiceStructuredPricingController::class, 'reorderFlatItems']);
                 Route::post('{service}/pricing/profiles/{profile}/items', [ServiceStructuredPricingController::class, 'storeItem']);
                 Route::put('{service}/pricing/profiles/{profile}/items/{item}', [ServiceStructuredPricingController::class, 'updateItem']);
                 Route::delete('{service}/pricing/profiles/{profile}/items/{item}', [ServiceStructuredPricingController::class, 'destroyItem']);
@@ -215,12 +220,16 @@ Route::prefix('v1')->group(function (): void {
             ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
         Route::prefix('promotions')->middleware('permission:'.AdminPermission::MANAGE_PROMOTIONS->value)->group(function (): void {
             Route::get('targets', [PromotionController::class, 'targets']);
+            Route::post('{promotion}/image', [PromotionController::class, 'uploadImage']);
+            Route::delete('{promotion}/image', [PromotionController::class, 'deleteImage']);
             Route::post('{promotion}/restore', [PromotionController::class, 'restore']);
         });
         Route::apiResource('promotions', PromotionController::class)
             ->middleware('permission:'.AdminPermission::MANAGE_PROMOTIONS->value);
         Route::prefix('events')->middleware('permission:'.AdminPermission::MANAGE_EVENTS->value)->group(function (): void {
             Route::get('lookups', [EventController::class, 'lookups']);
+            Route::post('{event}/image', [EventController::class, 'uploadImage']);
+            Route::delete('{event}/image', [EventController::class, 'deleteImage']);
             Route::post('{event}/restore', [EventController::class, 'restore']);
         });
         Route::apiResource('events', EventController::class)->middleware('permission:'.AdminPermission::MANAGE_EVENTS->value);
@@ -330,6 +339,8 @@ Route::prefix('v1')->group(function (): void {
                 Route::put('site-navigation/footer', [AdminSiteNavigationController::class, 'updateFooter'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::post('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::delete('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::post('site-navigation/center-mega-menu/sections/{section}/media', [AdminSiteNavigationMediaController::class, 'storeSectionIcon'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::delete('site-navigation/center-mega-menu/sections/{section}/media', [AdminSiteNavigationMediaController::class, 'destroySectionIcon'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::post('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'storeAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::delete('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroyAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::get('site-popup', [AdminSitePopupController::class, 'show'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
@@ -337,6 +348,7 @@ Route::prefix('v1')->group(function (): void {
                 Route::put('site-popup', [AdminSitePopupController::class, 'update'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::post('site-popup/image', [AdminSitePopupMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::delete('site-popup/image', [AdminSitePopupMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
+                Route::post('site-popup/source-image', [AdminSitePopupMediaController::class, 'copySourceImage'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::post('site-popup/republish', [AdminSitePopupController::class, 'republish'])->middleware('permission:'.AdminPermission::MANAGE_SITE_POPUP->value);
                 Route::apiResource('search-synonym-groups', SearchSynonymGroupController::class)
                     ->only(['index', 'store', 'update', 'destroy'])
@@ -350,6 +362,9 @@ Route::prefix('v1')->group(function (): void {
                 Route::delete('pages/{page}/sections/{sectionKey}/media', [AdminPageController::class, 'deleteSectionMedia'])
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('blog-posts', AdminBlogPostController::class)
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::apiResource('editorial-categories', EditorialCategoryController::class)
+                    ->only(['index', 'store', 'update', 'destroy'])
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::post('blog-posts/{blogPost}/sections/{section}/media', [AdminBlogPostController::class, 'uploadSectionMedia'])
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
@@ -380,6 +395,8 @@ Route::prefix('v1')->group(function (): void {
                 foreach (['prestazioni', 'services'] as $serviceWebRoute) {
                     Route::get($serviceWebRoute, [AdminWebServiceController::class, 'index'])
                         ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                    Route::post($serviceWebRoute.'/{service}/twitter-image', [AdminWebServiceController::class, 'uploadTwitterImage'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                     Route::get($serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'show'])
                         ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                     Route::match(['put', 'patch'], $serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'update'])
@@ -407,6 +424,9 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
                 Route::post('consent-configuration/publish-version', [AdminConsentConfigurationController::class, 'publishNewVersion'])
                     ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
+                Route::apiResource('consent-services', AdminConsentServiceController::class)
+                    ->only(['index', 'store', 'show', 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
                 Route::get('consent-records', [AdminConsentRecordController::class, 'index'])
                     ->middleware('permission:'.AdminPermission::VIEW_CONSENT_RECORDS->value);
                 Route::get('consent-records/{consentRecord:public_id}', [AdminConsentRecordController::class, 'show'])
@@ -415,10 +435,6 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);
                 Route::get('newsletter-subscribers/{newsletterSubscriber:public_id}', [AdminNewsletterSubscriberController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);
-                Route::get('site-settings', [AdminSiteSettingController::class, 'show'])
-                    ->middleware('permission:'.AdminPermission::MANAGE_SETTINGS->value);
-                Route::put('site-settings', [AdminSiteSettingController::class, 'update'])
-                    ->middleware('permission:'.AdminPermission::MANAGE_SETTINGS->value);
             });
     });
 });
