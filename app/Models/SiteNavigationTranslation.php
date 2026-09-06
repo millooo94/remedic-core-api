@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SiteNavigationTranslation extends Model
 {
-    protected $fillable = ['site_navigation_id', 'locale', 'configuration', 'publication_state', 'source_revision', 'reviewed_source_revision'];
+    protected $fillable = ['site_navigation_id', 'locale', 'configuration', 'source_revision', 'reviewed_source_revision'];
 
     protected function casts(): array
     {
@@ -22,6 +22,6 @@ class SiteNavigationTranslation extends Model
 
     public function isPubliclyAvailable(): bool
     {
-        return $this->publication_state === 'published' && ($this->locale === SupportedLocale::IT || $this->source_revision === $this->reviewed_source_revision);
+        return is_array($this->configuration);
     }
 }

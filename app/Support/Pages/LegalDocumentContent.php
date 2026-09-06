@@ -7,12 +7,100 @@ final class LegalDocumentContent
     /** @return list<array<string,mixed>> */
     public static function blocks(string $document, string $key): array
     {
-        return match ($document) {
+        return self::toPlaceholderBlocks(match ($document) {
             LegalDocumentRegistry::PRIVACY => self::privacy($key),
             LegalDocumentRegistry::COOKIE => self::cookie($key),
             LegalDocumentRegistry::TERMS => self::terms($key),
             default => [],
-        };
+        });
+    }
+
+    /**
+     * The original legal copy was authored as fragments to make links dynamic.
+     * Keep that source copy intact but persist and expose one editable text per
+     * paragraph, with numbered placeholders and a separate link configuration.
+     *
+     * @param  list<array<string,mixed>>  $blocks
+     * @return list<array<string,mixed>>
+     */
+    public static function toPlaceholderBlocks(array $blocks): array
+    {
+        return array_map(static function (array $block): array {
+            if (($block['type'] ?? null) === 'bullet_list') {
+                return [
+                    'type' => 'bullet_list',
+                    'intro' => $block['intro'] ?? null,
+                    'items' => array_values($block['items'] ?? []),
+                    'outro' => $block['outro'] ?? null,
+                ];
+            }
+
+            if (array_key_exists('text', $block)) {
+                $links = array_map(static function (mixed $link): mixed {
+                    if (! is_array($link) || ($link['target'] ?? null) !== 'external_url') {
+                        return $link;
+                    }
+                    $target = match ($link['external_url'] ?? null) {
+                        'https://www.garanteprivacy.it/' => 'privacy_guarantor',
+                        'https://vercel.com/docs/analytics/privacy-policy' => 'vercel_privacy',
+                        default => 'external_url',
+                    };
+
+                    return $target === 'external_url' ? $link : array_filter([
+                        'placeholder' => $link['placeholder'] ?? null,
+                        'target' => $target,
+                        'label' => $link['label'] ?? null,
+                    ], static fn (mixed $value): bool => $value !== null);
+                }, $block['links'] ?? []);
+
+                return [...$block, 'links' => $links];
+            }
+
+            $text = '';
+            $links = [];
+            foreach ($block['parts'] ?? [] as $part) {
+                if (! is_array($part)) {
+                    continue;
+                }
+                if (in_array($part['type'] ?? null, ['text', 'bold', 'inline_code'], true)) {
+                    $text .= (string) ($part['text'] ?? '');
+
+                    continue;
+                }
+                $number = count($links) + 1;
+                $text .= '{{'.$number.'}}';
+                $links[] = match ($part['type'] ?? null) {
+                    'center_reference' => [
+                        'placeholder' => $number,
+                        'target' => match ($part['field'] ?? null) {
+                            'phone' => 'owner_phone',
+                            'full_address' => 'center_address',
+                            default => 'owner_email',
+                        },
+                    ],
+                    'internal_reference' => [
+                        'placeholder' => $number,
+                        'target' => match ($part['target'] ?? '') {
+                            'cookie' => 'cookie_policy',
+                            'terms' => 'terms_of_service',
+                            default => (string) ($part['target'] ?? ''),
+                        },
+                    ],
+                    'external_reference' => match ($part['href'] ?? null) {
+                        'https://www.garanteprivacy.it/' => ['placeholder' => $number, 'target' => 'privacy_guarantor', 'label' => $part['label'] ?? null],
+                        'https://vercel.com/docs/analytics/privacy-policy' => ['placeholder' => $number, 'target' => 'vercel_privacy', 'label' => $part['label'] ?? null],
+                        default => ['placeholder' => $number, 'target' => 'privacy'],
+                    },
+                    default => ['placeholder' => $number, 'target' => 'external_url'],
+                };
+            }
+
+            return array_filter([
+                'type' => $block['type'] ?? 'paragraph',
+                'text' => $text,
+                'links' => $links,
+            ], static fn (mixed $value): bool => $value !== []);
+        }, $blocks);
     }
 
     private static function p(string ...$texts): array
@@ -50,16 +138,16 @@ final class LegalDocumentContent
         return ['type' => 'center_reference', 'field' => $field];
     }
 
-    private static function e(string $label): array
+    private static function e(string $label, ?string $href = null): array
     {
-        return ['type' => 'external_reference', 'label' => $label, 'href' => null];
+        return ['type' => 'external_reference', 'label' => $label, 'href' => $href];
     }
 
     private static function privacy(string $key): array
     {
         return match ($key) {
             'scope' => self::p('Questa informativa descrive come Remedic tratta i dati personali delle persone che visitano il sito, richiedono informazioni, prenotano prestazioni, utilizzano l’area riservata o gli altri servizi digitali collegati al centro. Le informative specifiche mostrate nel momento in cui vengono raccolti dati per un servizio particolare integrano questo documento.', 'Il sito e i servizi sono rivolti principalmente a utenti e pazienti. Chi comunica dati relativi a un’altra persona deve essere autorizzato a farlo e deve assicurarsi che l’interessato riceva le informazioni necessarie sul trattamento.'),
-            'controller_contacts' => [self::parts(self::t('Il titolare del trattamento è Remedic, il soggetto che gestisce il centro e i relativi servizi digitali. Puoi contattarlo all’indirizzo '), self::c('email'), self::t(', al numero '), self::c('phone'), self::t(' o presso '), self::c('full_address'), self::t('.')), ...self::p('Questi recapiti possono essere utilizzati anche per domande sulla presente informativa e per esercitare i diritti descritti più avanti. Eventuali ulteriori riferimenti privacy o del responsabile della protezione dei dati, se nominato e applicabile, saranno comunicati attraverso i canali ufficiali del centro.')],
+            'controller_contacts' => [self::parts(self::t('Il titolare del trattamento è Remedic, il soggetto che gestisce il centro e i relativi servizi digitali. Puoi contattarlo all’indirizzo '), self::c('email'), self::t(' o al numero '), self::c('phone'), self::t('.')), ...self::p('Questi recapiti possono essere utilizzati anche per domande sulla presente informativa e per esercitare i diritti descritti più avanti. Eventuali ulteriori riferimenti privacy o del responsabile della protezione dei dati, se nominato e applicabile, saranno comunicati attraverso i canali ufficiali del centro.')],
             'personal_data' => [...self::p('In base al servizio utilizzato, possiamo trattare le seguenti categorie di dati:'), self::b('dati identificativi e di contatto, come nome, cognome, telefono e indirizzo e-mail;', 'dati necessari alla gestione dell’account e dell’area riservata, incluse credenziali e registri di accesso;', 'dati relativi a richieste, prenotazioni, appuntamenti e comunicazioni con il centro;', 'dati amministrativi e organizzativi collegati alla prestazione richiesta;', 'dati relativi alla salute, referti e documentazione sanitaria, quando necessari per l’assistenza o messi a disposizione nell’area riservata;', 'dati tecnici di navigazione, come indirizzi di rete, informazioni sul dispositivo, browser, pagine visitate e registri tecnici;', 'preferenze espresse, incluse lingua, cookie e iscrizione alla newsletter.'), ...self::p('Ti invitiamo a non inserire dati sanitari o altre informazioni non necessarie nei campi liberi destinati a richieste generiche. Quando servono dati clinici, utilizza esclusivamente i canali indicati dal centro.')],
             'data_collection' => [...self::p('Raccogliamo i dati direttamente da te quando compili un modulo, prenoti, crei o utilizzi un account, contatti il centro, ti presenti a un appuntamento, invii documenti o scegli di ricevere la newsletter. Possiamo inoltre ricevere dati da professionisti sanitari, soggetti autorizzati, fondi o circuiti convenzionati e fornitori che supportano i servizi, nei limiti necessari e previsti dalla legge.'), self::parts(self::t('Durante la navigazione vengono generati dati tecnici necessari al funzionamento e alla sicurezza del sito. Per maggiori dettagli consulta la '), self::i('cookie'), self::t('.'))],
             'purposes_legal_bases' => [self::h('Richieste, prenotazioni e servizi'), ...self::p('Trattiamo i dati per rispondere alle richieste, gestire la prenotazione e l’appuntamento, fornire assistenza, amministrare l’account e rendere disponibili i servizi richiesti. Il trattamento si fonda sull’esecuzione di misure precontrattuali o contrattuali richieste dall’interessato e, quando applicabile, sull’adempimento di obblighi di legge.'), self::h('Assistenza sanitaria e dati relativi alla salute'), ...self::p('I dati relativi alla salute sono trattati soltanto quando necessari per finalità di prevenzione, diagnosi, assistenza o terapia sanitaria e gestione dei sistemi e servizi sanitari, da professionisti soggetti al segreto professionale o da persone autorizzate. La base giuridica applicabile è quella prevista dalla normativa sanitaria e dall’articolo 9 del GDPR; ove richiesto, il trattamento avviene sulla base del consenso.'), self::h('Obblighi, sicurezza e tutela dei diritti'), ...self::p('Possiamo trattare dati per adempiere a obblighi normativi, mantenere la sicurezza dei sistemi, prevenire usi impropri, accertare, esercitare o difendere un diritto. Le basi sono l’obbligo legale e, nei casi consentiti, il legittimo interesse del titolare alla sicurezza e alla tutela dei propri diritti, bilanciato con i diritti degli interessati.'), self::h('Newsletter e comunicazioni di servizio'), ...self::p('La newsletter contiene aggiornamenti e contenuti informativi e viene inviata sulla base del consenso, che può essere revocato in qualsiasi momento. Le comunicazioni necessarie a confermare o gestire una richiesta, una prenotazione, un appuntamento, un account o un documento sono invece comunicazioni di servizio e non dipendono dall’iscrizione alla newsletter.')],
@@ -68,7 +156,7 @@ final class LegalDocumentContent
             'retention' => self::p('Conserviamo i dati per il tempo necessario a realizzare la finalità per cui sono stati raccolti e, in seguito, per i periodi imposti dalla normativa sanitaria, amministrativa, fiscale o civilistica applicabile, oppure necessari alla gestione di contestazioni e alla tutela dei diritti.', 'I dati dell’account sono conservati finché il servizio resta attivo e successivamente per il periodo richiesto dagli obblighi applicabili. Le richieste di contatto sono mantenute per il tempo utile a gestirle; i dati della newsletter fino alla revoca del consenso o alla cessazione del servizio, fatti salvi i dati minimi necessari a documentare la revoca. I criteri specifici possono variare in base alla natura del dato e del servizio.'),
             'recipients_processors' => [...self::p('I dati possono essere comunicati, nei limiti pertinenti, a:'), self::b('personale e collaboratori autorizzati di Remedic;', 'professionisti sanitari e strutture coinvolte nel percorso di cura;', 'fornitori di hosting, infrastruttura, assistenza tecnica, comunicazioni e gestione dei servizi digitali;', 'fornitori che supportano prenotazioni, agenda, area riservata e gestione documentale;', 'consulenti e soggetti che svolgono attività amministrative, legali o di conformità;', 'fondi, assicurazioni o circuiti convenzionati quando richiesto dall’interessato o necessario per la pratica;', 'autorità e altri soggetti cui la comunicazione è obbligatoria per legge.'), ...self::p('I fornitori che trattano dati per conto di Remedic sono designati responsabili del trattamento quando richiesto. I dati non vengono diffusi, salvo nei casi previsti dalla legge o con una base giuridica adeguata.')],
             'automated_decisions' => self::p('I servizi descritti non prevedono decisioni basate unicamente su trattamenti automatizzati che producano effetti giuridici o analogamente significativi sull’utente. Eventuali strumenti di supporto non sostituiscono la valutazione del professionista sanitario.'),
-            'data_subject_rights' => [...self::p('Nei casi previsti dal GDPR puoi chiedere accesso, rettifica, cancellazione, limitazione del trattamento, portabilità dei dati e opposizione; puoi inoltre revocare il consenso senza pregiudicare la liceità del trattamento svolto prima della revoca.'), self::parts(self::t('Per esercitare i diritti scrivi a '), self::c('email'), self::t(', indicando la richiesta in modo chiaro. Potremo chiedere informazioni necessarie a verificare l’identità e a proteggere i dati. Hai anche il diritto di proporre reclamo al '), self::e('Garante per la protezione dei dati personali'), self::t(' o all’autorità di controllo competente.'))],
+            'data_subject_rights' => [...self::p('Nei casi previsti dal GDPR puoi chiedere accesso, rettifica, cancellazione, limitazione del trattamento, portabilità dei dati e opposizione; puoi inoltre revocare il consenso senza pregiudicare la liceità del trattamento svolto prima della revoca.'), self::parts(self::t('Per esercitare i diritti scrivi a '), self::c('email'), self::t(', indicando la richiesta in modo chiaro. Potremo chiedere informazioni necessarie a verificare l’identità e a proteggere i dati. Hai anche il diritto di proporre reclamo al '), self::e('Garante per la protezione dei dati personali', 'https://www.garanteprivacy.it/'), self::t(' o all’autorità di controllo competente.'))],
             'minors' => self::p('Quando i servizi riguardano un minore, i dati sono forniti e le scelte sono effettuate da chi esercita la responsabilità genitoriale o da altro soggetto legittimato, nel rispetto delle regole applicabili e tenendo conto della capacità di comprensione del minore.'),
             'policy_updates' => self::p('Possiamo aggiornare questa informativa per riflettere cambiamenti normativi, organizzativi o dei servizi. La versione pubblicata su questa pagina riporta la data dell’ultimo aggiornamento. In caso di modifiche rilevanti, forniremo un avviso adeguato attraverso il sito o i canali disponibili.'),
             default => [],
@@ -81,7 +169,7 @@ final class LegalDocumentContent
             'cookies_technologies' => [...self::p('I cookie sono piccoli file di testo che un sito può memorizzare nel dispositivo dell’utente e leggere nelle visite successive. Tecnologie analoghe, come il local storage del browser o identificatori tecnici, possono ricordare preferenze e supportare il funzionamento, la sicurezza o la misurazione del sito.'), self::parts(self::t('Questa policy descrive gli strumenti effettivamente individuati nell’attuale sito Remedic. Le informazioni sul trattamento dei dati personali sono disponibili nella '), self::i('privacy'), self::t('.'))],
             'strictly_necessary' => [...self::p('Gli strumenti necessari permettono al sito di funzionare, ricordare scelte essenziali, proteggere le interazioni e gestire le preferenze. Non richiedono consenso quando sono indispensabili alla fornitura del servizio richiesto dall’utente.'), self::h('Preferenze cookie'), ...self::p('Il sito utilizza il local storage di prima parte con la chiave remedic-cookie-consent-v1 per registrare le categorie accettate o rifiutate nel pannello di gestione. La scelta resta nel browser finché viene modificata dal pannello, cancellata dall’utente o rimossa attraverso le impostazioni del browser.'), self::h('Preferenza della lingua'), ...self::p('La chiave di prima parte remedic-language conserva il codice della lingua scelta. Anche questa preferenza rimane nel browser finché viene aggiornata o cancellata.')],
             'authentication_session' => self::p('Per l’area riservata e gli altri servizi autenticati vengono utilizzati cookie o strumenti di sessione necessari per riconoscere l’accesso, mantenere la sessione, proteggere l’account e prevenire utilizzi non autorizzati. Tali strumenti sono limitati alla durata e alle finalità tecniche richieste dal servizio; i dettagli specifici sono aggiornati in questa pagina in base alle tecnologie utilizzate.'),
-            'analytics' => [...self::p('Nell’ambiente di produzione il sito integra Vercel Web Analytics per ottenere statistiche aggregate su pagine visitate, provenienza, area geografica approssimativa, dispositivo, sistema operativo e browser. L’integrazione attuale non invia eventi personalizzati.'), self::parts(self::t('Secondo la documentazione del fornitore, Vercel Web Analytics non usa cookie, non associa le visualizzazioni a indirizzi IP o identificativi personali e determina i visitatori mediante un hash che si rinnova ogni giorno e non consente il tracciamento tra siti diversi. Per dettagli tecnici aggiornati consulta la '), self::e('documentazione privacy di Vercel'), self::t('.'))],
+            'analytics' => [...self::p('Nell’ambiente di produzione il sito integra Vercel Web Analytics per ottenere statistiche aggregate su pagine visitate, provenienza, area geografica approssimativa, dispositivo, sistema operativo e browser. L’integrazione attuale non invia eventi personalizzati.'), self::parts(self::t('Secondo la documentazione del fornitore, Vercel Web Analytics non usa cookie, non associa le visualizzazioni a indirizzi IP o identificativi personali e determina i visitatori mediante un hash che si rinnova ogni giorno e non consente il tracciamento tra siti diversi. Per dettagli tecnici aggiornati consulta la '), self::e('documentazione privacy di Vercel', 'https://vercel.com/docs/analytics/privacy-policy'), self::t('.'))],
             'consent_categories' => [...self::p('Il pannello di preferenze organizza gli strumenti nelle categorie seguenti:'), self::b('necessari, sempre attivi perché indispensabili al funzionamento e alla sicurezza;', 'analitici, destinati alla misurazione aggregata dell’uso del sito;', 'funzionali, destinati a ricordare scelte non indispensabili e personalizzare l’esperienza;', 'marketing, destinati a comunicazioni o contenuti promozionali basati sulle preferenze.'), ...self::p('La presenza di una categoria nel pannello non significa che siano già attivi strumenti appartenenti a quella categoria. Nell’attuale codice del sito non risultano configurati cookie di profilazione o marketing. Se in futuro verranno introdotti strumenti opzionali, saranno bloccati fino alla scelta richiesta e questa policy verrà aggiornata con provider, finalità e durata disponibili.')],
             'first_third_party' => self::p('Gli strumenti di prima parte sono gestiti direttamente nell’ambito del sito Remedic, come le preferenze salvate nel local storage. I servizi di terze parti sono invece forniti da soggetti esterni che possono ricevere dati tecnici per erogare il servizio.', 'Nell’implementazione attuale, Vercel fornisce l’hosting e Web Analytics. Le modalità di trattamento del fornitore sono disciplinate dai relativi accordi e documenti privacy. Non risultano configurati nel sito altri sistemi analytics, pixel pubblicitari o strumenti di profilazione.'),
             'tool_duration' => self::p('Le preferenze salvate nel local storage non hanno una scadenza automatica impostata dal sito e restano nel browser fino alla loro sostituzione o cancellazione. Gli eventuali cookie di sessione cessano alla chiusura della sessione o secondo la durata tecnica necessaria. Per Vercel Web Analytics non viene salvato un cookie nel dispositivo; il fornitore dichiara che l’hash usato per distinguere le visite viene rinnovato ogni giorno.'),
@@ -108,7 +196,7 @@ final class LegalDocumentContent
             'liability' => self::p('Nei limiti consentiti dalla legge, Remedic risponde delle proprie attività e non è responsabile per danni derivanti da uso improprio del sito, dati inesatti forniti dall’utente, mancata custodia delle credenziali, indisponibilità imputabili a terzi o affidamento su contenuti informativi in sostituzione di una valutazione clinica. Nulla in questi termini limita diritti inderogabili dell’utente o responsabilità che non possono essere escluse per legge.'),
             'privacy_cookies' => [self::parts(self::t('Il trattamento dei dati personali è descritto nella '), self::i('privacy'), self::t('. L’uso di cookie e tecnologie analoghe è descritto nella '), self::i('cookie'), self::t('. Le preferenze cookie possono essere modificate tramite il controllo disponibile nel footer.'))],
             'terms_updates' => self::p('Questi termini possono essere aggiornati per riflettere modifiche normative, organizzative o funzionali. La versione pubblicata riporta la data dell’ultimo aggiornamento. Se una modifica incide in modo rilevante su un servizio attivo, Remedic fornirà un avviso adeguato attraverso il sito o i recapiti disponibili.'),
-            'contacts' => [self::parts(self::t('Per informazioni sui servizi o su questi termini puoi scrivere a '), self::c('email'), self::t(', chiamare '), self::c('phone'), self::t(' o rivolgerti al centro presso '), self::c('full_address'), self::t('.'))],
+            'contacts' => [self::parts(self::t('Per informazioni sui servizi o su questi termini puoi scrivere a '), self::c('email'), self::t(' o chiamare '), self::c('phone'), self::t('.'))],
             default => [],
         };
     }

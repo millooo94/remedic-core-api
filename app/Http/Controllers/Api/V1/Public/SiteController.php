@@ -29,6 +29,7 @@ use App\Services\ProfessionalPublicAreaProjection;
 use App\Services\PublicLocaleResolver;
 use App\Services\PublicSeoResolver;
 use App\Services\ServicePublicContentService;
+use App\Services\SiteNavigationProjectionService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
@@ -54,6 +55,7 @@ class SiteController extends Controller
         private readonly LocalizedContentResolver $localized,
         private readonly LocalizedRouteRegistry $routes,
         private readonly LocalizedRouteProjection $localizedRoutes,
+        private readonly SiteNavigationProjectionService $navigation,
     ) {}
 
     public function settings(Request $request): JsonResponse
@@ -520,9 +522,9 @@ class SiteController extends Controller
                 'translations',
                 'sections' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
                 'faqs' => fn ($query) => $query->active()->orderBy('id')->with('translations'),
+                'featuredReviews.review',
             ])
             ->active()
-            ->published()
             ->orderBy('title');
 
         return $locale === null ? $query : $this->localized->publicTranslations($query, $locale);
@@ -737,7 +739,10 @@ class SiteController extends Controller
                 'robots' => $profile?->robots,
                 'og_title' => $profile?->og_title,
                 'og_description' => $profile?->og_description,
-                'image_url' => $this->resolveProfessionalImageUrl($professional, $request, $profile),
+                'twitter_title' => $profile?->twitter_title,
+                'twitter_description' => $profile?->twitter_description,
+                'image_url' => $this->resolveMediaPathOrUrl($profile?->og_image_path, $request) ?: $this->resolveProfessionalImageUrl($professional, $request, $profile),
+                'twitter_image_url' => $this->resolveMediaPathOrUrl($profile?->twitter_image_path, $request),
             ], $this->routes->path('team', $this->locales->resolve($request), (string) $profile?->slug), $request),
                 'h1' => $profile?->seo_h1,
             ],
@@ -967,7 +972,10 @@ class SiteController extends Controller
                 'robots' => $post->robots,
                 'og_title' => $post->og_title,
                 'og_description' => $post->og_description,
-                'image_url' => $this->resolveMediaPathOrUrl($post->cover_image, request()),
+                'twitter_title' => $post->twitter_title,
+                'twitter_description' => $post->twitter_description,
+                'image_url' => $this->resolveMediaPathOrUrl($post->og_image_path ?: $post->cover_image, request()),
+                'twitter_image_url' => $this->resolveMediaPathOrUrl($post->twitter_image_path, request()),
             ], $this->routes->path($route, $locale, $post->slug), request(), in_array($post->content_type, ['news', 'health_pill'], true) ? 'article' : 'website'),
                 'h1' => $post->seo_h1,
             ],
@@ -1045,13 +1053,12 @@ class SiteController extends Controller
         }
         $targets = Page::query()
             ->active()
-            ->published()
             ->whereIn('internal_key', ['why_choose_us', 'plus_health_protocol', 'privacy'])
             ->pluck('slug', 'internal_key');
 
         return $page->sections
             ->filter(fn (Section $section): bool => PageSectionRegistry::definition((string) $page->internal_key, $section->key) !== null)
-            ->map(function (Section $section) use ($targets, $page): array {
+            ->map(function (Section $section) use ($page): array {
                 $definition = PageSectionRegistry::definition((string) $page->internal_key, $section->key);
                 $extra = $section->extra_json ?? [];
                 $mapped = [
@@ -1072,16 +1079,21 @@ class SiteController extends Controller
                     ];
                 }
                 if (isset($definition['target_internal_key'])) {
-                    $targetKey = $definition['target_internal_key'];
-                    $targetSlug = $targets->get($targetKey);
-                    $mapped['action'] = [
-                        'label' => $extra['link_label'] ?? null,
-                        'target_internal_key' => $targetKey,
-                        'href' => $targetSlug ? '/'.$targetSlug : null,
-                    ];
+                    $targetKey = (string) ($extra['cta_target'] ?? $definition['target_internal_key']);
+                    $mapped['action'] = $this->pageCta($extra['link_label'] ?? null, $targetKey, request());
+                    if ($mapped['action'] !== null) {
+                        $mapped['action']['target_internal_key'] = $targetKey;
+                    }
                 }
                 if (isset($definition['actions'])) {
-                    $mapped['actions'] = $definition['actions'];
+                    $actionTargets = array_values(array_filter([
+                        $extra['primary_cta_target'] ?? null,
+                        $extra['secondary_cta_target'] ?? null,
+                    ], static fn (mixed $target): bool => in_array($target, ['booking', 'contact'], true)));
+                    $mapped['actions'] = $actionTargets !== [] ? $actionTargets : $definition['actions'];
+                    $mapped['action'] = $this->pageCta($extra['primary_cta_label'] ?? null, $extra['primary_cta_target'] ?? null, request());
+                    $mapped['primary_cta'] = $mapped['action'];
+                    $mapped['secondary_cta'] = $this->pageCta($extra['secondary_cta_label'] ?? null, $extra['secondary_cta_target'] ?? null, request());
                 }
                 if (in_array($section->key, ['model_overview', 'three_reasons', 'care_path_overview', 'person_first'], true)) {
                     $mapped['items'] = $extra['items'] ?? [];
@@ -1090,15 +1102,16 @@ class SiteController extends Controller
                     $mapped['values'] = $extra['values'] ?? [];
                 }
                 if ($section->key === 'four_pillars') {
-                    $mapped['pillars'] = $extra['pillars'] ?? [];
+                    $mapped['pillars'] = PageSectionRegistry::protocolPillarsWithDefaults($extra['pillars'] ?? []);
                 }
                 if ((string) $page->internal_key === PageSectionRegistry::CAREERS_INTERNAL_KEY) {
                     if (in_array($section->key, ['professional_profiles', 'what_we_look_for'], true)) {
                         $mapped = ['key' => $section->key, 'title' => $section->title, 'data' => ['intro' => $section->content, 'subheading' => $extra['subheading'] ?? null, 'items' => $extra['items'] ?? []]];
                     }
                     if ($section->key === 'application') {
-                        $privacySlug = $targets->get('privacy');
-                        $mapped = ['key' => 'application', 'title' => $section->title, 'data' => ['body' => $section->content, 'action' => ['type' => 'open_application_form'], 'privacy' => ['text' => $extra['privacy_text'] ?? null, 'target_internal_key' => 'privacy', 'href' => $privacySlug ? '/'.$privacySlug : null], 'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get()->map(fn (ApplicationType $type) => ['key' => $type->key, 'label' => $type->name])->all()]];
+                        $privacyTarget = (string) ($extra['privacy_target'] ?? 'privacy');
+                        $privacyLink = $this->navigation->target($privacyTarget);
+                        $mapped = ['key' => 'application', 'title' => $section->title, 'data' => ['body' => $section->content, 'cta_label' => $extra['cta_label'] ?? 'Invia la tua candidatura', 'action' => ['type' => 'open_application_form'], 'privacy' => ['text' => $extra['privacy_text'] ?? null, 'target_internal_key' => $privacyTarget, 'href' => $privacyLink['href'] ?? null], 'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get()->map(fn (ApplicationType $type) => ['key' => $type->key, 'label' => $type->name])->all()]];
                     }
                 }
                 if ((string) $page->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts') {
@@ -1107,7 +1120,8 @@ class SiteController extends Controller
                         'title' => $section->title,
                         'data' => [
                             'intro' => $section->content,
-                            'action' => ['type' => 'contact'],
+                            'cta' => $this->pageCta($extra['cta_label'] ?? 'Contattaci', $extra['cta_target'] ?? 'contact', request()),
+                            'action' => ['type' => $extra['cta_target'] ?? 'contact'],
                             'center' => $this->contactCenterData->resolve(SiteSetting::current()),
                         ],
                     ];
@@ -1136,10 +1150,14 @@ class SiteController extends Controller
                     }
                 }
                 if ($section->key === 'patient_experiences') {
-                    $mapped['testimonials'] = collect($extra['testimonials'] ?? [])
-                        ->filter(fn (array $testimonial): bool => (bool) ($testimonial['is_active'] ?? true))
-                        ->sortBy('sort_order')
-                        ->values()
+                    $mapped['reviews'] = collect($page->featuredReviews)
+                        ->filter(fn ($selection): bool => $selection->review?->is_available === true)
+                        ->mapWithKeys(fn ($selection): array => [$selection->provider => [
+                            'author_name' => $selection->review->author_name,
+                            'body' => $selection->review->body,
+                            'rating' => $selection->review->rating,
+                            'reviewed_at' => $selection->review->reviewed_at?->toIso8601String(),
+                        ]])
                         ->all();
                 }
 
@@ -1147,6 +1165,20 @@ class SiteController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    /** @return array<string, mixed>|null */
+    private function pageCta(mixed $label, mixed $target, Request $request): ?array
+    {
+        if (! is_string($label) || trim($label) === '' || ! is_string($target) || $target === '') {
+            return null;
+        }
+
+        $resolved = $this->navigation->target($target, $this->locales->resolve($request));
+
+        return $resolved['is_action']
+            ? array_filter(['label' => trim($label), 'action' => $resolved['action'] ?? $target, 'href' => $resolved['href']], static fn (mixed $value): bool => $value !== null)
+            : ($resolved['href'] ? ['label' => trim($label), 'href' => $resolved['href']] : null);
     }
 
     private function resolveMediaPathOrUrl(?string $pathOrUrl, Request $request): ?string

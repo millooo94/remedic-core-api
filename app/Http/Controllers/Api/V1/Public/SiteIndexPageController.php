@@ -29,14 +29,14 @@ class SiteIndexPageController extends Controller
         abort_unless(SiteIndexPageRegistry::contains($key), 404);
         $locale = $this->locales->resolve($request);
 
-        $page = SiteIndexPage::query()->with('translations')->where('internal_key', $key)->active()->published()->firstOrFail();
+        $page = SiteIndexPage::query()->with(['translations', 'sections'])->where('internal_key', $key)->active()->firstOrFail();
         $translation = $page->translations->firstWhere('locale', $locale);
         abort_if($locale->value !== 'it' && ! $translation?->isPubliclyAvailable(), 404);
         if ($translation !== null) {
             $page->forceFill($translation->only(['title', 'slug', 'content', 'seo_title', 'seo_description', 'seo_h1']));
         }
         $projection = match ($key) {
-            'medical_areas_index' => $this->areas->query()->when($request->filled('q'), fn ($q) => $q->whereHas('specialization', fn ($s) => $s->where('name', 'like', '%'.$request->q.'%')))->get()->map(fn ($area) => $this->areaItem($area, $request))->all(),
+            'medical_areas_index' => $this->areas->query()->get()->map(fn ($area) => $this->areaItem($area, $request))->all(),
             'equipe_index' => $this->professionals($request),
             'checkups_index' => $this->checkups->query()->limit(6)->get()->map(fn ($checkup) => $this->checkups->indexItem($checkup, $request))->all(),
             'diagnostics_index' => $this->projections->diagnostics($page, $request),
@@ -44,6 +44,10 @@ class SiteIndexPageController extends Controller
             'news_index', 'health_pills_index' => $this->editorial->public($page, $request),
         };
         $data = is_array($projection) && array_key_exists('items', $projection) ? $projection : ['items' => $projection, 'result_count' => count($projection)];
+        if ($key === 'medical_areas_index' && $page->sections->firstWhere('key', 'specialties_catalog')?->is_active === false) {
+            $data['items'] = [];
+            $data['result_count'] = 0;
+        }
         $data += ['available_areas' => $key === 'equipe_index' ? $this->availableAreas($request) : [], 'final_cta' => $key === 'checkups_index' ? ['action' => 'contact'] : null];
         if ($key === 'diagnostics_index') {
             $data['catalog_anchor'] = 'catalogo';
@@ -57,12 +61,15 @@ class SiteIndexPageController extends Controller
 
         $canonicalPath = $this->canonicalPath($key, $locale, $page->slug);
 
-        return response()->json(['data' => ['locale' => $locale->value, 'internal_key' => $key, 'title' => $page->title, 'slug' => $page->slug, 'canonical_url' => $canonicalPath, 'available_locales' => $this->localizedRoutes->siteIndexLocales($page), 'localized_routes' => $this->localizedRoutes->siteIndex($page, $this->routeKey($key)), 'content' => $this->content($page), 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $canonicalPath, $request), 'h1' => $page->seo_h1], ...$data]]);
+        return response()->json(['data' => ['locale' => $locale->value, 'internal_key' => $key, 'title' => $page->title, 'slug' => $page->slug, 'canonical_url' => $canonicalPath, 'available_locales' => $this->localizedRoutes->siteIndexLocales($page), 'localized_routes' => $this->localizedRoutes->siteIndex($page, $this->routeKey($key)), 'content' => $this->content($page), 'sections' => $key === 'medical_areas_index' ? $page->sections->map(fn ($section) => ['key' => $section->key, 'internal_title' => $section->internal_title, 'is_active' => (bool) $section->is_active, 'sort_order' => $section->sort_order])->values()->all() : [], 'media' => $this->media($page, $request), 'seo' => [...$this->seo->resolve(['title' => $page->title, 'description' => $page->content['body'] ?? null, 'seo_title' => $page->seo_title, 'seo_description' => $page->seo_description, 'robots' => $page->robots, 'image_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path ?: $page->intro_split_image_path, $request)], $canonicalPath, $request), 'h1' => $page->seo_h1], ...$data]]);
     }
 
     private function content(SiteIndexPage $page): array
     {
         $content = $page->content ?? [];
+        if ($page->internal_key === 'medical_areas_index') {
+            return array_intersect_key($content, array_flip(SiteIndexPageRegistry::contentKeys($page->internal_key)));
+        }
         if ($page->internal_key === 'checkups_index') {
             $content['final_cta_eyebrow'] ??= $content['final_eyebrow'] ?? '';
             $content['final_cta_title'] ??= $content['final_title'] ?? '';

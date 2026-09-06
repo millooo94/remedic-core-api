@@ -31,6 +31,7 @@ class BackofficeIndexRequest extends FormRequest
             'editorial_category_id' => ['sometimes', 'nullable', 'integer', 'exists:editorial_categories,id'],
             'archive_state' => ['sometimes', 'nullable', Rule::in(['active', 'archived', 'all'])],
             'is_automatic' => ['sometimes', 'nullable', 'boolean'],
+            'type' => ['sometimes', 'nullable', Rule::in(['insurance', 'network', 'fund', 'entity', 'other'])],
         ];
     }
 

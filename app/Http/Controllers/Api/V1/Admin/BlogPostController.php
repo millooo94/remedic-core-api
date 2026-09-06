@@ -7,11 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\BlogPosts\StoreBlogPostRequest;
 use App\Http\Requests\Api\V1\Admin\BlogPosts\UpdateBlogPostRequest;
+use App\Http\Requests\Api\V1\Media\UploadMasterImageRequest;
 use App\Http\Resources\Api\V1\Admin\BlogPostResource;
 use App\Models\BlogPost;
 use App\Models\Redirect;
 use App\Models\Section;
 use App\Services\BlogPostSlugRedirectService;
+use App\Services\ManagedMediaService;
 use App\Support\Media\PublicMediaUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +28,7 @@ class BlogPostController extends Controller
 {
     use PersistsSectionsAndFaqs;
 
-    public function __construct(private readonly BlogPostSlugRedirectService $redirects) {}
+    public function __construct(private readonly BlogPostSlugRedirectService $redirects, private readonly ManagedMediaService $media) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
@@ -137,6 +139,34 @@ class BlogPostController extends Controller
             'image_url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
             'original_name' => $request->file('image')->getClientOriginalName(),
         ]);
+    }
+
+    public function uploadTwitterImage(UploadMasterImageRequest $request, BlogPost $blogPost): BlogPostResource
+    {
+        $this->media->replace($blogPost, 'twitter_image_path', $request->file('image'), "blog-posts/{$blogPost->id}/twitter");
+
+        return new BlogPostResource($blogPost->refresh()->load($this->relations()));
+    }
+
+    public function uploadOgImage(UploadMasterImageRequest $request, BlogPost $blogPost): BlogPostResource
+    {
+        $this->media->replace($blogPost, 'og_image_path', $request->file('image'), "blog-posts/{$blogPost->id}/og");
+
+        return new BlogPostResource($blogPost->refresh()->load($this->relations()));
+    }
+
+    public function deleteOgImage(BlogPost $blogPost): BlogPostResource
+    {
+        $this->media->delete($blogPost, 'og_image_path', ["blog-posts/{$blogPost->id}/og"]);
+
+        return new BlogPostResource($blogPost->refresh()->load($this->relations()));
+    }
+
+    public function deleteTwitterImage(BlogPost $blogPost): BlogPostResource
+    {
+        $this->media->delete($blogPost, 'twitter_image_path', ["blog-posts/{$blogPost->id}/twitter"]);
+
+        return new BlogPostResource($blogPost->refresh()->load($this->relations()));
     }
 
     private function persist(BlogPost $blogPost, array $payload): BlogPost

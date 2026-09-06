@@ -46,14 +46,28 @@ class CenterSettingsApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('identity.clinic_name', 'Remedic Centro')
             ->assertJsonPath('contacts.whatsapp_number', '+39 095 000000')
-            ->assertJsonPath('opening_hours.days.monday.1.start', '15:00');
+            ->assertJsonPath('opening_hours.days.monday.1.start', '15:00')
+            ->assertJsonPath('parking.formatted_address', 'Via Parcheggio 2, Acireale')
+            ->assertJsonPath('parking.google_place_id', 'ChIJ-parking');
 
         $this->assertDatabaseHas('site_settings', [
             'id' => 1,
             'clinic_name' => 'Remedic Centro',
             'google_place_id' => 'ChIJ-test',
             'served_territory' => 'Provincia di Catania',
+            'parking_google_place_id' => 'ChIJ-parking',
         ]);
+
+        $this->getJson('/api/v1/management/settings/center')
+            ->assertOk()
+            ->assertJsonPath('territory.primary_city', 'Acireale')
+            ->assertJsonPath('territory.primary_area', 'Etna')
+            ->assertJsonPath('territory.served_areas', ['Acireale', 'Catania'])
+            ->assertJsonPath('territory.served_territory', 'Provincia di Catania')
+            ->assertJsonPath('territory.area_served_text', 'Sicilia orientale')
+            ->assertJsonPath('parking.formatted_address', 'Via Parcheggio 2, Acireale')
+            ->assertJsonPath('parking.latitude', 37.62)
+            ->assertJsonMissingPath('parking.google_maps_url');
     }
 
     #[Test]
@@ -72,13 +86,14 @@ class CenterSettingsApiTest extends TestCase
         $payload = $this->validPayload();
         $payload['contacts']['email'] = 'invalid';
         $payload['address']['latitude'] = 91;
+        $payload['parking']['longitude'] = 181;
         $payload['links']['google_review_url'] = 'javascript:alert(1)';
         $payload['opening_hours']['days']['monday'][1]['start'] = '12:00';
 
         $this->putJson('/api/v1/management/settings/center', $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
-                'contacts.email', 'address.latitude', 'links.google_review_url', 'opening_hours',
+                'contacts.email', 'address.latitude', 'parking.longitude', 'links.google_review_url', 'opening_hours',
             ]);
     }
 
@@ -176,6 +191,7 @@ class CenterSettingsApiTest extends TestCase
             'social' => ['facebook_url' => 'https://facebook.com/remedic', 'instagram_url' => null, 'linkedin_url' => null],
             'territory' => ['primary_city' => 'Acireale', 'primary_area' => 'Etna', 'served_areas' => ['Acireale', 'Catania'], 'served_territory' => 'Provincia di Catania', 'area_served_text' => 'Sicilia orientale'],
             'links' => ['google_review_url' => 'https://g.page/r/test'],
+            'parking' => ['label' => 'Parcheggio clienti', 'formatted_address' => 'Via Parcheggio 2, Acireale', 'street_name' => 'Via Parcheggio', 'street_number' => '2', 'postal_code' => '95024', 'city' => 'Acireale', 'province' => 'CT', 'region' => 'Sicilia', 'country' => 'Italia', 'country_code' => 'it', 'google_place_id' => 'ChIJ-parking', 'latitude' => 37.62, 'longitude' => 15.17, 'description' => 'Ingresso laterale'],
         ];
     }
 }

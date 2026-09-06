@@ -26,6 +26,7 @@ class NewsletterSubscriptionApiTest extends TestCase
     {
         parent::setUp();
         $this->seed(BackofficeAccessSeeder::class);
+        config()->set('newsletter.website_url', 'https://website.example.test');
         Mail::fake();
     }
 
@@ -37,7 +38,7 @@ class NewsletterSubscriptionApiTest extends TestCase
             'consent_accepted' => true,
         ])->assertAccepted();
 
-        $response->assertJsonPath('message', 'Se l’indirizzo può essere iscritto, riceverai a breve un’email di conferma.');
+        $this->assertSame('If this address can be subscribed, a confirmation email will be sent shortly.', $response->json('message'));
         $subscriber = NewsletterSubscriber::query()->firstOrFail();
         $this->assertSame('persona@example.test', $subscriber->email);
         $this->assertSame(NewsletterSubscriberStatus::PENDING, $subscriber->status);
@@ -77,30 +78,32 @@ class NewsletterSubscriptionApiTest extends TestCase
     {
         $this->subscribe('persona@example.test');
         $token = $this->sentToken();
-        $this->getJson('/api/v1/public/newsletter/confirm?token='.$token)->assertOk()->assertJsonPath('data.status', 'subscribed');
+        $this->get('/api/v1/public/newsletter/confirm?token='.$token)->assertRedirect('https://website.example.test/newsletter/conferma?status=confirmed');
         $subscriber = NewsletterSubscriber::query()->firstOrFail();
         $this->assertSame(NewsletterSubscriberStatus::SUBSCRIBED, $subscriber->status);
         $this->assertNull($subscriber->confirmation_token_hash);
         $this->assertDatabaseHas('newsletter_consent_events', ['event_type' => NewsletterConsentEventType::SUBSCRIPTION_CONFIRMED->value]);
-        $this->getJson('/api/v1/public/newsletter/confirm?token='.$token)->assertUnprocessable();
+        $this->get('/api/v1/public/newsletter/confirm?token='.$token)->assertRedirect('https://website.example.test/newsletter/conferma?status=invalid');
 
         $this->subscribe('expired@example.test');
         $expiredToken = $this->sentToken(1);
         NewsletterSubscriber::query()->where('email', 'expired@example.test')->update(['confirmation_expires_at' => now()->subSecond()]);
-        $this->getJson('/api/v1/public/newsletter/confirm?token='.$expiredToken)->assertUnprocessable();
+        $this->get('/api/v1/public/newsletter/confirm?token='.$expiredToken)->assertRedirect('https://website.example.test/newsletter/conferma?status=invalid');
     }
 
     #[Test]
     public function signed_unsubscribe_is_idempotent_and_a_new_request_can_resubscribe(): void
     {
         $this->subscribe('persona@example.test');
-        $this->getJson('/api/v1/public/newsletter/confirm?token='.$this->sentToken())->assertOk();
+        $this->get('/api/v1/public/newsletter/confirm?token='.$this->sentToken())->assertRedirect('https://website.example.test/newsletter/conferma?status=confirmed');
         $subscriber = NewsletterSubscriber::query()->firstOrFail();
-        $url = URL::signedRoute('newsletter.unsubscribe', ['publicId' => $subscriber->public_id]);
-        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'unsubscribed');
-        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'unsubscribed');
+        $url = URL::signedRoute('newsletter.unsubscribe', ['publicId' => $subscriber->public_id, 'locale' => 'en']);
+        $this->get($url.'&redirect=https://untrusted.example.test')->assertRedirect('https://website.example.test/en/newsletter/disiscrizione?status=invalid');
+        $this->assertSame(NewsletterSubscriberStatus::SUBSCRIBED, $subscriber->fresh()->status);
+        $this->get($url)->assertRedirect('https://website.example.test/en/newsletter/disiscrizione?status=unsubscribed');
+        $this->get($url)->assertRedirect('https://website.example.test/en/newsletter/disiscrizione?status=already_unsubscribed');
         $this->assertSame(1, $subscriber->fresh()->consentEvents()->where('event_type', NewsletterConsentEventType::UNSUBSCRIBED->value)->count());
-        $this->getJson('/api/v1/public/newsletter/unsubscribe/'.$subscriber->public_id)->assertForbidden();
+        $this->get('/api/v1/public/newsletter/unsubscribe/'.$subscriber->public_id)->assertRedirect('https://website.example.test/newsletter/disiscrizione?status=invalid');
 
         $this->subscribe('persona@example.test');
         $this->assertSame(NewsletterSubscriberStatus::PENDING, $subscriber->fresh()->status);

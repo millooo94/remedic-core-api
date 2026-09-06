@@ -59,7 +59,7 @@ class ServiceWebProfileResource extends JsonResource
             'id' => $this->id,
             'master' => $master,
             'service' => $master,
-            'web_profile' => $profile ? $this->profile($profile) : null,
+            'web_profile' => $profile ? $this->profile($profile, $request) : null,
             'is_configured' => $profile !== null,
             'effective_public_visibility' => $this->isEffectivelyVisible(),
             'status' => $profile === null
@@ -68,7 +68,7 @@ class ServiceWebProfileResource extends JsonResource
         ];
     }
 
-    private function profile(ServiceWebProfile $profile): array
+    private function profile(ServiceWebProfile $profile, Request $request): array
     {
         return [
             'id' => $profile->id,
@@ -90,11 +90,12 @@ class ServiceWebProfileResource extends JsonResource
             'robots' => $profile->robots?->value ?? $profile->robots,
             'og_title' => $profile->og_title,
             'og_description' => $profile->og_description,
-            'og_image_path' => $this->featured_image_path,
+            'og_image_path' => $profile->og_image_path,
+            'og_image_url' => PublicMediaUrl::fromPublicDisk($profile->og_image_path ?: $this->featured_image_path, $request),
             'twitter_title' => $profile->twitter_title,
             'twitter_description' => $profile->twitter_description,
             'twitter_image_path' => $profile->twitter_image_path,
-            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($profile->twitter_image_path, request()),
+            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($profile->twitter_image_path, $request),
             'sections' => $profile->sections
                 ->whereIn('key', ServiceSectionDefinition::keys())
                 ->sortBy('id')

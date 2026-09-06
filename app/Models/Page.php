@@ -3,13 +3,13 @@
 namespace App\Models;
 
 use App\Enums\PageTemplate;
-use App\Enums\PublicationState;
 use App\Enums\RobotsValue;
 use App\Models\Concerns\HasContentTranslations;
 use App\Models\Concerns\HasSectionsAndFaqs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Page extends Model
 {
@@ -91,7 +91,6 @@ class Page extends Model
         'meta_keywords',
         'faq_enabled',
         'is_active',
-        'published_at',
     ];
 
     protected function casts(): array
@@ -102,7 +101,6 @@ class Page extends Model
             'robots' => RobotsValue::class,
             'faq_enabled' => 'boolean',
             'is_active' => 'boolean',
-            'published_at' => 'datetime',
         ];
     }
 
@@ -111,60 +109,9 @@ class Page extends Model
         return $query->where('is_active', true);
     }
 
-    public function scopePublished(Builder $query): Builder
-    {
-        return $query
-            ->whereNotNull('published_at')
-            ->where('published_at', '<=', now());
-    }
-
-    public function scopePublicationState(Builder $query, PublicationState|string $state): Builder
-    {
-        $state = $state instanceof PublicationState ? $state : PublicationState::from($state);
-
-        return match ($state) {
-            PublicationState::Draft => $query->where('is_active', true)->whereNull('published_at'),
-            PublicationState::Scheduled => $query->where('is_active', true)->where('published_at', '>', now()),
-            PublicationState::Published => $query->active()->published(),
-            PublicationState::Suspended => $query->where('is_active', false),
-        };
-    }
-
-    public function isPublished(): bool
-    {
-        if ($this->isHomePage()) {
-            return true;
-        }
-
-        return $this->published_at !== null && $this->published_at->lessThanOrEqualTo(now());
-    }
-
     public function isPubliclyAvailable(): bool
     {
-        if ($this->isHomePage()) {
-            return true;
-        }
-
-        return (bool) $this->is_active && $this->isPublished();
-    }
-
-    public function publicationState(): PublicationState
-    {
-        if ($this->isHomePage()) {
-            return PublicationState::Published;
-        }
-
-        if (! $this->is_active) {
-            return PublicationState::Suspended;
-        }
-
-        if ($this->published_at === null) {
-            return PublicationState::Draft;
-        }
-
-        return $this->published_at->isFuture()
-            ? PublicationState::Scheduled
-            : PublicationState::Published;
+        return (bool) $this->is_active;
     }
 
     public function isLegacyCheckupPage(): bool
@@ -180,5 +127,15 @@ class Page extends Model
     public function isCustom(): bool
     {
         return $this->content_kind === 'custom';
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(PageReview::class);
+    }
+
+    public function featuredReviews(): HasMany
+    {
+        return $this->hasMany(PageFeaturedReview::class);
     }
 }

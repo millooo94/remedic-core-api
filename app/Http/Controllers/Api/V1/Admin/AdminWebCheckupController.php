@@ -5,18 +5,22 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\Checkups\UpsertCheckupWebProfileRequest;
 use App\Http\Requests\Api\V1\Admin\WebCheckupIndexRequest;
+use App\Http\Requests\Api\V1\Media\UploadMasterImageRequest;
 use App\Http\Resources\Api\V1\Admin\CheckupWebProfileResource;
 use App\Models\Checkup;
 use App\Models\Redirect;
 use App\Services\AutomaticSlugRedirectService;
 use App\Services\CheckupWebContentService;
+use App\Services\ManagedMediaService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\ValidationException;
 
 class AdminWebCheckupController extends Controller
 {
     public function __construct(
         private readonly CheckupWebContentService $content,
         private readonly AutomaticSlugRedirectService $redirects,
+        private readonly ManagedMediaService $media,
     ) {}
 
     public function index(WebCheckupIndexRequest $request): AnonymousResourceCollection
@@ -83,6 +87,27 @@ class AdminWebCheckupController extends Controller
                 '/check-up/'.$previousSlug,
                 '/check-up/'.$profile->public_slug,
             );
+        }
+
+        return new CheckupWebProfileResource($this->load($checkup));
+    }
+
+    public function uploadTwitterImage(UploadMasterImageRequest $request, Checkup $checkup): CheckupWebProfileResource
+    {
+        $profile = $checkup->webProfile;
+        if ($profile === null) {
+            throw ValidationException::withMessages(['twitter_image' => 'Salva prima la configurazione Web del Check-up.']);
+        }
+        $this->media->replace($profile, 'twitter_image_path', $request->file('image'), "checkup-web-profiles/{$profile->id}/twitter");
+
+        return new CheckupWebProfileResource($this->load($checkup));
+    }
+
+    public function deleteTwitterImage(Checkup $checkup): CheckupWebProfileResource
+    {
+        $profile = $checkup->webProfile;
+        if ($profile !== null) {
+            $this->media->delete($profile, 'twitter_image_path', ["checkup-web-profiles/{$profile->id}/twitter"]);
         }
 
         return new CheckupWebProfileResource($this->load($checkup));

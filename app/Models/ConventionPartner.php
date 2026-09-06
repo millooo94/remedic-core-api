@@ -6,6 +6,7 @@ use App\Enums\ConventionPartnerType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ConventionPartner extends Model
 {
@@ -30,5 +31,10 @@ class ConventionPartner extends Model
     public function scopePublicOrder(Builder $query): Builder
     {
         return $query->orderBy('sort_order')->orderBy('name')->orderBy('id');
+    }
+
+    public function webProfile(): HasOne
+    {
+        return $this->hasOne(ConventionPartnerWebProfile::class);
     }
 }

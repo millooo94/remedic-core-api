@@ -5,18 +5,22 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\MedicalAreas\UpsertMedicalAreaRequest;
+use App\Http\Requests\Api\V1\Media\UploadMasterImageRequest;
 use App\Http\Resources\Api\V1\Admin\MedicalAreaResource;
 use App\Models\Redirect;
 use App\Models\Specialization;
 use App\Services\AutomaticSlugRedirectService;
+use App\Services\ManagedMediaService;
 use App\Services\MedicalAreaContentService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\ValidationException;
 
 class MedicalAreaController extends Controller
 {
     public function __construct(
         private readonly MedicalAreaContentService $content,
         private readonly AutomaticSlugRedirectService $redirects,
+        private readonly ManagedMediaService $media,
     ) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
@@ -79,6 +83,27 @@ class MedicalAreaController extends Controller
                 '/aree-mediche/'.$previousSlug,
                 '/aree-mediche/'.$profile->slug
             );
+        }
+
+        return new MedicalAreaResource($this->load($specialization));
+    }
+
+    public function uploadTwitterImage(UploadMasterImageRequest $request, Specialization $specialization): MedicalAreaResource
+    {
+        $profile = $specialization->webProfile;
+        if ($profile === null) {
+            throw ValidationException::withMessages(['twitter_image' => 'Salva prima la configurazione Web dell’Area medica.']);
+        }
+        $this->media->replace($profile, 'twitter_image_path', $request->file('image'), "specialization-web-profiles/{$profile->id}/twitter");
+
+        return new MedicalAreaResource($this->load($specialization));
+    }
+
+    public function deleteTwitterImage(Specialization $specialization): MedicalAreaResource
+    {
+        $profile = $specialization->webProfile;
+        if ($profile !== null) {
+            $this->media->delete($profile, 'twitter_image_path', ["specialization-web-profiles/{$profile->id}/twitter"]);
         }
 
         return new MedicalAreaResource($this->load($specialization));

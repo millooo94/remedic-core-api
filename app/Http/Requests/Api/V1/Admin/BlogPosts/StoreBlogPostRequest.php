@@ -52,6 +52,8 @@ class StoreBlogPostRequest extends FormRequest
             'robots' => ['nullable', Rule::enum(RobotsValue::class)],
             'og_title' => ['nullable', 'string', 'max:255'],
             'og_description' => ['nullable', 'string'],
+            'twitter_title' => ['nullable', 'string', 'max:255'],
+            'twitter_description' => ['nullable', 'string'],
             'is_active' => ['sometimes', 'boolean'],
             'published_at' => ['nullable', 'date'],
             'sections' => ['sometimes', 'array'],

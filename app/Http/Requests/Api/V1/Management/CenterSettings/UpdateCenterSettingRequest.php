@@ -63,7 +63,20 @@ class UpdateCenterSettingRequest extends FormRequest
             'links.google_review_url' => $url,
             'parking' => ['nullable', 'array'],
             'parking.label' => $nullableString,
+            // `address` is accepted only for clients using the pre-structured parking contract.
             'parking.address' => $nullableString,
+            'parking.formatted_address' => $nullableString,
+            'parking.street_name' => $nullableString,
+            'parking.street_number' => ['nullable', 'string', 'max:32'],
+            'parking.postal_code' => ['nullable', 'string', 'max:20'],
+            'parking.city' => $nullableString,
+            'parking.province' => ['nullable', 'string', 'max:100'],
+            'parking.region' => ['nullable', 'string', 'max:100'],
+            'parking.country' => ['nullable', 'string', 'max:100'],
+            'parking.country_code' => ['nullable', 'string', 'size:2', 'alpha'],
+            'parking.google_place_id' => $nullableString,
+            'parking.latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'parking.longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'parking.description' => ['nullable', 'string', 'max:5000'],
         ];
     }

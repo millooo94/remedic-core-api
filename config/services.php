@@ -57,4 +57,10 @@ return [
         'timeout_seconds' => (int) env('GOOGLE_TRANSLATION_TIMEOUT_SECONDS', 12),
     ],
 
+    'google_reviews' => [
+        'endpoint' => env('GOOGLE_REVIEWS_ENDPOINT'),
+        'access_token' => env('GOOGLE_REVIEWS_ACCESS_TOKEN'),
+        'timeout_seconds' => (int) env('GOOGLE_REVIEWS_TIMEOUT_SECONDS', 10),
+    ],
+
 ];

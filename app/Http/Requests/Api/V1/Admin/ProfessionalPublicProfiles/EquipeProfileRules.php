@@ -58,6 +58,8 @@ trait EquipeProfileRules
             'robots' => ['nullable', Rule::enum(RobotsValue::class)],
             'og_title' => ['nullable', 'string', 'max:255'],
             'og_description' => ['nullable', 'string'],
+            'twitter_title' => ['nullable', 'string', 'max:255'],
+            'twitter_description' => ['nullable', 'string'],
             'hero_competency_ids' => ['sometimes', 'array', 'max:3'],
             'hero_competency_ids.*' => ['required', 'integer', 'distinct', 'exists:professional_profile_competencies,id'],
             'approach_principles' => ['sometimes', 'array'],

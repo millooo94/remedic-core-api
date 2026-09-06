@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Http\Controllers\Api\V1\Admin\AdminConventionPartnerWebProfileController;
 use App\Http\Controllers\Api\V1\Admin\AdminWebCheckupController;
 use App\Http\Controllers\Api\V1\Admin\AdminWebServiceController;
 use App\Http\Controllers\Api\V1\Admin\BlogPostController as AdminBlogPostController;
@@ -14,8 +15,10 @@ use App\Http\Controllers\Api\V1\Admin\LocalizedContentController;
 use App\Http\Controllers\Api\V1\Admin\LocalizedSingletonController;
 use App\Http\Controllers\Api\V1\Admin\LocalizedStructureController;
 use App\Http\Controllers\Api\V1\Admin\MedicalAreaController as AdminMedicalAreaController;
+use App\Http\Controllers\Api\V1\Admin\NewsletterCampaignController as AdminNewsletterCampaignController;
 use App\Http\Controllers\Api\V1\Admin\NewsletterSubscriberController as AdminNewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Admin\PageController as AdminPageController;
+use App\Http\Controllers\Api\V1\Admin\PageReviewController as AdminPageReviewController;
 use App\Http\Controllers\Api\V1\Admin\ProfessionalPublicProfileController as AdminProfessionalPublicProfileController;
 use App\Http\Controllers\Api\V1\Admin\RedirectController as AdminRedirectController;
 use App\Http\Controllers\Api\V1\Admin\SearchSynonymGroupController;
@@ -35,6 +38,7 @@ use App\Http\Controllers\Api\V1\CashMovementController;
 use App\Http\Controllers\Api\V1\CheckupController;
 use App\Http\Controllers\Api\V1\ConventionPartnerController;
 use App\Http\Controllers\Api\V1\CountingPeriodController;
+use App\Http\Controllers\Api\V1\DailyBookingStatController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\EntityMediaController;
 use App\Http\Controllers\Api\V1\EventController;
@@ -110,7 +114,6 @@ Route::prefix('v1')->group(function (): void {
         Route::post('newsletter/subscribe', [NewsletterSubscriptionController::class, 'subscribe'])->middleware('throttle:newsletter-subscribe');
         Route::get('newsletter/confirm', [NewsletterSubscriptionController::class, 'confirm'])->middleware('throttle:10,1')->name('newsletter.confirm');
         Route::get('newsletter/unsubscribe/{publicId}', [NewsletterSubscriptionController::class, 'unsubscribe'])
-            ->middleware('signed')
             ->name('newsletter.unsubscribe');
     });
 
@@ -281,6 +284,12 @@ Route::prefix('v1')->group(function (): void {
 
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
         Route::get('dashboard/monthly-trends', [DashboardController::class, 'monthlyTrends']);
+        Route::get('daily-booking-stats/summary', [DailyBookingStatController::class, 'summary']);
+        Route::get('daily-booking-stats/pending', [DailyBookingStatController::class, 'pending']);
+        Route::get('daily-booking-stats/{date}', [DailyBookingStatController::class, 'show']);
+        Route::get('daily-booking-stats', [DailyBookingStatController::class, 'index']);
+        Route::post('daily-booking-stats', [DailyBookingStatController::class, 'store']);
+        Route::put('daily-booking-stats/{date}', [DailyBookingStatController::class, 'update']);
 
         Route::prefix('professional-statements')
             ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value)
@@ -339,6 +348,8 @@ Route::prefix('v1')->group(function (): void {
                 Route::put('site-navigation/footer', [AdminSiteNavigationController::class, 'updateFooter'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::post('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'store'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::delete('site-navigation/center-mega-menu/media', [AdminSiteNavigationMediaController::class, 'destroy'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::post('site-navigation/center-mega-menu/groups/{group}/items/{item}/media', [AdminSiteNavigationMediaController::class, 'storeGroupItemIcon'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
+                Route::delete('site-navigation/center-mega-menu/groups/{group}/items/{item}/media', [AdminSiteNavigationMediaController::class, 'destroyGroupItemIcon'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::post('site-navigation/center-mega-menu/sections/{section}/media', [AdminSiteNavigationMediaController::class, 'storeSectionIcon'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::delete('site-navigation/center-mega-menu/sections/{section}/media', [AdminSiteNavigationMediaController::class, 'destroySectionIcon'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
                 Route::post('site-navigation/medical-areas-mega-menu/media', [AdminSiteNavigationMediaController::class, 'storeAreas'])->middleware('permission:'.AdminPermission::MANAGE_SITE_NAVIGATION->value);
@@ -355,6 +366,14 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_SEARCH->value);
                 Route::apiResource('users', AdminUserController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_USERS->value);
+                Route::get('pages/{page}/reviews', [AdminPageReviewController::class, 'index'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::post('pages/{page}/reviews/google/sync', [AdminPageReviewController::class, 'syncGoogle'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::post('pages/{page}/reviews/miodottore', [AdminPageReviewController::class, 'storeMiodottore'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::put('pages/{page}/reviews/miodottore/{review}', [AdminPageReviewController::class, 'updateMiodottore'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::delete('pages/{page}/reviews/miodottore/{review}', [AdminPageReviewController::class, 'destroyMiodottore'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::put('pages/{page}/reviews/featured', [AdminPageReviewController::class, 'feature'])->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
+                Route::put('pages/{page}/sections/reorder', [AdminPageController::class, 'reorderSections'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('pages', AdminPageController::class)
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::post('pages/media', [AdminPageController::class, 'uploadMedia'])
@@ -362,6 +381,14 @@ Route::prefix('v1')->group(function (): void {
                 Route::delete('pages/{page}/sections/{sectionKey}/media', [AdminPageController::class, 'deleteSectionMedia'])
                     ->middleware('permission:'.AdminPermission::MANAGE_PAGES->value);
                 Route::apiResource('blog-posts', AdminBlogPostController::class)
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::post('blog-posts/{blogPost}/twitter-image', [AdminBlogPostController::class, 'uploadTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::delete('blog-posts/{blogPost}/twitter-image', [AdminBlogPostController::class, 'deleteTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::post('blog-posts/{blogPost}/og-image', [AdminBlogPostController::class, 'uploadOgImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
+                Route::delete('blog-posts/{blogPost}/og-image', [AdminBlogPostController::class, 'deleteOgImage'])
                     ->middleware('permission:'.AdminPermission::MANAGE_BLOG_POSTS->value);
                 Route::apiResource('editorial-categories', EditorialCategoryController::class)
                     ->only(['index', 'store', 'update', 'destroy'])
@@ -380,11 +407,29 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_SEO_FIELDS->value);
                 Route::delete('seo/social-image', [AdminSeoConfigurationController::class, 'deleteSocialImage'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SEO_FIELDS->value);
+                Route::get('convenzioni', [AdminConventionPartnerWebProfileController::class, 'index'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
+                Route::get('convenzioni/{convention}', [AdminConventionPartnerWebProfileController::class, 'show'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
+                Route::match(['put', 'patch'], 'convenzioni/{convention}', [AdminConventionPartnerWebProfileController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
+                Route::post('convenzioni/{convention}/og-image', [AdminConventionPartnerWebProfileController::class, 'uploadOgImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
+                Route::delete('convenzioni/{convention}/og-image', [AdminConventionPartnerWebProfileController::class, 'deleteOgImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
+                Route::post('convenzioni/{convention}/twitter-image', [AdminConventionPartnerWebProfileController::class, 'uploadTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
+                Route::delete('convenzioni/{convention}/twitter-image', [AdminConventionPartnerWebProfileController::class, 'deleteTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_CONVENTIONS->value);
                 Route::get('aree-mediche', [AdminMedicalAreaController::class, 'index'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::get('aree-mediche/{specialization}', [AdminMedicalAreaController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::match(['put', 'patch'], 'aree-mediche/{specialization}', [AdminMedicalAreaController::class, 'update'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::post('aree-mediche/{specialization}/twitter-image', [AdminMedicalAreaController::class, 'uploadTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
+                Route::delete('aree-mediche/{specialization}/twitter-image', [AdminMedicalAreaController::class, 'deleteTwitterImage'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
                 Route::get('specializations', [AdminMedicalAreaController::class, 'index'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SPECIALIZATIONS->value);
@@ -397,6 +442,12 @@ Route::prefix('v1')->group(function (): void {
                         ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                     Route::post($serviceWebRoute.'/{service}/twitter-image', [AdminWebServiceController::class, 'uploadTwitterImage'])
                         ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                    Route::delete($serviceWebRoute.'/{service}/twitter-image', [AdminWebServiceController::class, 'deleteTwitterImage'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                    Route::post($serviceWebRoute.'/{service}/og-image', [AdminWebServiceController::class, 'uploadOgImage'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                    Route::delete($serviceWebRoute.'/{service}/og-image', [AdminWebServiceController::class, 'deleteOgImage'])
+                        ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                     Route::get($serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'show'])
                         ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                     Route::match(['put', 'patch'], $serviceWebRoute.'/{service}', [AdminWebServiceController::class, 'update'])
@@ -408,15 +459,35 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                 Route::match(['put', 'patch'], 'check-up/{checkup}', [AdminWebCheckupController::class, 'update'])
                     ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                Route::post('check-up/{checkup}/twitter-image', [AdminWebCheckupController::class, 'uploadTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
+                Route::delete('check-up/{checkup}/twitter-image', [AdminWebCheckupController::class, 'deleteTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_SERVICES->value);
                 Route::apiResource('professional-public-profiles', AdminProfessionalPublicProfileController::class)
                     ->parameters(['professional-public-profiles' => 'professionalPublicProfile'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::patch('professional-public-profiles/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::post('professional-public-profiles/{professionalPublicProfile}/twitter-image', [AdminProfessionalPublicProfileController::class, 'uploadTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::delete('professional-public-profiles/{professionalPublicProfile}/twitter-image', [AdminProfessionalPublicProfileController::class, 'deleteTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::post('professional-public-profiles/{professionalPublicProfile}/og-image', [AdminProfessionalPublicProfileController::class, 'uploadOgImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::delete('professional-public-profiles/{professionalPublicProfile}/og-image', [AdminProfessionalPublicProfileController::class, 'deleteOgImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::apiResource('equipe', AdminProfessionalPublicProfileController::class)
                     ->parameters(['equipe' => 'professionalPublicProfile'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::patch('equipe/{professionalPublicProfile}/sections', [AdminProfessionalPublicProfileController::class, 'updateSections'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::post('equipe/{professionalPublicProfile}/twitter-image', [AdminProfessionalPublicProfileController::class, 'uploadTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::delete('equipe/{professionalPublicProfile}/twitter-image', [AdminProfessionalPublicProfileController::class, 'deleteTwitterImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::post('equipe/{professionalPublicProfile}/og-image', [AdminProfessionalPublicProfileController::class, 'uploadOgImage'])
+                    ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
+                Route::delete('equipe/{professionalPublicProfile}/og-image', [AdminProfessionalPublicProfileController::class, 'deleteOgImage'])
                     ->middleware('permission:'.AdminPermission::MANAGE_DOCTORS->value);
                 Route::get('consent-configuration', [AdminConsentConfigurationController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_CONSENT_CONFIGURATION->value);
@@ -435,6 +506,14 @@ Route::prefix('v1')->group(function (): void {
                     ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);
                 Route::get('newsletter-subscribers/{newsletterSubscriber:public_id}', [AdminNewsletterSubscriberController::class, 'show'])
                     ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value);
+                Route::prefix('newsletter-campaigns')->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_CAMPAIGNS->value)->group(function (): void {
+                    Route::post('{newsletterCampaign}/send-test', [AdminNewsletterCampaignController::class, 'sendTest']);
+                    Route::post('{newsletterCampaign}/send-now', [AdminNewsletterCampaignController::class, 'sendNow']);
+                    Route::post('{newsletterCampaign}/schedule', [AdminNewsletterCampaignController::class, 'schedule']);
+                    Route::post('{newsletterCampaign}/cancel-schedule', [AdminNewsletterCampaignController::class, 'cancelSchedule']);
+                });
+                Route::apiResource('newsletter-campaigns', AdminNewsletterCampaignController::class)
+                    ->middleware('permission:'.AdminPermission::MANAGE_NEWSLETTER_CAMPAIGNS->value);
             });
     });
 });

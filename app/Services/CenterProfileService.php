@@ -19,7 +19,10 @@ class CenterProfileService
         'google_place_id', 'latitude', 'longitude', 'google_maps_url', 'opening_hours', 'timezone',
         'facebook_url', 'instagram_url', 'tiktok_url', 'youtube_url', 'linkedin_url', 'primary_city', 'primary_area',
         'served_areas', 'served_territory', 'area_served_text', 'google_review_url',
-        'parking_label', 'parking_address', 'parking_description',
+        'parking_label', 'parking_address', 'parking_street_name', 'parking_street_number',
+        'parking_postal_code', 'parking_city', 'parking_province', 'parking_region',
+        'parking_country_name', 'parking_country', 'parking_google_place_id',
+        'parking_latitude', 'parking_longitude', 'parking_description',
     ];
 
     public function current(): SiteSetting
@@ -55,7 +58,18 @@ class CenterProfileService
             ...Arr::only($payload['territory'] ?? [], ['primary_city', 'primary_area', 'served_areas', 'served_territory', 'area_served_text']),
             'google_review_url' => data_get($payload, 'links.google_review_url'),
             'parking_label' => data_get($payload, 'parking.label'),
-            'parking_address' => data_get($payload, 'parking.address'),
+            'parking_address' => data_get($payload, 'parking.formatted_address', data_get($payload, 'parking.address')),
+            'parking_street_name' => data_get($payload, 'parking.street_name'),
+            'parking_street_number' => data_get($payload, 'parking.street_number'),
+            'parking_postal_code' => data_get($payload, 'parking.postal_code'),
+            'parking_city' => data_get($payload, 'parking.city'),
+            'parking_province' => data_get($payload, 'parking.province'),
+            'parking_region' => data_get($payload, 'parking.region'),
+            'parking_country_name' => data_get($payload, 'parking.country'),
+            'parking_country' => data_get($payload, 'parking.country_code'),
+            'parking_google_place_id' => data_get($payload, 'parking.google_place_id'),
+            'parking_latitude' => data_get($payload, 'parking.latitude'),
+            'parking_longitude' => data_get($payload, 'parking.longitude'),
             'parking_description' => data_get($payload, 'parking.description'),
         ];
 
@@ -66,6 +80,7 @@ class CenterProfileService
             }
         }
         $flat['clinic_country'] = strtoupper((string) ($flat['clinic_country'] ?? 'IT'));
+        $flat['parking_country'] = strtoupper((string) ($flat['parking_country'] ?? '')) ?: null;
         foreach (['vat_number', 'tax_code'] as $field) {
             if (filled($flat[$field] ?? null)) {
                 $flat[$field] = Str::upper(preg_replace('/\s+/', '', (string) $flat[$field]));

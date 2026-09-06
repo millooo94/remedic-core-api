@@ -14,7 +14,7 @@ class PublicSeoResolver
     {
         $settings = SiteSetting::current();
         $locale = (string) $request->query('locale', 'it');
-        $translation = $locale === 'it' ? null : GlobalSeoTranslation::query()->where('locale', $locale)->where('publication_state', 'published')->first();
+        $translation = $locale === 'it' ? null : GlobalSeoTranslation::query()->where('locale', $locale)->first();
         $siteName = trim((string) ($settings->site_name ?: $settings->brand_name ?: $settings->clinic_name ?: 'Remedic'));
         $fallbackTitle = trim((string) ($translation?->default_meta_title ?: $settings->default_meta_title)) ?: $siteName;
         $title = trim((string) ($content['seo_title'] ?? '')) ?: trim((string) ($content['title'] ?? '')) ?: $fallbackTitle;
@@ -26,6 +26,7 @@ class PublicSeoResolver
         if (! filled($image)) {
             $image = PublicMediaUrl::fromPublicDisk($settings->default_og_image_path, $request);
         }
+        $twitterImage = $content['twitter_image_url'] ?? null;
         $robots = ! $settings->seo_indexing_enabled
             ? 'noindex,nofollow'
             : ($content['robots']?->value ?? $content['robots'] ?? 'index,follow');
@@ -43,6 +44,10 @@ class PublicSeoResolver
                 'type' => $type,
             ],
             'twitter_card' => 'summary_large_image',
+            'twitter_title' => trim((string) ($content['twitter_title'] ?? '')) ?: trim((string) ($content['og_title'] ?? '')) ?: $this->composeTitle($title, $siteName, $fallbackTitle),
+            'twitter_description' => $this->plainText($content['twitter_description'] ?? null) ?: $this->plainText($content['og_description'] ?? null) ?: $description,
+            // The Website owns the final image fallback, so this remains null when no dedicated image exists.
+            'twitter_image_url' => filled($twitterImage) ? $twitterImage : null,
         ];
     }
 

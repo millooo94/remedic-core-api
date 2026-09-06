@@ -45,14 +45,12 @@ class WhyChooseUsPageApiTest extends TestCase
         $sections = $page->sections()->ordered()->get()->keyBy('key');
 
         $this->assertSame('perche-sceglierci', $page->slug);
-        $this->assertNull($page->published_at);
         $this->assertFalse($page->faq_enabled);
         $this->assertSame(PageSectionRegistry::WHY_CHOOSE_US_SECTION_KEYS, $sections->keys()->all());
         $this->assertCount(4, $sections['model_overview']->extra_json['items']);
         $this->assertCount(3, $sections['three_reasons']->extra_json['items']);
         $this->assertSame(['network', 'microscope', 'heart'], array_column($sections['three_reasons']->extra_json['items'], 'icon_key'));
-        $this->assertCount(3, $sections['patient_experiences']->extra_json['testimonials']);
-        $this->assertSame('Le testimonianze mostrate sono contenuti dimostrativi in attesa di fonti verificate.', $sections['patient_experiences']->extra_json['disclaimer']);
+        $this->assertSame(['eyebrow' => 'LA VOCE DEI PAZIENTI'], $sections['patient_experiences']->extra_json);
     }
 
     #[Test]
@@ -89,7 +87,7 @@ class WhyChooseUsPageApiTest extends TestCase
     public function media_and_public_projection_are_typed_and_protocol_target_is_safe(): void
     {
         Storage::fake('public');
-        $page = $this->createWhyPage(['published_at' => now()->subMinute()]);
+        $page = $this->createWhyPage();
         $upload = $this->post('/api/v1/admin/pages/media', [
             'page_id' => $page->id, 'section_key' => 'integrated_workflow', 'media_slot' => 'image',
             'image' => UploadedFile::fake()->image('workflow.jpg'),
@@ -106,9 +104,9 @@ class WhyChooseUsPageApiTest extends TestCase
             ->assertJsonMissing(['extra_json'])
             ->assertJsonPath('data.sections.5.key', 'plus_health_protocol_cta')
             ->assertJsonPath('data.sections.5.action.href', null)
-            ->assertJsonPath('data.sections.4.testimonials.0.source_type', 'google');
+            ->assertJsonPath('data.sections.4.reviews', []);
 
-        Page::query()->create(['internal_key' => 'plus_health_protocol', 'title' => 'Protocollo', 'slug' => 'protocollo-piu-salute', 'template' => 'default', 'is_active' => true, 'published_at' => now()->subMinute()]);
+        Page::query()->create(['internal_key' => 'plus_health_protocol', 'title' => 'Protocollo', 'slug' => 'protocollo-piu-salute', 'template' => 'default', 'is_active' => true]);
         $this->getJson('/api/v1/public/pages/perche-sceglierci')->assertOk()->assertJsonPath('data.sections.5.action.href', '/protocollo-piu-salute');
     }
 
@@ -117,7 +115,7 @@ class WhyChooseUsPageApiTest extends TestCase
     {
         $response = $this->postJson('/api/v1/admin/pages', [
             'internal_key' => 'why_choose_us', 'title' => 'Perché scegliere Remedic', 'slug' => 'perche-sceglierci',
-            'template' => 'default', 'faq_enabled' => false, 'is_active' => true, 'published_at' => null, ...$overrides,
+            'template' => 'default', 'faq_enabled' => false, 'is_active' => true, ...$overrides,
         ]);
         $response->assertSuccessful();
 
@@ -127,6 +125,6 @@ class WhyChooseUsPageApiTest extends TestCase
     /** @param array<string, mixed> $overrides @return array<string, mixed> */
     private function payload(Page $page, array $overrides = []): array
     {
-        return ['title' => $page->title, 'slug' => $page->slug, 'template' => $page->template?->value ?? $page->template, 'faq_enabled' => false, 'is_active' => true, 'published_at' => optional($page->published_at)?->toIso8601String(), ...$overrides];
+        return ['title' => $page->title, 'slug' => $page->slug, 'template' => $page->template?->value ?? $page->template, 'faq_enabled' => false, 'is_active' => true, ...$overrides];
     }
 }

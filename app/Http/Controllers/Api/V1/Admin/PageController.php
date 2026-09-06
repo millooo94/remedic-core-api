@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
+use App\Http\Requests\Api\V1\Admin\Pages\ReorderPageSectionsRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\StorePageRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\UpdatePageRequest;
 use App\Http\Requests\Api\V1\Admin\Pages\UploadPageImageRequest;
@@ -14,8 +15,10 @@ use App\Services\PageContentService;
 use App\Services\PageSlugRedirectService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Pages\HomePageRegistry;
+use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +34,8 @@ class PageController extends Controller
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
     {
-        $query = Page::query()->with(['sections', 'faqs']);
+        $query = Page::query()->with(['sections', 'faqs'])
+            ->where('internal_key', '!=', Page::CONVENTIONS_NETWORK_INTERNAL_KEY);
 
         if ($search = $request->search()) {
             $query->where(function ($builder) use ($search): void {
@@ -46,16 +50,11 @@ class PageController extends Controller
             $query->where('is_active', (bool) $request->boolean('is_active'));
         }
 
-        if ($request->filled('publication_state')) {
-            $query->publicationState((string) $request->validated('publication_state'));
-        }
-
         $sort = $request->sort();
         $direction = $request->direction();
 
         match ($sort) {
             'slug' => $query->orderBy('slug', $direction),
-            'published_at' => $query->orderBy('published_at', $direction),
             'updated_at' => $query->orderBy('updated_at', $direction),
             default => $query->orderBy('title', $direction),
         };
@@ -84,6 +83,36 @@ class PageController extends Controller
         $page = DB::transaction(fn () => $this->persist($page, $request->validated()));
 
         return new PageResource($page->load(['sections', 'faqs']));
+    }
+
+    public function reorderSections(ReorderPageSectionsRequest $request, Page $page): PageResource
+    {
+        if ($page->isLegacyCheckupPage()) {
+            abort(Response::HTTP_CONFLICT, 'La pagina Check-up legacy è protetta e non può essere modificata.');
+        }
+
+        /** @var list<string> $sectionKeys */
+        $sectionKeys = $request->validated('section_keys');
+        $actualKeys = $page->sections()->pluck('key')->all();
+        $expected = $actualKeys;
+        $provided = $sectionKeys;
+        sort($expected);
+        sort($provided);
+
+        if ($provided !== $expected) {
+            throw ValidationException::withMessages([
+                'section_keys' => 'L’ordine deve contenere una sola volta tutte e sole le sezioni della pagina.',
+            ]);
+        }
+
+        DB::transaction(function () use ($page, $sectionKeys): void {
+            foreach ($sectionKeys as $sortOrder => $key) {
+                $page->sections()->where('key', $key)->update(['sort_order' => $sortOrder]);
+            }
+            $page->touch();
+        });
+
+        return new PageResource($page->fresh()->load(['sections', 'faqs']));
     }
 
     public function destroy(Page $page): Response|JsonResponse
@@ -119,9 +148,11 @@ class PageController extends Controller
         ]);
     }
 
-    public function deleteSectionMedia(Page $page, string $sectionKey): JsonResponse
+    public function deleteSectionMedia(Request $request, Page $page, string $sectionKey): JsonResponse
     {
-        if (! PageSectionRegistry::supportsMedia($page, $sectionKey)) {
+        $mediaSlot = (string) $request->input('media_slot', 'image');
+        if (! in_array($mediaSlot, ['image', 'hero_video', 'hero_poster', 'center_intro'], true)
+            || ! PageSectionRegistry::supportsMedia($page, $sectionKey, $mediaSlot)) {
             throw ValidationException::withMessages([
                 'section_key' => 'Lo slot media non è consentito per questa sezione.',
             ]);
@@ -129,18 +160,16 @@ class PageController extends Controller
 
         $section = $page->sections()->where('key', $sectionKey)->firstOrFail();
         $extra = $section->extra_json ?? [];
-        $oldPath = $extra['image_path'] ?? null;
-        $extra['image_path'] = null;
+        $oldPath = $this->sectionMediaPath($extra, $mediaSlot);
+        if ($mediaSlot === 'image') {
+            $extra['image_path'] = null;
+        } else {
+            unset($extra['media'][$mediaSlot]);
+        }
         $section->forceFill(['extra_json' => $extra])->save();
-        $this->deleteOwnedSectionMediaIfUnused($page, $section, is_string($oldPath) ? $oldPath : null);
+        $this->deleteOwnedSectionMediaIfUnused($page, $section, $oldPath, $mediaSlot);
 
-        return response()->json([
-            'section_key' => $sectionKey,
-            'media_slot' => 'image',
-            'image_path' => null,
-            'image_url' => null,
-            'image_alt' => $extra['image_alt'] ?? null,
-        ]);
+        return response()->json($this->sectionMediaResponse($request, $sectionKey, $mediaSlot, null, $extra));
     }
 
     private function persist(Page $page, array $payload): Page
@@ -166,7 +195,7 @@ class PageController extends Controller
         }
 
         if ($page->isHomePage()) {
-            unset($payload['slug'], $payload['template'], $payload['hero_image_path'], $payload['hero_image_alt'], $payload['published_at']);
+            unset($payload['slug'], $payload['template'], $payload['hero_image_path'], $payload['hero_image_alt']);
             $payload['is_active'] = true;
         }
 
@@ -192,18 +221,21 @@ class PageController extends Controller
         if ((string) ($payload['internal_key'] ?? $page->internal_key) === HomePageRegistry::INTERNAL_KEY) {
             $payload['is_active'] = true;
             if (! $page->exists) {
-                unset($payload['published_at']);
             }
         }
 
         $page->fill($payload);
+        $pageChanged = $page->isDirty();
         $page->save();
 
         if ($previousSlug !== null) {
             $this->pageSlugRedirectService->sync($page, $previousSlug, (string) $page->slug);
         }
 
-        $this->content->sync($page, $relationsPayload);
+        $contentChanged = $this->content->sync($page, $relationsPayload);
+        if ($page->exists && ! $pageChanged && $contentChanged && LegalDocumentRegistry::isLegal((string) $page->internal_key)) {
+            $page->touch();
+        }
 
         return $page;
     }
@@ -225,24 +257,60 @@ class PageController extends Controller
         $section = $page->sections()->where('key', $sectionKey)->firstOrFail();
         $storedPath = $request->file('image')->store("pages/{$page->id}/{$sectionKey}/{$mediaSlot}", 'public');
         $extra = $section->extra_json ?? [];
-        $oldPath = $extra['image_path'] ?? null;
-        $extra['image_path'] = $storedPath;
+        $oldPath = $this->sectionMediaPath($extra, $mediaSlot);
+        if ($mediaSlot === 'image') {
+            $extra['image_path'] = $storedPath;
+        } else {
+            $extra['media'] = is_array($extra['media'] ?? null) ? $extra['media'] : [];
+            $extra['media'][$mediaSlot] = ['path' => $storedPath];
+        }
         $section->forceFill(['extra_json' => $extra])->save();
-        $this->deleteOwnedSectionMediaIfUnused($page, $section, is_string($oldPath) ? $oldPath : null);
+        $this->deleteOwnedSectionMediaIfUnused($page, $section, $oldPath, $mediaSlot);
 
         return response()->json([
-            'section_key' => $sectionKey,
-            'media_slot' => $mediaSlot,
-            'image_path' => $storedPath,
-            'image_url' => PublicMediaUrl::fromPublicDisk($storedPath, $request),
-            'image_alt' => $extra['image_alt'] ?? null,
+            ...$this->sectionMediaResponse($request, $sectionKey, $mediaSlot, $storedPath, $extra),
             'original_name' => $request->file('image')->getClientOriginalName(),
         ]);
     }
 
-    private function deleteOwnedSectionMediaIfUnused(Page $page, Section $section, ?string $path): void
+    /** @param array<string,mixed> $extra */
+    private function sectionMediaPath(array $extra, string $mediaSlot): ?string
+    {
+        $path = $mediaSlot === 'image'
+            ? ($extra['image_path'] ?? null)
+            : ($extra['media'][$mediaSlot]['path'] ?? null);
+
+        return is_string($path) ? $path : null;
+    }
+
+    /** @param array<string,mixed> $extra @return array<string,mixed> */
+    private function sectionMediaResponse(Request $request, string $sectionKey, string $mediaSlot, ?string $path, array $extra): array
+    {
+        $response = [
+            'section_key' => $sectionKey,
+            'media_slot' => $mediaSlot,
+            'media_path' => $path,
+            'media_url' => PublicMediaUrl::fromPublicDisk($path, $request),
+        ];
+
+        if ($mediaSlot === 'image') {
+            $response['image_path'] = $path;
+            $response['image_url'] = PublicMediaUrl::fromPublicDisk($path, $request);
+            $response['image_alt'] = $extra['image_alt'] ?? null;
+        }
+
+        return $response;
+    }
+
+    private function deleteOwnedSectionMediaIfUnused(Page $page, Section $section, ?string $path, string $mediaSlot): void
     {
         if (! $path || ! str_starts_with($path, "pages/{$page->id}/{$section->key}/")) {
+            return;
+        }
+
+        if ($mediaSlot !== 'image') {
+            Storage::disk('public')->delete($path);
+
             return;
         }
 

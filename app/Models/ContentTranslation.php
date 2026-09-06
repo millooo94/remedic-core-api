@@ -14,7 +14,7 @@ class ContentTranslation extends Model
         'subtitle', 'category_label', 'body', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description',
         'local_seo_title', 'local_seo_description', 'local_seo_h1',
         'label', 'description',
-        'publication_state', 'source_revision', 'reviewed_source_revision',
+        'source_revision', 'reviewed_source_revision',
     ];
 
     protected function casts(): array
@@ -30,11 +30,6 @@ class ContentTranslation extends Model
     public function scopeLocale(Builder $query, SupportedLocale|string $locale): Builder
     {
         return $query->where('locale', $locale instanceof SupportedLocale ? $locale->value : $locale);
-    }
-
-    public function scopePublished(Builder $query): Builder
-    {
-        return $query->where('publication_state', 'published');
     }
 
     public function isComplete(): bool
@@ -53,6 +48,6 @@ class ContentTranslation extends Model
 
     public function isPubliclyAvailable(): bool
     {
-        return $this->publication_state === 'published' && $this->isComplete() && ! $this->needsReview();
+        return $this->isComplete();
     }
 }

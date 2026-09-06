@@ -68,7 +68,7 @@ class CheckupWebProfileResource extends JsonResource
             'id' => $this->id,
             'master' => $master,
             'checkup' => $master,
-            'web_profile' => $profile ? $this->profile($profile) : null,
+            'web_profile' => $profile ? $this->profile($profile, $request) : null,
             'is_configured' => $profile !== null,
             'effective_public_visibility' => $this->isEffectivelyVisible(),
             'is_operationally_available' => $this->isOperationallyAvailable(),
@@ -76,7 +76,7 @@ class CheckupWebProfileResource extends JsonResource
         ];
     }
 
-    private function profile(CheckupWebProfile $profile): array
+    private function profile(CheckupWebProfile $profile, Request $request): array
     {
         return [
             'id' => $profile->id,
@@ -97,6 +97,10 @@ class CheckupWebProfileResource extends JsonResource
             'og_title' => $profile->og_title,
             'og_description' => $profile->og_description,
             'og_image_path' => $this->featured_image_path,
+            'twitter_title' => $profile->twitter_title,
+            'twitter_description' => $profile->twitter_description,
+            'twitter_image_path' => $profile->twitter_image_path,
+            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($profile->twitter_image_path, $request),
             'sections' => $profile->sections->whereIn('key', CheckupSectionDefinition::keys())
                 ->sortBy('id')
                 ->map(fn ($section) => [

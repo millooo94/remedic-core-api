@@ -9,17 +9,21 @@ use App\Models\ProfessionalPublicProfile;
 use App\Models\SiteIndexPage;
 use App\Models\SiteSetting;
 use App\Support\Media\PublicMediaUrl;
+use App\Support\Pages\HomePageRegistry;
 use Illuminate\Http\Request;
 
 class HomePagePublicProjection
 {
-    public function __construct(private readonly MedicalAreaPublicService $areas, private readonly ServicePublicContentService $services, private readonly CheckupPublicContentService $checkups, private readonly ContactCenterDataResolver $center, private readonly PublicLocaleResolver $locales, private readonly LocalizedContentResolver $localized, private readonly LocalizedRouteRegistry $routes) {}
+    public function __construct(private readonly MedicalAreaPublicService $areas, private readonly ServicePublicContentService $services, private readonly CheckupPublicContentService $checkups, private readonly ContactCenterDataResolver $center, private readonly ContactPageMediaResolver $contactMedia, private readonly PublicLocaleResolver $locales, private readonly LocalizedContentResolver $localized, private readonly LocalizedRouteRegistry $routes, private readonly SiteNavigationProjectionService $navigation) {}
 
     /** @return array<string,mixed> */
     public function project(Page $page, Request $request): array
     {
         $sections = $page->sections()->active()->orderBy('id')->get()->values()->map(function ($section, int $order) use ($request): array {
             $data = $section->extra_json ?? [];
+            if (in_array($section->key, ['conventions', 'faq', 'contact', 'newsletter'], true)) {
+                $data += HomePageRegistry::defaults($section->key);
+            }
             $data = match ($section->key) {
                 'medical_areas' => [...$data, 'items' => $this->areas->query()->limit($this->limit($data))->get()->map(fn ($item) => $this->areas->listItem($item, $request))->values()->all()],
                 'professionals' => [...$data, 'items' => $this->professionals($request, $this->limit($data))],
@@ -29,13 +33,29 @@ class HomePagePublicProjection
                 'health_pills' => [...$data, 'items' => $this->posts($data)],
                 'conventions' => [...$data, ...$this->partners($data, $request)],
                 'faq' => [...$data, 'items' => $section->sectionable->faqs()->where('is_active', true)->orderBy('id')->get()->map(fn ($faq) => ['question' => $faq->question, 'answer' => $faq->answer, 'is_structured_data' => (bool) $faq->is_structured_data])->all()],
-                'contact' => [...$data, 'center' => $this->center->resolve(SiteSetting::current())],
+                'contact' => [...$data, 'center' => $this->center->resolve(SiteSetting::current()), 'shared_media' => $this->contactMedia->resolve($request)],
                 default => $data,
             };
             $data['media'] = $this->media($data, $request);
             if ($section->key === 'hero') {
+                $defaults = HomePageRegistry::defaults('hero');
+                $data['primary_cta'] = $this->cta($data['primary_cta_label'] ?? null, $data['primary_cta_target'] ?? $defaults['primary_cta_target'], $request, ['external_url' => $data['primary_cta_external_url'] ?? null, 'whatsapp_message' => $data['primary_cta_whatsapp_message'] ?? null]);
+                $data['secondary_cta'] = $this->cta($data['secondary_cta_label'] ?? null, $data['secondary_cta_target'] ?? $defaults['secondary_cta_target'], $request, ['external_url' => $data['secondary_cta_external_url'] ?? null, 'whatsapp_message' => $data['secondary_cta_whatsapp_message'] ?? null]);
                 $data['booking_action'] = ['type' => 'booking'];
                 $data['search_action'] = $this->indexAction('medical_areas_index', $request);
+            }
+            if (in_array($section->key, ['center_intro', 'conventions'], true)) {
+                $defaults = HomePageRegistry::defaults($section->key);
+                $data['cta'] = $this->cta($data['cta_label'] ?? null, $data['cta_target'] ?? $defaults['cta_target'], $request, ['external_url' => $data['cta_external_url'] ?? null, 'whatsapp_message' => $data['cta_whatsapp_message'] ?? null]);
+            }
+            if ($section->key === 'faq') {
+                $defaults = HomePageRegistry::defaults('faq');
+                $data['cta'] = $this->cta($data['cta_label'] ?? null, $data['cta_target'] ?? $defaults['cta_target'], $request, ['external_url' => $data['cta_external_url'] ?? null, 'whatsapp_message' => $data['cta_whatsapp_message'] ?? null]);
+            }
+            if ($section->key === 'contact') {
+                $defaults = HomePageRegistry::defaults('contact');
+                $data['primary_cta'] = $this->cta($data['primary_cta_label'] ?? null, $data['primary_cta_target'] ?? $defaults['primary_cta_target'], $request, ['external_url' => $data['primary_cta_external_url'] ?? null, 'whatsapp_message' => $data['primary_cta_whatsapp_message'] ?? null]);
+                $data['secondary_cta'] = $this->cta($data['secondary_cta_label'] ?? null, $data['secondary_cta_target'] ?? $defaults['secondary_cta_target'], $request, ['external_url' => $data['secondary_cta_external_url'] ?? null, 'whatsapp_message' => $data['secondary_cta_whatsapp_message'] ?? null]);
             }
             if ($target = match ($section->key) {
                 'medical_areas' => 'medical_areas_index',
@@ -51,6 +71,8 @@ class HomePagePublicProjection
             }
             if ($section->key === 'newsletter') {
                 $data['component_type'] = 'newsletter_signup';
+                $data['submit_action'] = $this->cta($data['submit_label'] ?? null, $data['submit_target'] ?? 'newsletter_subscription', $request, ['external_url' => $data['submit_external_url'] ?? null, 'whatsapp_message' => $data['submit_whatsapp_message'] ?? null]);
+                $data['privacy_action'] = $this->cta('Privacy Policy', 'privacy', $request);
             }
 
             return ['key' => $section->key, 'order' => $order, 'data' => $data];
@@ -87,7 +109,25 @@ class HomePagePublicProjection
 
     private function media(array $data, Request $request): array
     {
-        return collect($data['media'] ?? [])->map(fn ($m) => ['url' => PublicMediaUrl::fromPublicDisk($m['path'] ?? null, $request), 'alt' => $m['alt'] ?? null])->all();
+        return collect($data['media'] ?? [])->mapWithKeys(fn ($media, $slot) => [
+            $slot => [
+                'url' => PublicMediaUrl::fromPublicDisk($media['path'] ?? null, $request),
+                'alt' => $media['alt'] ?? null,
+            ],
+        ])->all();
+    }
+
+    /** @return array<string,mixed>|null */
+    private function cta(mixed $label, mixed $target, Request $request, array $context = []): ?array
+    {
+        if (! is_string($label) || $label === '' || ! is_string($target) || $target === '') {
+            return null;
+        }
+        $resolved = $this->navigation->target($target, $this->locales->resolve($request), $context);
+
+        return $resolved['is_action']
+            ? array_filter(['label' => $label, 'action' => $resolved['action'] ?? $target, 'href' => $resolved['href']], static fn (mixed $value): bool => $value !== null)
+            : ($resolved['href'] ? ['label' => $label, 'href' => $resolved['href']] : null);
     }
 
     private function professionals(Request $request, int $limit): array
@@ -121,7 +161,9 @@ class HomePagePublicProjection
     {
         $q = ConventionPartner::query()->publiclyAvailable()->publicOrder();
         $ids = array_map('intval', $data['partner_ids'] ?? []);
-        $featured = ($data['selection_mode'] ?? 'automatic') === 'manual' ? $q->whereIn('id', $ids)->get()->sortBy(fn ($p) => array_search($p->id, $ids, true)) : $q->limit(2)->get();
+        $featured = $ids !== []
+            ? $q->whereIn('id', $ids)->get()->sortBy(fn ($p) => array_search($p->id, $ids, true))
+            : $q->limit(2)->get();
         $map = fn ($p) => ['name' => $p->name, 'type' => $p->type?->value ?? $p->type, 'logo_url' => PublicMediaUrl::fromPublicDisk($p->logo_path, $request)];
 
         return ['featured_partners' => $featured->map($map)->values()->all(), 'other_partners' => ConventionPartner::query()->publiclyAvailable()->publicOrder()->whereNotIn('id', $featured->pluck('id'))->get()->map($map)->values()->all()];

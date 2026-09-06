@@ -97,6 +97,7 @@ class ApplicationsAndCareersApiTest extends TestCase
         $careers->update(['published_at' => now()->subMinute()]);
         $this->getJson('/api/v1/public/pages/lavora-con-noi')->assertOk()
             ->assertJsonPath('data.sections.3.data.action.type', 'open_application_form')
+            ->assertJsonPath('data.sections.3.data.cta_label', 'Invia la tua candidatura')
             ->assertJsonPath('data.sections.3.data.privacy.href', '/privacy')
             ->assertJsonPath('data.sections.3.data.application_types.0.label', 'Attivo')
             ->assertJsonMissing(['Nascosto']);

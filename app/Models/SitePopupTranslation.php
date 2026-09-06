@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SitePopupTranslation extends Model
 {
-    protected $fillable = ['site_popup_id', 'locale', 'eyebrow', 'title', 'body', 'primary_cta_label', 'secondary_cta_label', 'publication_state', 'source_revision', 'reviewed_source_revision'];
+    protected $fillable = ['site_popup_id', 'locale', 'eyebrow', 'title', 'body', 'primary_cta_label', 'secondary_cta_label', 'source_revision', 'reviewed_source_revision'];
 
     protected function casts(): array
     {
@@ -22,6 +22,6 @@ class SitePopupTranslation extends Model
 
     public function isPubliclyAvailable(): bool
     {
-        return $this->publication_state === 'published' && filled($this->title) && ($this->locale === SupportedLocale::IT || $this->source_revision === $this->reviewed_source_revision);
+        return filled($this->title);
     }
 }

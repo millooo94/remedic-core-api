@@ -26,33 +26,20 @@ class StateNormalizationApiTest extends TestCase
     }
 
     #[Test]
-    public function pages_expose_and_filter_the_four_canonical_publication_states(): void
+    public function pages_use_visibility_as_the_only_public_gate(): void
     {
         $this->actingAsAdmin();
 
-        $draft = $this->page('state-page-draft', true, null);
-        $scheduled = $this->page('state-page-scheduled', true, now()->addDay());
-        $published = $this->page('state-page-published', true, now()->subDay());
-        $suspended = $this->page('state-page-suspended', false, now()->subDay());
+        $visible = $this->page('state-page-visible', true);
+        $hidden = $this->page('state-page-hidden', false);
 
-        foreach ([
-            'draft' => $draft,
-            'scheduled' => $scheduled,
-            'published' => $published,
-            'suspended' => $suspended,
-        ] as $state => $page) {
-            $this->getJson("/api/v1/admin/pages?publication_state={$state}&q=state-page-{$state}&per_page=100")
-                ->assertOk()
-                ->assertJsonCount(1, 'data')
-                ->assertJsonPath('data.0.id', $page->id)
-                ->assertJsonPath('data.0.publication_state', $state)
-                ->assertJsonPath('data.0.effective_public_visibility', $state === 'published');
-        }
+        $this->getJson('/api/v1/admin/pages?per_page=100')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $visible->id, 'is_active' => true])
+            ->assertJsonMissing(['publication_state']);
 
-        $this->getJson('/api/v1/public/pages/state-page-published')->assertOk();
-        $this->getJson('/api/v1/public/pages/state-page-draft')->assertNotFound();
-        $this->getJson('/api/v1/public/pages/state-page-scheduled')->assertNotFound();
-        $this->getJson('/api/v1/public/pages/state-page-suspended')->assertNotFound();
+        $this->getJson('/api/v1/public/pages/state-page-visible')->assertOk();
+        $this->getJson('/api/v1/public/pages/state-page-hidden')->assertNotFound();
     }
 
     #[Test]
@@ -175,14 +162,13 @@ class StateNormalizationApiTest extends TestCase
         Sanctum::actingAs($user);
     }
 
-    private function page(string $slug, bool $isActive, mixed $publishedAt): Page
+    private function page(string $slug, bool $isActive): Page
     {
         return Page::query()->create([
             'title' => str($slug)->headline(),
             'slug' => $slug,
             'template' => 'default',
             'is_active' => $isActive,
-            'published_at' => $publishedAt,
         ]);
     }
 

@@ -38,6 +38,9 @@ class SpecializationWebProfile extends Model
         'robots',
         'og_title',
         'og_description',
+        'twitter_title',
+        'twitter_description',
+        'twitter_image_path',
         'legacy_content',
     ];
 

@@ -20,12 +20,12 @@ class SiteNavigationController extends Controller
     public function updateHeader(Request $request)
     {
         $this->rejectUnknown($request, ['header']);
-        $data = $request->validate(['header' => ['required', 'array', 'size:6'], 'header.*.key' => ['required', 'string'], 'header.*.is_active' => ['required', 'boolean'], 'header.*.label' => ['nullable', 'string', 'max:80'], 'header.*.link_type' => ['nullable', 'in:internal,external'], 'header.*.target' => ['nullable', 'string'], 'header.*.external_url' => ['nullable', 'url', 'max:2048']]);
+        $data = $request->validate(['header' => ['required', 'array', 'size:6'], 'header.*.key' => ['required', 'string'], 'header.*.is_active' => ['required', 'boolean'], 'header.*.label' => ['nullable', 'string', 'max:80'], 'header.*.link_type' => ['nullable', 'in:internal,external,none'], 'header.*.target' => ['nullable', 'string'], 'header.*.external_url' => ['nullable', 'url', 'max:2048']]);
         $keys = array_column($data['header'], 'key');
         abort_unless(count(array_unique($keys)) === 6 && count(array_diff($keys, SiteNavigationRegistry::HEADER_KEYS)) === 0 && count(array_diff(SiteNavigationRegistry::HEADER_KEYS, $keys)) === 0, 422, 'I nodi Header sono fissi e non duplicabili.');
         $navigation = $this->initializer->initialize();
         $configuration = $this->projection->configuration($navigation);
-        $configuration['header'] = $data['header'];
+        $configuration['header'] = array_map(fn (array $item): array => $this->normalizeDestination($item), $data['header']);
         $navigation->update(['configuration' => $configuration]);
 
         return response()->json(['data' => $this->projection->admin($navigation->refresh(), $request)]);
@@ -37,45 +37,54 @@ class SiteNavigationController extends Controller
         $data = $request->validate([
             'center_mega_menu' => ['required', 'array'],
             'center_mega_menu.groups' => ['required', 'array', 'size:4'],
+            'center_mega_menu.groups.*.key' => ['required', 'string'],
+            'center_mega_menu.groups.*.label' => ['required', 'string', 'max:160'],
+            'center_mega_menu.groups.*.is_active' => ['required', 'boolean'],
+            'center_mega_menu.groups.*.items' => ['required', 'array'],
+            'center_mega_menu.groups.*.items.*.key' => ['required', 'string'],
+            'center_mega_menu.groups.*.items.*.target' => ['nullable', 'string'],
+            'center_mega_menu.groups.*.items.*.is_active' => ['required', 'boolean'],
+            'center_mega_menu.groups.*.items.*.label' => ['nullable', 'string', 'max:160'],
+            'center_mega_menu.groups.*.items.*.description' => ['nullable', 'string', 'max:160'],
+            'center_mega_menu.groups.*.items.*.link_type' => ['required', 'in:internal,external,none'],
+            'center_mega_menu.groups.*.items.*.external_url' => ['nullable', 'url', 'max:2048'],
             'center_mega_menu.promo' => ['required', 'array'],
             'center_mega_menu.promo.eyebrow' => ['required', 'string', 'max:80'],
             'center_mega_menu.promo.title' => ['required', 'string', 'max:160'],
             'center_mega_menu.promo.body' => ['nullable', 'string', 'max:2000'],
             'center_mega_menu.promo.cta_label' => ['required', 'string', 'max:80'],
             'center_mega_menu.promo.cta_target' => ['nullable', 'string'],
-            'center_mega_menu.promo.cta_link_type' => ['nullable', 'in:internal,external'],
+            'center_mega_menu.promo.cta_link_type' => ['nullable', 'in:internal,external,none'],
             'center_mega_menu.promo.cta_external_url' => ['nullable', 'url', 'max:2048'],
-            'center_mega_menu.sections' => ['nullable', 'array', 'size:4'],
-            'center_mega_menu.sections.*.key' => ['required_with:center_mega_menu.sections', 'string'],
-            'center_mega_menu.sections.*.label' => ['required_with:center_mega_menu.sections', 'string', 'max:160'],
-            'center_mega_menu.sections.*.subtitle' => ['nullable', 'string', 'max:160'],
-            'center_mega_menu.sections.*.link_type' => ['required_with:center_mega_menu.sections', 'in:internal,external'],
-            'center_mega_menu.sections.*.target' => ['nullable', 'string'],
-            'center_mega_menu.sections.*.external_url' => ['nullable', 'url', 'max:2048'],
         ]);
-        abort_unless($this->hasExactKeys($data['center_mega_menu'], array_filter(['groups', 'promo', isset($data['center_mega_menu']['sections']) ? 'sections' : null])) && isset($data['center_mega_menu']['promo']['eyebrow'], $data['center_mega_menu']['promo']['title'], $data['center_mega_menu']['promo']['cta_label']), 422, 'Il pannello promozionale ha campi fissi.');
+        abort_unless($this->hasExactKeys($data['center_mega_menu'], ['groups', 'promo']) && isset($data['center_mega_menu']['promo']['eyebrow'], $data['center_mega_menu']['promo']['title'], $data['center_mega_menu']['promo']['cta_label']), 422, 'Il pannello promozionale ha campi fissi.');
         if (($data['center_mega_menu']['promo']['cta_link_type'] ?? 'internal') === 'internal') {
             abort_unless(SiteNavigationRegistry::targetExists((string) ($data['center_mega_menu']['promo']['cta_target'] ?? '')) && ! in_array($data['center_mega_menu']['promo']['cta_target'], ['booking', 'reserved_area'], true), 422, 'Il target della CTA deve essere navigabile.');
         }
+        $data['center_mega_menu']['promo'] = $this->normalizeDestination($data['center_mega_menu']['promo'], 'cta_link_type', 'cta_target', 'cta_external_url');
+        $data['center_mega_menu']['groups'] = array_map(fn (array $group): array => [...$group, 'items' => array_map(fn (array $item): array => $this->normalizeDestination($item), $group['items'])], $data['center_mega_menu']['groups']);
+        $groupsByKey = collect($data['center_mega_menu']['groups'])->keyBy('key');
+        abort_unless($groupsByKey->count() === count(SiteNavigationRegistry::CENTER_GROUPS) && $groupsByKey->keys()->sort()->values()->all() === collect(array_keys(SiteNavigationRegistry::CENTER_GROUPS))->sort()->values()->all(), 422, 'I gruppi del mega menu sono fissi.');
         foreach (SiteNavigationRegistry::CENTER_GROUPS as $groupKey => $definition) {
-            $group = $data['center_mega_menu']['groups'][$groupKey] ?? null;
-            abort_unless(is_array($group) && $this->hasExactKeys($data['center_mega_menu']['groups'], array_keys(SiteNavigationRegistry::CENTER_GROUPS)) && $this->hasExactKeys($group, ['key', 'items']) && $group['key'] === $groupKey, 422, 'I gruppi del mega menu sono fissi.');
+            $group = $groupsByKey->get($groupKey);
+            abort_unless(is_array($group) && $this->hasExactKeys($group, ['key', 'label', 'is_active', 'items']) && $group['key'] === $groupKey && is_bool($group['is_active']), 422, 'I gruppi del mega menu sono fissi.');
             $items = $group['items'] ?? null;
-            abort_unless(is_array($items) && count($items) === count($definition['targets']), 422, 'Gli elementi del gruppo sono fissi.');
-            $targets = array_column($items, 'target');
-            abort_unless(count(array_unique($targets)) === count($targets) && count(array_diff($targets, $definition['targets'])) === 0 && count(array_diff($definition['targets'], $targets)) === 0, 422, 'Un target non appartiene a questo gruppo.');
+            abort_unless(is_array($items) && count($items) === count($definition['items']), 422, 'Gli elementi del gruppo sono fissi.');
+            $itemKeys = array_column($items, 'key');
+            abort_unless(count(array_unique($itemKeys)) === count($itemKeys) && count(array_diff($itemKeys, $definition['items'])) === 0 && count(array_diff($definition['items'], $itemKeys)) === 0, 422, 'Una voce non appartiene a questo gruppo.');
             foreach ($items as $item) {
+                abort_unless($this->hasExactKeys($item, ['key', 'target', 'is_active', 'label', 'description', 'link_type', 'external_url']) && is_bool($item['is_active'] ?? null), 422, 'La configurazione della voce non è valida.');
+                if ($item['link_type'] === 'internal') {
+                    abort_unless(SiteNavigationRegistry::targetExists((string) ($item['target'] ?? '')), 422, 'Il target della voce deve essere navigabile.');
+                }
+                $item = array_intersect_key($item, array_flip(['target', 'is_active', 'label', 'description']));
                 abort_unless($this->hasExactKeys($item, ['target', 'is_active', 'label', 'description']) && is_bool($item['is_active'] ?? null) && (! isset($item['label']) || is_null($item['label']) || is_string($item['label'])) && (! isset($item['description']) || is_null($item['description']) || is_string($item['description'])), 422, 'La configurazione dell’elemento non è valida.');
             }
         }
         $navigation = $this->initializer->initialize();
         $configuration = $this->projection->configuration($navigation);
-        $storedSections = collect($configuration['center_mega_menu']['sections'] ?? [])->keyBy('key');
-        if (isset($data['center_mega_menu']['sections'])) {
-            $data['center_mega_menu']['sections'] = collect($data['center_mega_menu']['sections'])
-                ->map(fn (array $section): array => [...$section, 'icon_path' => $storedSections->get($section['key'])['icon_path'] ?? null])
-                ->all();
-        }
+        $storedItems = collect($configuration['center_mega_menu']['groups'])->flatMap(fn (array $group): array => collect($group['items'])->mapWithKeys(fn (array $item): array => [$group['key'].':'.$item['key'] => $item])->all());
+        $data['center_mega_menu']['groups'] = collect($data['center_mega_menu']['groups'])->map(fn (array $group): array => [...$group, 'items' => collect($group['items'])->map(fn (array $item): array => [...$item, 'icon_path' => $storedItems->get($group['key'].':'.$item['key'])['icon_path'] ?? null])->all()])->all();
         $configuration['center_mega_menu'] = $data['center_mega_menu'];
         $navigation->update(['configuration' => $configuration]);
 
@@ -85,8 +94,9 @@ class SiteNavigationController extends Controller
     public function updateMedicalAreasMegaMenu(Request $request)
     {
         $this->rejectUnknown($request, ['medical_areas_mega_menu']);
-        $data = $request->validate(['medical_areas_mega_menu' => ['required', 'array'], 'medical_areas_mega_menu.title' => ['nullable', 'string', 'max:160'], 'medical_areas_mega_menu.specialization_ids' => ['required', 'array', 'max:12'], 'medical_areas_mega_menu.specialization_ids.*' => ['integer', 'distinct', 'exists:specialization_web_profiles,specialization_id'], 'medical_areas_mega_menu.promo' => ['required', 'array'], 'medical_areas_mega_menu.promo.eyebrow' => ['required', 'string', 'max:80'], 'medical_areas_mega_menu.promo.title' => ['required', 'string', 'max:160'], 'medical_areas_mega_menu.promo.body' => ['nullable', 'string', 'max:2000'], 'medical_areas_mega_menu.promo.cta_label' => ['required', 'string', 'max:80'], 'medical_areas_mega_menu.promo.cta_target' => ['nullable', 'string'], 'medical_areas_mega_menu.promo.cta_link_type' => ['nullable', 'in:internal,external'], 'medical_areas_mega_menu.promo.cta_external_url' => ['nullable', 'url', 'max:2048']]);
+        $data = $request->validate(['medical_areas_mega_menu' => ['required', 'array'], 'medical_areas_mega_menu.title' => ['nullable', 'string', 'max:160'], 'medical_areas_mega_menu.specialization_ids' => ['required', 'array', 'max:12'], 'medical_areas_mega_menu.specialization_ids.*' => ['integer', 'distinct', 'exists:specialization_web_profiles,specialization_id'], 'medical_areas_mega_menu.promo' => ['required', 'array'], 'medical_areas_mega_menu.promo.eyebrow' => ['required', 'string', 'max:80'], 'medical_areas_mega_menu.promo.title' => ['required', 'string', 'max:160'], 'medical_areas_mega_menu.promo.body' => ['nullable', 'string', 'max:2000'], 'medical_areas_mega_menu.promo.cta_label' => ['required', 'string', 'max:80'], 'medical_areas_mega_menu.promo.cta_target' => ['nullable', 'string'], 'medical_areas_mega_menu.promo.cta_link_type' => ['nullable', 'in:internal,external,none'], 'medical_areas_mega_menu.promo.cta_external_url' => ['nullable', 'url', 'max:2048']]);
         abort_unless($this->hasExactKeys($data['medical_areas_mega_menu'], array_filter(['specialization_ids', 'promo', isset($data['medical_areas_mega_menu']['title']) ? 'title' : null])), 422, 'La configurazione del mega menu Aree mediche non è valida.');
+        $data['medical_areas_mega_menu']['promo'] = $this->normalizeDestination($data['medical_areas_mega_menu']['promo'], 'cta_link_type', 'cta_target', 'cta_external_url');
         $navigation = $this->initializer->initialize();
         $configuration = $this->projection->configuration($navigation);
         $configuration['medical_areas_mega_menu'] = $data['medical_areas_mega_menu'];
@@ -113,7 +123,7 @@ class SiteNavigationController extends Controller
             'footer.columns.*.title' => ['required', 'string', 'max:80'],
             'footer.columns.*.items' => ['required', 'array', 'max:5'],
             'footer.columns.*.items.*.label' => ['required', 'string', 'max:120'],
-            'footer.columns.*.items.*.link_type' => ['required', 'in:internal,external'],
+            'footer.columns.*.items.*.link_type' => ['required', 'in:internal,external,none'],
             'footer.columns.*.items.*.target' => ['nullable', 'string'],
             'footer.columns.*.items.*.external_url' => ['nullable', 'url', 'max:2048'],
         ]);
@@ -130,6 +140,7 @@ class SiteNavigationController extends Controller
                     abort_unless(SiteNavigationRegistry::targetExists((string) ($item['target'] ?? '')) && ! in_array($item['target'], ['booking', 'reserved_area', 'cookie_preferences'], true), 422, 'Il target Footer deve essere una pagina navigabile.');
                 }
             }
+            $data['footer']['columns'][$key]['items'] = array_map(fn (array $item): array => $this->normalizeDestination($item), $column['items']);
         }
         $navigation = $this->initializer->initialize();
         $configuration = $this->projection->configuration($navigation);
@@ -162,5 +173,19 @@ class SiteNavigationController extends Controller
     private function visibilityMap(array $visibility, array $keys): array
     {
         return collect($keys)->mapWithKeys(static fn (string $key): array => [$key => ($visibility[$key] ?? true) !== false])->all();
+    }
+
+    /** @param array<string, mixed> $value @return array<string, mixed> */
+    private function normalizeDestination(array $value, string $typeKey = 'link_type', string $targetKey = 'target', string $externalUrlKey = 'external_url'): array
+    {
+        $type = in_array($value[$typeKey] ?? 'internal', ['internal', 'external', 'none'], true) ? $value[$typeKey] : 'internal';
+        $value[$typeKey] = $type;
+
+        if ($type === 'none') {
+            $value[$targetKey] = null;
+            $value[$externalUrlKey] = null;
+        }
+
+        return $value;
     }
 }

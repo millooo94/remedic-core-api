@@ -40,7 +40,7 @@ class LocalizedContentController extends Controller
             throw ValidationException::withMessages(['locale' => 'La traduzione italiana viene creata dal backfill.']);
         }
         $italian = $owner->translations()->where('locale', 'it')->firstOrFail();
-        $translation = $owner->translations()->firstOrCreate(['locale' => $locale->value], ['publication_state' => 'draft', 'source_revision' => $italian->source_revision]);
+        $translation = $owner->translations()->firstOrCreate(['locale' => $locale->value], ['source_revision' => $italian->source_revision]);
 
         return response()->json(['data' => $this->payload($owner, $translation)], 201);
     }
@@ -51,21 +51,17 @@ class LocalizedContentController extends Controller
         $locale = $this->locale($locale);
         $translation = $owner->translations()->where('locale', $locale->value)->firstOrFail();
         $data = $request->validate([
-            'title' => ['nullable', 'string', 'max:255'], 'slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', ...($owner instanceof Page && $owner->isCustom() ? [new AvailableCustomPageSlug($locale)] : [])], 'excerpt' => ['nullable', 'string'], 'intro_text' => ['nullable', 'string'], 'short_description' => ['nullable', 'string'], 'subtitle' => ['nullable', 'string', 'max:255'], 'category_label' => ['nullable', 'string', 'max:255'], 'body' => ['nullable', 'string'], 'custom_html' => [Rule::prohibitedIf(! ($owner instanceof Page && $owner->isCustom())), 'nullable', 'string', new CustomPageHtml], 'seo_title' => ['nullable', 'string', 'max:255'], 'seo_description' => ['nullable', 'string'], 'seo_h1' => ['nullable', 'string', 'max:255'], 'og_title' => ['nullable', 'string', 'max:255'], 'og_description' => ['nullable', 'string'], 'twitter_title' => ['nullable', 'string', 'max:255'], 'twitter_description' => ['nullable', 'string'], 'local_seo_title' => ['nullable', 'string', 'max:255'], 'local_seo_description' => ['nullable', 'string'], 'local_seo_h1' => ['nullable', 'string', 'max:255'], 'publication_state' => ['nullable', Rule::in(['draft', 'published'])],
+            'title' => ['nullable', 'string', 'max:255'], 'slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', ...($owner instanceof Page && $owner->isCustom() ? [new AvailableCustomPageSlug($locale)] : [])], 'excerpt' => ['nullable', 'string'], 'intro_text' => ['nullable', 'string'], 'short_description' => ['nullable', 'string'], 'subtitle' => ['nullable', 'string', 'max:255'], 'category_label' => ['nullable', 'string', 'max:255'], 'body' => ['nullable', 'string'], 'custom_html' => [Rule::prohibitedIf(! ($owner instanceof Page && $owner->isCustom())), 'nullable', 'string', new CustomPageHtml], 'seo_title' => ['nullable', 'string', 'max:255'], 'seo_description' => ['nullable', 'string'], 'seo_h1' => ['nullable', 'string', 'max:255'], 'og_title' => ['nullable', 'string', 'max:255'], 'og_description' => ['nullable', 'string'], 'twitter_title' => ['nullable', 'string', 'max:255'], 'twitter_description' => ['nullable', 'string'], 'local_seo_title' => ['nullable', 'string', 'max:255'], 'local_seo_description' => ['nullable', 'string'], 'local_seo_h1' => ['nullable', 'string', 'max:255'],
         ]);
         DB::transaction(function () use ($owner, $translation, $locale, $data): void {
             $translation->fill($data);
-            $publishing = $translation->publication_state === 'published';
-            if ($publishing && (! filled($translation->title) || ! filled($translation->slug))) {
-                throw ValidationException::withMessages(['publication_state' => 'Titolo e slug sono obbligatori per pubblicare.']);
-            }
             if ($locale === SupportedLocale::IT) {
                 $revision = hash('sha256', json_encode($translation->only(['title', 'slug', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'])));
                 $translation->forceFill(['source_revision' => $revision, 'reviewed_source_revision' => $revision])->save();
                 $owner->translations()->where('locale', '!=', 'it')->update(['source_revision' => $revision]);
             } else {
                 $source = $owner->translations()->where('locale', 'it')->firstOrFail()->source_revision;
-                $translation->forceFill(['source_revision' => $source, 'reviewed_source_revision' => $publishing ? $source : $translation->reviewed_source_revision])->save();
+                $translation->forceFill(['source_revision' => $source, 'reviewed_source_revision' => $source])->save();
             }
         });
 
@@ -86,6 +82,6 @@ class LocalizedContentController extends Controller
 
     private function payload(Model $owner, ?ContentTranslation $translation): array
     {
-        return ['owner_id' => $owner->getKey(), 'locale' => $translation?->locale?->value, 'status' => $translation === null ? 'missing' : ($translation->needsReview() ? 'needs_review' : $translation->publication_state), 'translation' => $translation];
+        return ['owner_id' => $owner->getKey(), 'locale' => $translation?->locale?->value, 'status' => $translation === null ? 'missing' : ($translation->isComplete() ? 'available' : 'incomplete'), 'translation' => $translation];
     }
 }

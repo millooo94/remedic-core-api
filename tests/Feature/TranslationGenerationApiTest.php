@@ -7,6 +7,7 @@ use App\Enums\AdminRole;
 use App\Enums\SupportedLocale;
 use App\Exceptions\TranslationProviderUnavailableException;
 use App\Models\Page;
+use App\Models\SitePopup;
 use App\Models\User;
 use Database\Seeders\BackofficeAccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,6 +83,19 @@ class TranslationGenerationApiTest extends TestCase
         $this->postJson('/api/v1/admin/translation-generations', ['type' => 'pages', 'id' => $page->id, 'locales' => ['es']])
             ->assertStatus(503)->assertJsonPath('code', 'translation_provider_unavailable');
         $this->assertDatabaseMissing('content_translations', ['translatable_type' => Page::class, 'translatable_id' => $page->id, 'locale' => 'es']);
+    }
+
+    #[Test]
+    public function popup_generation_translates_only_its_five_editorial_fields_and_keeps_empty_values_empty(): void
+    {
+        $popup = SitePopup::query()->create(['is_active' => true, 'source_type' => 'manual', 'title' => 'Titolo italiano', 'body' => 'Testo italiano', 'primary_cta_label' => 'Prenota']);
+        $revision = 'popup-source-revision';
+        $popup->translations()->create(['locale' => 'it', 'eyebrow' => null, 'title' => 'Titolo italiano', 'body' => 'Testo italiano', 'primary_cta_label' => 'Prenota', 'secondary_cta_label' => null, 'publication_state' => 'published', 'source_revision' => $revision, 'reviewed_source_revision' => $revision]);
+        $this->fakeProvider();
+
+        $this->postJson('/api/v1/admin/translation-generations', ['type' => 'popup', 'id' => $popup->id, 'locales' => ['en']])
+            ->assertOk()->assertJsonPath('data.results.0.status', 'needs_review')->assertJsonPath('data.results.0.translated_fields', ['title', 'body', 'primary_cta_label']);
+        $this->assertDatabaseHas('site_popup_translations', ['site_popup_id' => $popup->id, 'locale' => 'en', 'eyebrow' => null, 'title' => 'EN Titolo italiano', 'body' => 'EN Testo italiano', 'primary_cta_label' => 'EN Prenota', 'secondary_cta_label' => null, 'publication_state' => 'draft', 'reviewed_source_revision' => null]);
     }
 
     private function page(): Page

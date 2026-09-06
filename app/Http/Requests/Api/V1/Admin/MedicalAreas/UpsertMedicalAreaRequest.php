@@ -47,6 +47,8 @@ class UpsertMedicalAreaRequest extends FormRequest
             'robots' => ['nullable', Rule::enum(RobotsValue::class)],
             'og_title' => ['nullable', 'string', 'max:255'],
             'og_description' => ['nullable', 'string'],
+            'twitter_title' => ['nullable', 'string', 'max:255'],
+            'twitter_description' => ['nullable', 'string'],
             'sections' => ['required', 'array', 'size:'.count(MedicalAreaSectionDefinition::DEFINITIONS)],
             'sections.*.key' => ['required', 'string', 'distinct', Rule::in(MedicalAreaSectionDefinition::keys())],
             'sections.*.title' => ['nullable', 'string', 'max:255'],

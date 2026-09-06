@@ -51,9 +51,9 @@ class SeoAndRedirectContractTest extends TestCase
     public function public_seo_contract_resolves_canonical_og_robots_and_a_deduplicated_sitemap(): void
     {
         SiteSetting::ensureSingleton()->update(['site_url' => 'https://www.remedic.it/api', 'site_name' => 'Remedic', 'default_meta_title' => 'Remedic', 'default_meta_description' => 'Default description', 'seo_indexing_enabled' => true, 'seo_sitemap_enabled' => true]);
-        $page = Page::query()->create(['title' => 'SEO test', 'slug' => 'seo-test', 'canonical_url' => '/seo-test', 'excerpt' => '<p>Il nostro <strong>centro</strong></p>', 'is_active' => true, 'published_at' => now()->subMinute()]);
+        $page = Page::query()->create(['title' => 'SEO test', 'slug' => 'seo-test', 'canonical_url' => '/seo-test', 'excerpt' => '<p>Il nostro <strong>centro</strong></p>', 'is_active' => true]);
         app(SiteIndexPageInitializer::class)->initialize();
-        SiteIndexPage::query()->where('internal_key', 'news_index')->update(['is_active' => true, 'published_at' => now()->subMinute()]);
+        SiteIndexPage::query()->where('internal_key', 'news_index')->update(['is_active' => true]);
 
         $this->getJson('/api/v1/public/pages/seo-test')->assertOk()
             ->assertJsonPath('data.seo.title', 'SEO test | Remedic')

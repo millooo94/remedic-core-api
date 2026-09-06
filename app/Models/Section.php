@@ -21,6 +21,7 @@ class Section extends Model
         'sectionable_type',
         'key',
         'template',
+        'internal_title',
         'title',
         'subtitle',
         'content',

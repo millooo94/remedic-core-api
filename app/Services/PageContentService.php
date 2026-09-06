@@ -7,6 +7,7 @@ use App\Models\ConventionPartner;
 use App\Models\FaqItem;
 use App\Models\Page;
 use App\Models\Section;
+use App\Support\Navigation\SiteNavigationRegistry;
 use App\Support\Pages\HomePageRegistry;
 use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
@@ -16,26 +17,33 @@ use Illuminate\Validation\ValidationException;
 class PageContentService
 {
     /** @param array<string, mixed> $payload */
-    public function sync(Page $page, array $payload): void
+    public function sync(Page $page, array $payload): bool
     {
-        $this->initializeMissingSections($page);
-        $this->syncSections($page, $payload);
-        $this->syncFaqs($page, $payload);
+        $initialized = $this->initializeMissingSections($page);
+        $sectionsChanged = $this->syncSections($page, $payload);
+        $faqsChanged = $this->syncFaqs($page, $payload);
+
+        return $initialized || $sectionsChanged || $faqsChanged;
     }
 
-    public function initializeMissingSections(Page $page): void
+    public function initializeMissingSections(Page $page): bool
     {
-        foreach (PageSectionRegistry::missingDefaults($page) as $section) {
-            $page->sections()->create($section);
+        $missing = PageSectionRegistry::missingDefaults($page);
+        foreach ($missing as $section) {
+            $page->sections()->create([...$section, 'internal_title' => $section['title']]);
         }
+
+        return $missing !== [];
     }
 
     /** @param array<string, mixed> $payload */
-    private function syncSections(Page $page, array $payload): void
+    private function syncSections(Page $page, array $payload): bool
     {
         if (! array_key_exists('sections', $payload) && ! array_key_exists('removed_section_keys', $payload)) {
-            return;
+            return false;
         }
+
+        $changed = false;
 
         $removedKeys = array_values(array_unique($payload['removed_section_keys'] ?? []));
         if (PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
@@ -45,11 +53,11 @@ class PageContentService
             ]);
         }
         if ($removedKeys !== []) {
-            $page->sections()->whereIn('key', $removedKeys)->delete();
+            $changed = $page->sections()->whereIn('key', $removedKeys)->delete() > 0;
         }
 
         if (! array_key_exists('sections', $payload)) {
-            return;
+            return $changed;
         }
 
         /** @var array<string, Section> $existing */
@@ -70,7 +78,7 @@ class PageContentService
             }
 
             $attributes = Arr::only($sectionPayload, [
-                'title', 'subtitle', 'content', 'extra_json', 'is_active',
+                'title', 'internal_title', 'subtitle', 'content', 'extra_json', 'is_active',
             ]);
 
             if (PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)) {
@@ -81,8 +89,11 @@ class PageContentService
 
             if ($section->isDirty()) {
                 $section->save();
+                $changed = true;
             }
         }
+
+        return $changed;
     }
 
     /** @param array<string, mixed> $payload @return array<string, mixed> */
@@ -111,7 +122,7 @@ class PageContentService
         }
 
         if (LegalDocumentRegistry::isLegal((string) $page->internal_key)) {
-            return $this->legalSectionAttributes($section, $payload, $data, $index);
+            return $this->legalSectionAttributes($section, $payload, $data, $index, (string) $page->internal_key);
         }
         if ((string) $page->internal_key === HomePageRegistry::INTERNAL_KEY) {
             return $this->homeSectionAttributes($section, $payload, $data, $index);
@@ -127,7 +138,7 @@ class PageContentService
         }
 
         $extra = $section->extra_json ?? [];
-        foreach (['eyebrow', 'link_label', 'image_alt', 'disclaimer', 'callout_eyebrow', 'callout_body', 'subheading', 'privacy_text'] as $key) {
+        foreach (['eyebrow', 'link_label', 'image_alt', 'disclaimer', 'callout_eyebrow', 'callout_body', 'subheading', 'privacy_text', 'privacy_target', 'cta_label', 'cta_target', 'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target'] as $key) {
             if (array_key_exists($key, $data)) {
                 $extra[$key] = $data[$key] === null ? null : trim((string) $data[$key]);
             }
@@ -138,6 +149,32 @@ class PageContentService
         }
         if (isset($definition['actions'])) {
             $extra['actions'] = $definition['actions'];
+        }
+
+        if ((string) $page->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts') {
+            $target = (string) ($extra['cta_target'] ?? 'contact');
+            if ($target === 'external_url' || ! SiteNavigationRegistry::targetExists($target)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.cta_target" => 'La destinazione CTA non è valida.']);
+            }
+            $extra['cta_target'] = $target;
+        }
+
+        foreach (['cta_target', 'primary_cta_target', 'secondary_cta_target'] as $targetKey) {
+            if (! array_key_exists($targetKey, $data)) {
+                continue;
+            }
+
+            $target = (string) $extra[$targetKey];
+            if ($target === 'external_url' || ! SiteNavigationRegistry::targetExists($target)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.{$targetKey}" => 'La destinazione CTA non è valida.']);
+            }
+        }
+
+        if ((string) $page->internal_key === PageSectionRegistry::CAREERS_INTERNAL_KEY && $section->key === 'application' && array_key_exists('privacy_target', $data)) {
+            $target = (string) $extra['privacy_target'];
+            if (! SiteNavigationRegistry::targetExists($target) || array_key_exists($target, SiteNavigationRegistry::ACTIONS)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.privacy_target" => 'La destinazione della nota privacy non è valida.']);
+            }
         }
 
         if (array_key_exists('items', $data)) {
@@ -161,6 +198,7 @@ class PageContentService
 
         return [
             'title' => array_key_exists('title', $payload) ? $payload['title'] : $section->title,
+            'internal_title' => array_key_exists('internal_title', $payload) ? $payload['internal_title'] : $section->internal_title,
             'content' => array_key_exists('intro', $data) ? $data['intro'] : (array_key_exists('body', $data) ? $data['body'] : $section->content),
             'extra_json' => $extra,
             'sort_order' => $section->sort_order,
@@ -169,25 +207,24 @@ class PageContentService
     }
 
     /** @param array<string,mixed> $payload @param array<string,mixed> $data @return array<string,mixed> */
-    private function legalSectionAttributes(Section $section, array $payload, array $data, int $index): array
+    private function legalSectionAttributes(Section $section, array $payload, array $data, int $index, string $internalKey): array
     {
         $hero = $section->key === LegalDocumentRegistry::HERO_KEY;
-        $allowed = $hero ? ['eyebrow', 'body', 'last_updated_on'] : ['blocks'];
+        $allowed = $hero ? ['eyebrow', 'body'] : ['blocks'];
         if (array_diff(array_keys($data), $allowed) !== []) {
             throw ValidationException::withMessages(["sections.{$index}.data" => 'Il payload legale contiene campi non consentiti.']);
         }
         $extra = $section->extra_json ?? [];
         if ($hero) {
             $extra['eyebrow'] = trim((string) ($data['eyebrow'] ?? $extra['eyebrow'] ?? ''));
-            $extra['last_updated_on'] = $data['last_updated_on'] ?? $extra['last_updated_on'] ?? null;
 
-            return ['title' => $payload['title'] ?? $section->title, 'content' => $data['body'] ?? $section->content, 'extra_json' => $extra, 'sort_order' => 0, 'is_active' => true];
+            return ['title' => $payload['title'] ?? $section->title, 'internal_title' => $payload['internal_title'] ?? $section->internal_title, 'content' => $data['body'] ?? $section->content, 'extra_json' => $extra, 'sort_order' => 0, 'is_active' => true];
         }
         if (array_key_exists('blocks', $data)) {
-            $extra['blocks'] = $this->normalizeLegalBlocks($data['blocks'], $index);
+            $extra['blocks'] = $this->normalizeLegalBlocks($data['blocks'], $index, $internalKey, $section->key);
         }
 
-        return ['title' => $payload['title'] ?? $section->title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+        return ['title' => $payload['title'] ?? $section->title, 'internal_title' => $payload['internal_title'] ?? $section->internal_title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
     }
 
     /** @param array<string,mixed> $payload @param array<string,mixed> $data @return array<string,mixed> */
@@ -208,6 +245,45 @@ class PageContentService
         if (isset($extra['selection_mode']) && ! in_array($extra['selection_mode'], ['automatic', 'manual'], true)) {
             throw ValidationException::withMessages(["sections.{$index}.data.selection_mode" => 'La modalità di selezione non è valida.']);
         }
+        if ($section->key === 'hero') {
+            foreach (['primary_cta_target', 'secondary_cta_target'] as $key) {
+                $target = (string) ($extra[$key] ?? $defaults[$key] ?? '');
+                if (! SiteNavigationRegistry::targetExists($target)) {
+                    throw ValidationException::withMessages(["sections.{$index}.data.{$key}" => 'La destinazione CTA non è valida.']);
+                }
+                $extra[$key] = $target;
+                $this->validateHomeActionContext($target, $extra, $key, $index);
+            }
+        }
+        if ($section->key === 'contact') {
+            foreach (['primary_cta_target', 'secondary_cta_target'] as $key) {
+                $target = (string) ($extra[$key] ?? $defaults[$key] ?? '');
+                if (! SiteNavigationRegistry::targetExists($target)) {
+                    throw ValidationException::withMessages(["sections.{$index}.data.{$key}" => 'La destinazione CTA non è valida.']);
+                }
+                $extra[$key] = $target;
+                $this->validateHomeActionContext($target, $extra, $key, $index);
+            }
+        }
+        if ($section->key === 'newsletter') {
+            $target = (string) ($extra['submit_target'] ?? $defaults['submit_target'] ?? 'newsletter_subscription');
+            if (! SiteNavigationRegistry::targetExists($target)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.submit_target" => 'La destinazione CTA non è valida.']);
+            }
+            $extra['submit_target'] = $target;
+            $this->validateHomeActionContext($target, $extra, 'submit', $index);
+            if (! is_array($extra['benefits'] ?? null) || count($extra['benefits']) !== 3 || collect($extra['benefits'])->contains(fn ($benefit) => ! is_string($benefit))) {
+                throw ValidationException::withMessages(["sections.{$index}.data.benefits" => 'La newsletter richiede esattamente tre benefit testuali.']);
+            }
+        }
+        if (in_array($section->key, ['center_intro', 'conventions', 'faq'], true)) {
+            $target = (string) ($extra['cta_target'] ?? $defaults['cta_target'] ?? '');
+            if (! SiteNavigationRegistry::targetExists($target)) {
+                throw ValidationException::withMessages(["sections.{$index}.data.cta_target" => 'La destinazione CTA non è valida.']);
+            }
+            $extra['cta_target'] = $target;
+            $this->validateHomeActionContext($target, $extra, 'cta', $index);
+        }
         if ($section->key === 'health_pills') {
             $ids = array_filter([(int) ($extra['featured_blog_post_id'] ?? 0), ...array_map('intval', $extra['secondary_blog_post_ids'] ?? [])]);
             if (count($ids) !== count(array_unique($ids)) || count($ids) > 3 || BlogPost::query()->whereIn('id', $ids)->where('content_type', 'health_pill')->count() !== count($ids)) {
@@ -215,72 +291,137 @@ class PageContentService
             }
         }
         if ($section->key === 'conventions') {
-            $ids = array_map('intval', $extra['partner_ids'] ?? []);
-            if (count($ids) > 2 || count($ids) !== count(array_unique($ids)) || ConventionPartner::query()->whereIn('id', $ids)->where('is_active', true)->count() !== count($ids)) {
+            if (! is_array($extra['partner_ids'] ?? [])) {
+                throw ValidationException::withMessages(["sections.{$index}.data.partner_ids" => 'Le convenzioni selezionate non sono valide.']);
+            }
+            $ids = array_map('intval', $extra['partner_ids']);
+            $persistedIds = is_array($section->extra_json['partner_ids'] ?? null)
+                ? array_map('intval', $section->extra_json['partner_ids'])
+                : [];
+            $newIds = array_values(array_diff($ids, $persistedIds));
+            if (count($ids) > 2 || count($ids) !== count(array_unique($ids)) || ConventionPartner::query()->whereIn('id', $newIds)->where('is_active', true)->count() !== count($newIds)) {
                 throw ValidationException::withMessages(["sections.{$index}.data.partner_ids" => 'Seleziona al massimo due convenzioni attive e diverse.']);
             }
         }
 
-        return ['title' => PageSectionRegistry::definition(HomePageRegistry::INTERNAL_KEY, $section->key)['label'], 'content' => null, 'extra_json' => $extra, 'sort_order' => $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+        $title = is_string($payload['title'] ?? null) && trim($payload['title']) !== ''
+            ? trim($payload['title'])
+            : ($section->title ?: PageSectionRegistry::definition(HomePageRegistry::INTERNAL_KEY, $section->key)['label']);
+
+        return ['title' => $title, 'internal_title' => $payload['internal_title'] ?? $section->internal_title, 'content' => null, 'extra_json' => $extra, 'sort_order' => $section->sort_order, 'is_active' => $payload['is_active'] ?? $section->is_active];
+    }
+
+    /** @param array<string, mixed> $extra */
+    private function validateHomeActionContext(string $target, array &$extra, string $prefix, int $index): void
+    {
+        $externalUrlKey = $prefix === 'cta' ? 'cta_external_url' : $prefix.'_external_url';
+        $whatsappMessageKey = $prefix === 'cta' ? 'cta_whatsapp_message' : $prefix.'_whatsapp_message';
+        $url = $extra[$externalUrlKey] ?? null;
+        if ($target === 'external_url') {
+            $valid = is_string($url) && filter_var($url, FILTER_VALIDATE_URL) && parse_url($url, PHP_URL_SCHEME) === 'https';
+            if (! $valid) {
+                throw ValidationException::withMessages(["sections.{$index}.data.{$externalUrlKey}" => 'Inserisci un URL HTTPS valido.']);
+            }
+            $extra[$externalUrlKey] = trim($url);
+        }
+        if (isset($extra[$whatsappMessageKey]) && (! is_string($extra[$whatsappMessageKey]) || mb_strlen($extra[$whatsappMessageKey]) > 1000)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.{$whatsappMessageKey}" => 'Il messaggio WhatsApp non Ã¨ valido.']);
+        }
     }
 
     /** @return list<array<string,mixed>> */
-    private function normalizeLegalBlocks(mixed $blocks, int $index): array
+    private function normalizeLegalBlocks(mixed $blocks, int $index, string $internalKey, string $sectionKey): array
     {
         if (! is_array($blocks)) {
             throw ValidationException::withMessages(["sections.{$index}.data.blocks" => 'I blocchi legali non sono validi.']);
         }
 
-        return array_map(function ($block, $blockIndex) use ($index): array {
+        $normalized = array_map(function ($block, $blockIndex) use ($index): array {
             if (! is_array($block) || ! in_array($block['type'] ?? null, ['paragraph', 'subheading', 'bullet_list'], true)) {
                 throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Tipo di blocco legale non consentito.']);
             }
             if (($block['type'] ?? null) === 'bullet_list') {
-                return ['type' => 'bullet_list', 'items' => array_values(array_map(fn ($item) => trim((string) $item), $block['items'] ?? []))];
+                $unknown = array_diff(array_keys($block), ['type', 'intro', 'items', 'outro']);
+                if ($unknown !== []) {
+                    throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Il blocco elenco contiene campi non consentiti.']);
+                }
+
+                return [
+                    'type' => 'bullet_list',
+                    'intro' => filled($block['intro'] ?? null) ? trim((string) $block['intro']) : null,
+                    'items' => array_values(array_map(fn ($item) => trim((string) $item), $block['items'] ?? [])),
+                    'outro' => filled($block['outro'] ?? null) ? trim((string) $block['outro']) : null,
+                ];
             }
 
-            return ['type' => (string) $block['type'], 'parts' => $this->normalizeLegalParts($block['parts'] ?? [], $index, $blockIndex)];
+            if (array_diff(array_keys($block), ['type', 'text', 'links']) !== []) {
+                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Il blocco legale contiene campi non consentiti.']);
+            }
+
+            $text = trim((string) ($block['text'] ?? ''));
+            $links = $this->normalizeLegalLinks($block['links'] ?? [], $text, $index, $blockIndex);
+
+            return ['type' => (string) $block['type'], 'text' => $text, 'links' => $links];
         }, array_values($blocks), array_keys(array_values($blocks)));
+
+        $targets = LegalDocumentRegistry::fixedPlaceholderTargets($internalKey, $sectionKey);
+        if ($targets !== null) {
+            $this->validateFixedPlaceholderContract($normalized, $targets, $index);
+        }
+
+        return $normalized;
+    }
+
+    /** @param list<array<string,mixed>> $blocks @param list<string> $targets */
+    private function validateFixedPlaceholderContract(array $blocks, array $targets, int $index): void
+    {
+        $placeholders = [];
+        $links = [];
+        foreach ($blocks as $block) {
+            if (! is_string($block['text'] ?? null)) {
+                continue;
+            }
+            preg_match_all('/\{\{([1-9][0-9]*)\}\}/', $block['text'], $matches);
+            $placeholders = [...$placeholders, ...array_map('intval', $matches[1] ?? [])];
+            $links = [...$links, ...(is_array($block['links'] ?? null) ? $block['links'] : [])];
+        }
+
+        if ($placeholders !== range(1, count($targets)) || count($links) !== count($targets) || array_values(array_column($links, 'target')) !== $targets) {
+            throw ValidationException::withMessages(["sections.{$index}.data.blocks" => 'Questa sezione richiede esattamente due collegamenti configurabili: email e telefono.']);
+        }
     }
 
     /** @return list<array<string,mixed>> */
-    private function normalizeLegalParts(mixed $parts, int $index, int $blockIndex): array
+    private function normalizeLegalLinks(mixed $links, string $text, int $index, int $blockIndex): array
     {
-        if (! is_array($parts)) {
-            throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}.parts" => 'Le parti del blocco non sono valide.']);
+        if (! is_array($links)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}.links" => 'I collegamenti del paragrafo non sono validi.']);
+        }
+        preg_match_all('/\\{\\{([1-9][0-9]*)\\}\\}/', $text, $matches);
+        $placeholders = array_map('intval', $matches[1] ?? []);
+        $expected = $placeholders === [] ? [] : range(1, count($placeholders));
+        if ($placeholders !== $expected || count(array_unique($placeholders)) !== count($placeholders) || count($links) !== count($placeholders)) {
+            throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}.links" => 'I placeholder devono essere sequenziali e avere un solo collegamento configurato.']);
         }
 
-        return array_map(function ($part) use ($index, $blockIndex): array {
-            if (! is_array($part) || ! in_array($part['type'] ?? null, ['text', 'internal_reference', 'center_reference', 'external_reference'], true)) {
-                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Riferimento legale non consentito.']);
+        return array_map(function ($link, int $linkIndex) use ($index, $blockIndex): array {
+            if (! is_array($link) || array_diff(array_keys($link), ['placeholder', 'target', 'label']) !== []) {
+                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}.links.{$linkIndex}" => 'Configurazione collegamento non consentita.']);
             }
-            if ($part['type'] === 'text') {
-                return ['type' => 'text', 'text' => trim((string) ($part['text'] ?? ''))];
-            }
-            if ($part['type'] === 'internal_reference') {
-                $target = (string) ($part['target'] ?? '');
-                if (! in_array($target, ['privacy', 'cookie', 'terms', 'contact'], true)) {
-                    throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Riferimento interno legale non consentito.']);
-                }
-
-                return ['type' => 'internal_reference', 'target' => $target];
-            }
-            if ($part['type'] === 'center_reference') {
-                $field = (string) ($part['field'] ?? '');
-                if (! in_array($field, ['email', 'phone', 'full_address'], true)) {
-                    throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'Riferimento del centro non consentito.']);
-                }
-
-                return ['type' => 'center_reference', 'field' => $field];
+            $placeholder = (int) ($link['placeholder'] ?? 0);
+            $target = trim((string) ($link['target'] ?? ''));
+            $isCenterValue = in_array($target, ['owner_email', 'owner_phone', 'center_address'], true);
+            $isSharedPage = SiteNavigationRegistry::targetExists($target) && ! array_key_exists($target, SiteNavigationRegistry::ACTIONS);
+            if ($placeholder !== $linkIndex + 1 || ! $isCenterValue && ! $isSharedPage) {
+                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}.links.{$linkIndex}" => 'Destinazione del collegamento non valida.']);
             }
 
-            $href = $part['href'] ?? null;
-            if (filled($href) && (! is_string($href) || ! filter_var($href, FILTER_VALIDATE_URL) || ! in_array(parse_url($href, PHP_URL_SCHEME), ['http', 'https'], true))) {
-                throw ValidationException::withMessages(["sections.{$index}.data.blocks.{$blockIndex}" => 'URL esterno legale non valido.']);
-            }
-
-            return ['type' => 'external_reference', 'label' => trim((string) ($part['label'] ?? '')), 'href' => $href ?: null];
-        }, array_values($parts));
+            return array_filter([
+                'placeholder' => $placeholder,
+                'target' => $target,
+                'label' => filled($link['label'] ?? null) ? trim((string) $link['label']) : null,
+            ], static fn (mixed $value): bool => $value !== null);
+        }, array_values($links), array_keys(array_values($links)));
     }
 
     /** @return list<string> */
@@ -292,9 +433,9 @@ class PageContentService
                 'model_overview' => ['eyebrow', 'body', 'items'],
                 'three_reasons' => ['body', 'items'],
                 'integrated_workflow', 'continuity' => ['body', 'image_alt'],
-                'patient_experiences' => ['eyebrow', 'body', 'disclaimer', 'testimonials'],
-                'plus_health_protocol_cta' => ['body', 'link_label'],
-                'orientation_cta' => ['body'],
+                'patient_experiences' => ['eyebrow', 'body'],
+                'plus_health_protocol_cta' => ['body', 'link_label', 'cta_target'],
+                'orientation_cta' => ['body', 'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target'],
                 default => [],
             };
         }
@@ -305,11 +446,11 @@ class PageContentService
                 'promise' => ['eyebrow', 'body', 'values'],
                 'four_pillars' => ['eyebrow', 'body', 'pillars'],
                 'care_path_overview' => ['body', 'items'],
-                'active_listening', 'personalized_care_plan', 'clinical_technology' => ['body', 'image_alt'],
+                'personalized_care_plan', 'clinical_technology' => ['body', 'image_alt'],
                 'patient_education' => ['body', 'callout_eyebrow', 'callout_body'],
                 'person_first' => ['eyebrow', 'body', 'image_alt', 'items'],
                 'method_statement' => ['eyebrow', 'body'],
-                'orientation_cta' => ['body'],
+                'orientation_cta' => ['body', 'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target'],
                 default => [],
             };
         }
@@ -317,8 +458,8 @@ class PageContentService
         if ($internalKey === PageSectionRegistry::CONTACT_INTERNAL_KEY) {
             return match ($sectionKey) {
                 'hero' => ['eyebrow', 'body', 'image_alt'],
-                'location_and_contacts' => ['intro'],
-                'orientation_cta' => ['body'],
+                'location_and_contacts' => ['intro', 'cta_label', 'cta_target'],
+                'orientation_cta' => ['body', 'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target'],
                 default => [],
             };
         }
@@ -328,7 +469,7 @@ class PageContentService
                 'hero' => ['eyebrow', 'body', 'image_alt'],
                 'access_process' => ['intro', 'items'],
                 'conventions_catalog' => ['intro'],
-                'contact_cta' => ['body'],
+                'contact_cta' => ['body', 'primary_cta_label', 'primary_cta_target'],
                 default => [],
             };
         }
@@ -338,7 +479,7 @@ class PageContentService
                 'hero' => ['eyebrow', 'body', 'image_alt'],
                 'professional_profiles' => ['intro', 'subheading', 'items'],
                 'what_we_look_for' => ['intro', 'items'],
-                'application' => ['body', 'privacy_text'],
+                'application' => ['body', 'cta_label', 'privacy_text', 'privacy_target'],
                 default => [],
             };
         }
@@ -347,8 +488,8 @@ class PageContentService
             'hero' => ['eyebrow', 'body', 'image_alt'],
             'intro' => ['body'],
             'coordinated_care', 'continuity' => ['body', 'image_alt'],
-            'why_remedic', 'plus_health_protocol' => ['eyebrow', 'body', 'link_label', 'image_alt'],
-            'orientation_cta' => ['body'],
+            'why_remedic', 'plus_health_protocol' => ['eyebrow', 'body', 'link_label', 'cta_target', 'image_alt'],
+            'orientation_cta' => ['body', 'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target'],
             default => [],
         };
     }
@@ -448,7 +589,8 @@ class PageContentService
     private function normalizeProtocolPillars(mixed $pillars, int $index): array
     {
         $expected = ['rapidity', 'professionalism', 'accessibility', 'humanity'];
-        $labels = ['Rapidità', 'Professionalità', 'Accessibilità', 'Umanità'];
+        $defaults = PageSectionRegistry::protocolPillars();
+        $labels = array_column($defaults, 'label');
         if (! is_array($pillars) || array_values(array_map(fn ($pillar) => is_array($pillar) ? $pillar['semantic_key'] ?? null : null, $pillars)) !== $expected) {
             throw ValidationException::withMessages(["sections.{$index}.data.pillars" => 'I quattro pannelli hanno chiavi e ordine fissi.']);
         }
@@ -465,8 +607,8 @@ class PageContentService
             $normalized[] = [
                 'semantic_key' => $expected[$pillarIndex],
                 'label' => $labels[$pillarIndex],
-                'detail_eyebrow' => isset($pillar['detail_eyebrow']) ? trim((string) $pillar['detail_eyebrow']) : null,
-                'detail_title' => isset($pillar['detail_title']) ? trim((string) $pillar['detail_title']) : null,
+                'detail_eyebrow' => $defaults[$pillarIndex]['detail_eyebrow'],
+                'detail_title' => filled($pillar['detail_title'] ?? null) ? trim((string) $pillar['detail_title']) : $defaults[$pillarIndex]['detail_title'],
                 'detail_description' => trim((string) $pillar['detail_description']),
                 'bullets' => array_values(array_map(fn ($bullet) => trim((string) $bullet), $pillar['bullets'])),
             ];
@@ -479,14 +621,14 @@ class PageContentService
     private function normalizeFixedCarePathItems(mixed $items, int $index): array
     {
         $expected = ['active_listening', 'personalized_care_plan', 'clinical_technology', 'patient_education'];
-        $allowedIcons = ['message', 'clipboard', 'microscope', 'info'];
+        $icons = ['message', 'clipboard', 'microscope', 'info'];
         if (! is_array($items) || array_values(array_map(fn ($item) => is_array($item) ? $item['semantic_key'] ?? null : null, $items)) !== $expected) {
             throw ValidationException::withMessages(["sections.{$index}.data.items" => 'I quattro passaggi hanno chiavi e ordine fissi.']);
         }
 
-        return array_map(function (array $item, int $itemIndex) use ($expected, $allowedIcons, $index): array {
+        return array_map(function (array $item, int $itemIndex) use ($expected, $icons, $index): array {
             $unknown = array_diff(array_keys($item), ['semantic_key', 'title', 'description', 'icon_key']);
-            if ($unknown !== [] || ! isset($item['title'], $item['description'], $item['icon_key']) || ! in_array($item['icon_key'], $allowedIcons, true)) {
+            if ($unknown !== [] || ! isset($item['title'], $item['description'], $item['icon_key']) || $item['icon_key'] !== $icons[$itemIndex]) {
                 throw ValidationException::withMessages(["sections.{$index}.data.items.{$itemIndex}" => 'Il passaggio contiene dati non consentiti.']);
             }
 
@@ -494,7 +636,7 @@ class PageContentService
                 'semantic_key' => $expected[$itemIndex],
                 'title' => trim((string) $item['title']),
                 'description' => trim((string) $item['description']),
-                'icon_key' => (string) $item['icon_key'],
+                'icon_key' => $icons[$itemIndex],
             ];
         }, array_values($items), array_keys(array_values($items)));
     }
@@ -546,7 +688,7 @@ class PageContentService
     }
 
     /** @param array<string, mixed> $payload */
-    private function syncFaqs(Page $page, array $payload): void
+    private function syncFaqs(Page $page, array $payload): bool
     {
         if ((string) $page->internal_key !== HomePageRegistry::INTERNAL_KEY && PageSectionRegistry::hasDefinitionsFor((string) $page->internal_key)
             && (($payload['faqs'] ?? []) !== [] || ($payload['removed_faq_ids'] ?? []) !== [])) {
@@ -556,16 +698,18 @@ class PageContentService
         }
 
         if (! array_key_exists('faqs', $payload) && ! array_key_exists('removed_faq_ids', $payload)) {
-            return;
+            return false;
         }
+
+        $changed = false;
 
         $removedIds = array_values(array_unique(array_map('intval', $payload['removed_faq_ids'] ?? [])));
         if ($removedIds !== []) {
-            $page->faqs()->whereIn('id', $removedIds)->delete();
+            $changed = $page->faqs()->whereIn('id', $removedIds)->delete() > 0;
         }
 
         if (! array_key_exists('faqs', $payload)) {
-            return;
+            return $changed;
         }
 
         /** @var array<int, FaqItem> $existing */
@@ -592,7 +736,10 @@ class PageContentService
 
             if ($faq->isDirty()) {
                 $faq->save();
+                $changed = true;
             }
         }
+
+        return $changed;
     }
 }

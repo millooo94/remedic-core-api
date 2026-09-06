@@ -14,6 +14,8 @@ class SiteIndexPageMediaController extends Controller
         'hero_video' => ['field' => 'hero_video_path', 'kind' => 'video'],
         'hero_poster' => ['field' => 'hero_poster_path', 'kind' => 'image'],
         'intro_split_image' => ['field' => 'intro_split_image_path', 'kind' => 'image'],
+        'og_image' => ['field' => 'og_image_path', 'kind' => 'image'],
+        'twitter_image' => ['field' => 'twitter_image_path', 'kind' => 'image'],
     ];
 
     public function __construct(private readonly ManagedMediaService $media) {}
@@ -38,7 +40,10 @@ class SiteIndexPageMediaController extends Controller
     private function definition(SiteIndexPage $page, string $slot): array
     {
         abort_unless(isset(self::SLOTS[$slot]), 404);
-        abort_unless($page->internal_key === 'aesthetic_medicine_index' || in_array($slot, ['hero_video', 'hero_poster'], true) && $page->internal_key === 'diagnostics_index', 404);
+        $slotIsAllowed = ($page->internal_key === 'conventions_network_index' && in_array($slot, ['og_image', 'twitter_image'], true))
+            || $page->internal_key === 'aesthetic_medicine_index'
+            || (in_array($slot, ['hero_video', 'hero_poster'], true) && $page->internal_key === 'diagnostics_index');
+        abort_unless($slotIsAllowed, 404);
         abort_unless(! ($slot === 'intro_split_image' && $page->internal_key !== 'aesthetic_medicine_index'), 404);
 
         return self::SLOTS[$slot];
@@ -50,6 +55,8 @@ class SiteIndexPageMediaController extends Controller
             'hero_video_url' => PublicMediaUrl::fromPublicDisk($page->hero_video_path, request()),
             'hero_poster_url' => PublicMediaUrl::fromPublicDisk($page->hero_poster_path, request()),
             'intro_split_image_url' => PublicMediaUrl::fromPublicDisk($page->intro_split_image_path, request()),
+            'og_image_url' => PublicMediaUrl::fromPublicDisk($page->og_image_path, request()),
+            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($page->twitter_image_path, request()),
         ];
     }
 }

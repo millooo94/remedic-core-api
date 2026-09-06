@@ -186,8 +186,8 @@ class SitePopupProjectionService
             return null;
         }
         $resolved = $this->navigation->target($target, app(PublicLocaleResolver::class)->resolve($request));
-        if ($resolved['publication_state'] === 'action') {
-            return ['label' => $label, 'action' => $target];
+        if ($resolved['is_action']) {
+            return array_filter(['label' => $label, 'action' => $resolved['action'] ?? $target, 'href' => $resolved['href']], static fn (mixed $value): bool => $value !== null);
         }
 
         return $resolved['href'] === null ? null : ['label' => $label, 'href' => $resolved['href']];

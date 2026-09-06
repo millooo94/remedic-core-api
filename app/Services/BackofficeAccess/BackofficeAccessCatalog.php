@@ -51,6 +51,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
                 AdminPermission::MANAGE_SITE_POPUP->value,
                 AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value,
+                AdminPermission::MANAGE_NEWSLETTER_CAMPAIGNS->value,
                 AdminPermission::MANAGE_CONSENT_CONFIGURATION->value,
                 AdminPermission::VIEW_CONSENT_RECORDS->value,
                 AdminPermission::MANAGE_USERS->value,
@@ -75,6 +76,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
                 AdminPermission::MANAGE_SITE_POPUP->value,
                 AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value,
+                AdminPermission::MANAGE_NEWSLETTER_CAMPAIGNS->value,
                 AdminPermission::MANAGE_SEARCH->value,
             ],
             AdminRole::SEO_MANAGER->value => [
@@ -95,6 +97,7 @@ final class BackofficeAccessCatalog
                 AdminPermission::MANAGE_SITE_NAVIGATION->value,
                 AdminPermission::MANAGE_SITE_POPUP->value,
                 AdminPermission::MANAGE_NEWSLETTER_SUBSCRIBERS->value,
+                AdminPermission::MANAGE_NEWSLETTER_CAMPAIGNS->value,
                 AdminPermission::MANAGE_CONSENT_CONFIGURATION->value,
                 AdminPermission::PUBLISH_CONTENT->value,
                 AdminPermission::MANAGE_SEO_FIELDS->value,

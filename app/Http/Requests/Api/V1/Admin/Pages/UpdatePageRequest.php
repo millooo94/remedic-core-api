@@ -53,10 +53,10 @@ class UpdatePageRequest extends FormRequest
             'meta_keywords' => ['nullable', 'string'],
             'faq_enabled' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
-            'published_at' => ['nullable', 'date'],
             'sections' => ['sometimes', 'array'],
             'sections.*.key' => ['required', 'string', 'max:255', 'distinct'],
             'sections.*.title' => ['nullable', 'string', 'max:255'],
+            'sections.*.internal_title' => ['nullable', 'string', 'max:255'],
             'sections.*.subtitle' => ['nullable', 'string', 'max:255'],
             'sections.*.content' => ['nullable', 'string'],
             'sections.*.extra_json' => ['nullable', 'array'],
@@ -73,10 +73,6 @@ class UpdatePageRequest extends FormRequest
             'removed_faq_ids' => ['sometimes', 'array'],
             'removed_faq_ids.*' => ['required', 'integer', 'distinct'],
         ];
-
-        if ($isHomepage) {
-            unset($rules['published_at']);
-        }
 
         return $rules;
     }

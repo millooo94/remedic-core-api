@@ -25,6 +25,7 @@ enum AdminPermission: string
     case MANAGE_SITE_NAVIGATION = 'manage site navigation';
     case MANAGE_SITE_POPUP = 'manage site popup';
     case MANAGE_NEWSLETTER_SUBSCRIBERS = 'manage newsletter subscribers';
+    case MANAGE_NEWSLETTER_CAMPAIGNS = 'manage newsletter campaigns';
     case MANAGE_CONSENT_CONFIGURATION = 'manage consent configuration';
     case VIEW_CONSENT_RECORDS = 'view consent records';
     case MANAGE_USERS = 'manage users';

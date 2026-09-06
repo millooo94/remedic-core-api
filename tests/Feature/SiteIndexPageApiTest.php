@@ -50,7 +50,7 @@ class SiteIndexPageApiTest extends TestCase
         $medical->update(['title' => 'Copy conservata']);
         $initializer->initialize();
 
-        $this->assertSame(7, SiteIndexPage::query()->count());
+        $this->assertSame(8, SiteIndexPage::query()->count());
         $this->assertSame('Copy conservata', $medical->fresh()->title);
         $this->assertSame(SiteIndexPageRegistry::KEYS, SiteIndexPage::query()->orderBy('id')->pluck('internal_key')->all());
         $this->assertFalse(SiteIndexPageRegistry::contains('arbitrary_index'));
@@ -62,7 +62,8 @@ class SiteIndexPageApiTest extends TestCase
         $this->assertSame('/news', SiteIndexPage::query()->where('internal_key', 'news_index')->value('canonical_url'));
         $this->assertSame('/pillole-di-salute', SiteIndexPage::query()->where('internal_key', 'health_pills_index')->value('canonical_url'));
         $this->assertSame($legacyPageCount, Page::query()->whereIn('slug', ['aree-mediche', 'equipe', 'check-up'])->count());
-        $this->assertSame(0, Section::query()->where('sectionable_type', SiteIndexPage::class)->count());
+        $this->assertSame(2, Section::query()->where('sectionable_type', SiteIndexPage::class)->count());
+        $this->assertSame(['hero', 'specialties_catalog'], $medical->sections()->pluck('key')->all());
         $this->assertSame(0, FaqItem::query()->where('faqable_type', SiteIndexPage::class)->count());
     }
 
@@ -77,15 +78,12 @@ class SiteIndexPageApiTest extends TestCase
 
         $this->putJson("/api/v1/admin/index-pages/{$page->id}", [
             'title' => 'Prevenzione', 'content' => $payload, 'seo_title' => 'SEO', 'seo_h1' => 'H1',
-            'seo_description' => 'Descrizione', 'is_active' => true, 'published_at' => now()->subMinute()->toIso8601String(),
+            'seo_description' => 'Descrizione', 'is_active' => true,
         ])->assertOk()
-            ->assertJsonPath('data.publication_state', 'published')
             ->assertJsonPath('data.content.final_cta_eyebrow', 'Hai bisogno di aiuto?');
 
-        $page->update(['published_at' => now()->addDay()]);
-        $this->assertSame('scheduled', $page->fresh()->publicationState()->value);
         $page->update(['is_active' => false]);
-        $this->assertSame('suspended', $page->fresh()->publicationState()->value);
+        $this->assertFalse($page->fresh()->isPubliclyAvailable());
 
         $arbitrary = SiteIndexPage::query()->create(['internal_key' => 'arbitrary_index', 'title' => 'No', 'slug' => 'no', 'content' => []]);
         $this->putJson("/api/v1/admin/index-pages/{$arbitrary->id}", ['title' => 'No', 'content' => []])->assertNotFound();
@@ -108,13 +106,43 @@ class SiteIndexPageApiTest extends TestCase
             ->assertJsonPath('data.result_count', 1)
             ->assertJsonPath('data.items.0.public_slug', 'cardiologia')
             ->assertJsonPath('data.items.0.href', '/aree-mediche/cardiologia')
-            ->assertJsonPath('data.items.0.short_description', 'Cuore');
+            ->assertJsonPath('data.items.0.short_description', 'Cuore')
+            ->assertJsonCount(2, 'data.sections')
+            ->assertJsonPath('data.sections.1.key', 'specialties_catalog');
         $this->getJson('/api/v1/public/site-indexes/equipe_index?q=Ada&area=cardiologia')->assertOk()
             ->assertJsonPath('data.result_count', 1)
             ->assertJsonPath('data.items.0.href', '/equipe/ada-rossi')
             ->assertJsonPath('data.items.0.primary_area.public_slug', 'cardiologia')
             ->assertJsonPath('data.available_areas.0.public_slug', 'cardiologia');
         $this->getJson('/api/v1/public/site-indexes/equipe_index?area=nascosta')->assertOk()->assertJsonPath('data.result_count', 0);
+    }
+
+    #[Test]
+    public function medical_areas_index_keeps_only_hero_copy_and_a_toggleable_derived_catalogue(): void
+    {
+        $this->publishIndexes('medical_areas_index');
+        $area = Specialization::query()->create(['name' => 'Cardiologia', 'slug' => 'cardiologia-master', 'is_active' => true]);
+        SpecializationWebProfile::query()->create(['specialization_id' => $area->id, 'slug' => 'cardiologia', 'short_description' => 'Cuore', 'is_web_enabled' => true]);
+        $index = SiteIndexPage::query()->where('internal_key', 'medical_areas_index')->firstOrFail();
+
+        $this->actingAsWebAdmin();
+        $this->putJson("/api/v1/admin/index-pages/{$index->id}", [
+            'title' => $index->title,
+            'content' => ['eyebrow' => 'AREE MEDICHE', 'title' => 'Specialità e aree mediche', 'body' => 'Esplora le specialità Remedic.'],
+            'sections' => [
+                ['key' => 'hero', 'internal_title' => 'Hero / introduzione', 'is_active' => true],
+                ['key' => 'specialties_catalog', 'internal_title' => 'Tentativo non modificabile', 'is_active' => false],
+            ],
+            'is_active' => true,
+        ])->assertOk()
+            ->assertJsonPath('data.sections.1.internal_title', 'Elenco specialità')
+            ->assertJsonPath('data.sections.1.is_active', false);
+
+        $this->getJson('/api/v1/public/site-indexes/medical_areas_index')->assertOk()
+            ->assertJsonPath('data.result_count', 0)
+            ->assertJsonCount(0, 'data.items')
+            ->assertJsonMissingPath('data.content.search_placeholder')
+            ->assertJsonMissingPath('data.content.card_cta_label');
     }
 
     #[Test]
@@ -200,15 +228,14 @@ class SiteIndexPageApiTest extends TestCase
         $this->assertSame('/diagnostica', $sections['diagnostics']['data']['index_action']['href']);
         $this->assertSame('/medicina-estetica', $sections['aesthetic_medicine']['data']['index_action']['href']);
 
-        SiteIndexPage::query()->where('internal_key', 'checkups_index')->update(['published_at' => null]);
         $draftSections = collect(app(HomePagePublicProjection::class)->project($home->fresh(), Request::create('/'))['sections'])->keyBy('key');
-        $this->assertSame(['target' => 'checkups_index'], $draftSections['checkups']['data']['index_action']);
+        $this->assertSame('/check-up', $draftSections['checkups']['data']['index_action']['href']);
     }
 
     private function publishIndexes(string ...$keys): void
     {
         app(SiteIndexPageInitializer::class)->initialize();
-        SiteIndexPage::query()->whereIn('internal_key', $keys)->update(['is_active' => true, 'published_at' => now()->subMinute()]);
+        SiteIndexPage::query()->whereIn('internal_key', $keys)->update(['is_active' => true]);
     }
 
     private function actingAsWebAdmin(): void

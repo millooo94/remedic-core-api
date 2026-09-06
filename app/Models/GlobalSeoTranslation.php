@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GlobalSeoTranslation extends Model
 {
-    protected $fillable = ['locale', 'default_meta_title', 'default_meta_description', 'publication_state'];
+    protected $fillable = ['locale', 'default_meta_title', 'default_meta_description'];
 
     protected function casts(): array
     {
@@ -16,6 +16,6 @@ class GlobalSeoTranslation extends Model
 
     public function isPubliclyAvailable(): bool
     {
-        return $this->publication_state === 'published' && filled($this->default_meta_title);
+        return filled($this->default_meta_title);
     }
 }

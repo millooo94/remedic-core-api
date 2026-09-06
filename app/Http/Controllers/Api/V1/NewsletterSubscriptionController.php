@@ -6,8 +6,10 @@ use App\Mail\NewsletterConfirmationMail;
 use App\Models\NewsletterSubscriber;
 use App\Services\NewsletterSubscriptionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use LogicException;
 
 class NewsletterSubscriptionController
 {
@@ -21,34 +23,62 @@ class NewsletterSubscriptionController
 
         if ($result['token'] !== null) {
             Mail::to($result['subscriber']->email)->send(new NewsletterConfirmationMail(
-                route('newsletter.confirm', ['token' => $result['token']]),
+                route('newsletter.confirm', ['token' => $result['token'], 'locale' => $this->locale($request)]),
             ));
         }
 
         return response()->json([
-            'message' => 'Se l’indirizzo può essere iscritto, riceverai a breve un’email di conferma.',
+            'message' => 'If this address can be subscribed, a confirmation email will be sent shortly.',
         ], 202);
     }
 
-    public function confirm(Request $request, NewsletterSubscriptionService $subscriptions): JsonResponse
+    /** Core owns token validation and only redirects to trusted, fixed Website paths. */
+    public function confirm(Request $request, NewsletterSubscriptionService $subscriptions): RedirectResponse
     {
-        $validated = $request->validate(['token' => ['required', 'string', 'size:64']]);
-        $subscriber = $subscriptions->confirm($validated['token']);
+        $token = $request->query('token');
+        $subscriber = is_string($token) && preg_match('/^[a-f0-9]{64}$/i', $token)
+            ? $subscriptions->confirm($token)
+            : null;
 
-        if ($subscriber === null) {
-            return response()->json([
-                'message' => 'Il link di conferma non è valido o è scaduto. Richiedi una nuova iscrizione.',
-            ], 422);
-        }
-
-        return response()->json(['data' => ['status' => $subscriber->status->value]]);
+        return $this->redirectToWebsite($request, 'conferma', $subscriber === null ? 'invalid' : 'confirmed');
     }
 
-    public function unsubscribe(string $publicId, NewsletterSubscriptionService $subscriptions): JsonResponse
+    /** The signed URL remains verified by Core; Website receives only a controlled outcome. */
+    public function unsubscribe(Request $request, string $publicId, NewsletterSubscriptionService $subscriptions): RedirectResponse
     {
-        $subscriber = NewsletterSubscriber::query()->where('public_id', $publicId)->firstOrFail();
-        $subscriber = $subscriptions->unsubscribe($subscriber);
+        if (! $request->hasValidSignature()) {
+            return $this->redirectToWebsite($request, 'disiscrizione', 'invalid');
+        }
 
-        return response()->json(['data' => ['status' => $subscriber->status->value]]);
+        $subscriber = NewsletterSubscriber::query()->where('public_id', $publicId)->first();
+        if ($subscriber === null) {
+            return $this->redirectToWebsite($request, 'disiscrizione', 'invalid');
+        }
+
+        $alreadyUnsubscribed = $subscriber->status->value === 'unsubscribed';
+        $subscriptions->unsubscribe($subscriber);
+
+        return $this->redirectToWebsite($request, 'disiscrizione', $alreadyUnsubscribed ? 'already_unsubscribed' : 'unsubscribed');
+    }
+
+    private function redirectToWebsite(Request $request, string $path, string $status): RedirectResponse
+    {
+        $baseUrl = rtrim((string) config('newsletter.website_url'), '/');
+        $parts = parse_url($baseUrl);
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || ! in_array($parts['scheme'], ['http', 'https'], true) || isset($parts['query'], $parts['fragment'])) {
+            throw new LogicException('PUBLIC_WEBSITE_URL must be an absolute HTTP(S) origin without a query string or fragment.');
+        }
+
+        $locale = $this->locale($request);
+        $prefix = $locale === 'it' ? '' : '/'.$locale;
+
+        return redirect()->away($baseUrl.$prefix.'/newsletter/'.$path.'?status='.rawurlencode($status));
+    }
+
+    private function locale(Request $request): string
+    {
+        $locale = $request->query('locale', 'it');
+
+        return is_string($locale) && in_array($locale, ['it', 'en', 'es', 'fr'], true) ? $locale : 'it';
     }
 }

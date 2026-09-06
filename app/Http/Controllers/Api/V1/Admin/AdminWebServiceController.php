@@ -109,6 +109,38 @@ class AdminWebServiceController extends Controller
         return new ServiceWebProfileResource($this->load($service));
     }
 
+    public function uploadOgImage(UploadMasterImageRequest $request, Service $service): ServiceWebProfileResource
+    {
+        $profile = $service->webProfile;
+        if ($profile === null) {
+            throw ValidationException::withMessages(['og_image' => 'Salva prima la configurazione Web della Prestazione.']);
+        }
+
+        $this->media->replace($profile, 'og_image_path', $request->file('image'), "service-web-profiles/{$profile->id}/og");
+
+        return new ServiceWebProfileResource($this->load($service));
+    }
+
+    public function deleteOgImage(Service $service): ServiceWebProfileResource
+    {
+        $profile = $service->webProfile;
+        if ($profile !== null) {
+            $this->media->delete($profile, 'og_image_path', ["service-web-profiles/{$profile->id}/og"]);
+        }
+
+        return new ServiceWebProfileResource($this->load($service));
+    }
+
+    public function deleteTwitterImage(Service $service): ServiceWebProfileResource
+    {
+        $profile = $service->webProfile;
+        if ($profile !== null) {
+            $this->media->delete($profile, 'twitter_image_path', ["service-web-profiles/{$profile->id}/twitter"]);
+        }
+
+        return new ServiceWebProfileResource($this->load($service));
+    }
+
     private function load(Service $service): Service
     {
         return $service->refresh()->load($this->relations());

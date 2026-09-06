@@ -154,7 +154,7 @@ final class PublicSearchIndexer
             Page::class => ['page', $locale === SupportedLocale::IT ? '/'.$owner->slug : '/'.$locale->value.'/'.$owner->slug, $owner->title, null, $owner->hero_image_path],
             SiteIndexPage::class => ['index', $this->routes->path(match ($owner->internal_key) {
                 'medical_areas_index' => 'medical_areas', 'equipe_index' => 'team', 'checkups_index' => 'checkups',
-                'diagnostics_index' => 'diagnostics', 'aesthetic_medicine_index' => 'aesthetic_medicine', 'news_index' => 'news', 'health_pills_index' => 'health_tips',
+                'diagnostics_index' => 'diagnostics', 'aesthetic_medicine_index' => 'aesthetic_medicine', 'news_index' => 'news', 'health_pills_index' => 'health_tips', 'conventions_network_index' => 'conventions_network',
             }, $locale), $owner->title, null, $owner->hero_poster_path],
             SpecializationWebProfile::class => ['medical_area', $this->routes->path('medical_areas', $locale, $owner->slug), $owner->specialization?->name, null, $owner->specialization?->featured_image_path],
             ServiceWebProfile::class => ['service', $this->routes->path('services', $locale, $owner->public_slug), $owner->service?->publicLabel(), null, $owner->service?->featured_image_path],

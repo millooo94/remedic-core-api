@@ -228,6 +228,38 @@ class SitePopupApiTest extends TestCase
             ->assertJsonPath('data.events.0.end_at', $event->end_at->toIso8601String());
     }
 
+    #[Test]
+    public function popup_locales_are_created_on_first_save_and_follow_the_shared_review_workflow(): void
+    {
+        $this->actingAsWebAdmin();
+        $this->save(['is_active' => true, 'eyebrow' => 'Avviso', 'title' => 'Titolo italiano', 'body' => 'Testo italiano', 'primary_cta_label' => 'Prenota', 'primary_cta_target' => 'booking', 'secondary_cta_label' => 'Scopri', 'secondary_cta_target' => 'center']);
+        $popup = SitePopup::query()->firstOrFail();
+        $global = $popup->only(['source_type', 'promotion_id', 'event_id', 'start_at', 'end_at', 'image_path', 'primary_cta_target', 'secondary_cta_target', 'campaign_version']);
+
+        $this->getJson('/api/v1/admin/localized-singletons/popup/1/en')->assertOk()->assertJsonPath('data.status', 'missing')->assertJsonPath('data.translation', null);
+        $this->putJson('/api/v1/admin/localized-singletons/popup/1/en', ['eyebrow' => 'Notice', 'title' => 'English title', 'body' => 'English body', 'primary_cta_label' => 'Book', 'secondary_cta_label' => 'Discover', 'publication_state' => 'draft'])
+            ->assertCreated()->assertJsonPath('data.status', 'needs_review');
+        $this->assertDatabaseHas('site_popup_translations', ['site_popup_id' => 1, 'locale' => 'en', 'eyebrow' => 'Notice', 'title' => 'English title', 'body' => 'English body', 'primary_cta_label' => 'Book', 'secondary_cta_label' => 'Discover']);
+        $this->assertSame($global, $popup->refresh()->only(array_keys($global)));
+        $this->getJson('/api/v1/public/site/popup?locale=en')->assertNotFound();
+
+        $this->putJson('/api/v1/admin/localized-singletons/popup/1/en', ['eyebrow' => 'Updated notice', 'title' => 'Updated English title', 'body' => 'Updated English body', 'primary_cta_label' => 'Reserve', 'secondary_cta_label' => 'Learn more', 'publication_state' => 'published'])
+            ->assertOk()->assertJsonPath('data.status', 'published');
+        $this->getJson('/api/v1/public/site/popup?locale=en')->assertOk()->assertJsonPath('data.title', 'Updated English title')->assertJsonPath('data.primary_cta.label', 'Reserve');
+
+        $this->save(['title' => 'Titolo italiano aggiornato']);
+        $this->getJson('/api/v1/admin/localized-singletons/popup/1/en')->assertOk()->assertJsonPath('data.status', 'needs_review');
+        $this->getJson('/api/v1/public/site/popup?locale=en')->assertNotFound();
+        $this->putJson('/api/v1/admin/localized-singletons/popup/1/en', ['title' => 'Updated English title', 'publication_state' => 'published'])
+            ->assertOk()->assertJsonPath('data.status', 'published');
+        $this->getJson('/api/v1/public/site/popup?locale=en')->assertOk()->assertJsonPath('data.title', 'Updated English title');
+
+        foreach (['es' => 'Título español', 'fr' => 'Titre français'] as $locale => $title) {
+            $this->putJson("/api/v1/admin/localized-singletons/popup/1/{$locale}", ['title' => $title, 'publication_state' => 'draft'])->assertCreated();
+        }
+        $this->assertSame(1, SitePopup::query()->firstOrFail()->translations()->where('locale', 'en')->count());
+    }
+
     private function save(array $overrides = [])
     {
         return $this->putJson('/api/v1/admin/site-popup', $this->payload($overrides));

@@ -15,6 +15,12 @@ final class LegalDocumentRegistry
 
     public const HERO_KEY = 'legal_hero';
 
+    /** @var array<string, array<string, list<string>>> */
+    private const FIXED_PLACEHOLDER_TARGETS = [
+        self::PRIVACY => ['controller_contacts' => ['owner_email', 'owner_phone']],
+        self::TERMS => ['contacts' => ['owner_email', 'owner_phone']],
+    ];
+
     /** @var array<string, list<array{key: string, title: string}>> */
     private const SECTIONS = [
         self::PRIVACY => [
@@ -31,6 +37,12 @@ final class LegalDocumentRegistry
     public static function isLegal(string $internalKey): bool
     {
         return array_key_exists($internalKey, self::SECTIONS);
+    }
+
+    /** @return list<string>|null */
+    public static function fixedPlaceholderTargets(string $internalKey, string $sectionKey): ?array
+    {
+        return self::FIXED_PLACEHOLDER_TARGETS[$internalKey][$sectionKey] ?? null;
     }
 
     /** @return list<string> */
@@ -58,7 +70,7 @@ final class LegalDocumentRegistry
         foreach (self::SECTIONS[$internalKey] ?? [] as $order => $section) {
             $definitions[$section['key']] = [
                 'label' => $section['title'],
-                'summary' => $section['key'] === self::HERO_KEY ? 'Identità e data editoriale del documento.' : 'Contenuto legale strutturato.',
+                'summary' => $section['key'] === self::HERO_KEY ? 'Identità e introduzione del documento. La data è aggiornata automaticamente.' : 'Contenuto legale strutturato.',
                 'editor' => $section['key'] === self::HERO_KEY ? 'legal-hero' : 'legal-content',
                 'default_sort_order' => $order,
                 'capabilities' => $section['key'] === self::HERO_KEY ? ['edit'] : ['edit', 'toggle', 'reorder'],
@@ -76,7 +88,7 @@ final class LegalDocumentRegistry
         return array_values(array_filter(array_map(function (array $section, int $order) use ($page): array {
             $hero = $section['key'] === self::HERO_KEY;
 
-            return ['key' => $section['key'], 'title' => $section['title'], 'content' => $hero ? self::heroDescription((string) $page->internal_key) : null, 'extra_json' => $hero ? ['eyebrow' => 'INFORMAZIONI LEGALI', 'last_updated_on' => '2026-08-07', 'blocks' => []] : ['blocks' => []], 'sort_order' => $order, 'is_active' => true];
+            return ['key' => $section['key'], 'title' => $section['title'], 'content' => $hero ? self::heroDescription((string) $page->internal_key) : null, 'extra_json' => $hero ? ['eyebrow' => 'INFORMAZIONI LEGALI', 'blocks' => []] : ['blocks' => []], 'sort_order' => $order, 'is_active' => true];
         }, self::SECTIONS[(string) $page->internal_key] ?? [], array_keys(self::SECTIONS[(string) $page->internal_key] ?? [])), fn (array $section): bool => ! in_array($section['key'], $existing, true)));
     }
 

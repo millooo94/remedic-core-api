@@ -41,6 +41,7 @@ class ServiceWebProfile extends Model
         'robots',
         'og_title',
         'og_description',
+        'og_image_path',
         'twitter_title',
         'twitter_description',
         'twitter_image_path',

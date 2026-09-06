@@ -30,7 +30,7 @@ class SeoController extends Controller
     {
         $locale = $this->locales->resolve($request);
         $settings = SiteSetting::current();
-        $translation = GlobalSeoTranslation::query()->where('locale', $locale->value)->where('publication_state', 'published')->first();
+        $translation = GlobalSeoTranslation::query()->where('locale', $locale->value)->first();
         abort_if($locale->value !== 'it' && $translation === null, 404);
         $siteName = $settings->site_name ?: $settings->brand_name ?: $settings->clinic_name;
         $sameAs = collect([$settings->facebook_url, $settings->instagram_url, $settings->tiktok_url, $settings->youtube_url, $settings->linkedin_url])->filter()->values()->all();
@@ -73,12 +73,12 @@ class SeoController extends Controller
         $locale = $this->locales->resolve($request);
         $settings = SiteSetting::current();
         $items = collect([['path' => $this->routes->homepage($locale), 'type' => 'homepage', 'last_modified' => $settings->updated_at]])
-            ->concat($this->localized->publicTranslations(Page::query()->with('translations')->active()->published(), $locale)->where(fn ($query) => $query->whereNull('internal_key')->orWhere('internal_key', '!=', Page::HOME_INTERNAL_KEY))->get()->reject(fn (Page $page): bool => $page->isLegacyCheckupPage())->map(function (Page $page) use ($locale): array {
+            ->concat($this->localized->publicTranslations(Page::query()->with('translations')->active(), $locale)->where(fn ($query) => $query->whereNull('internal_key')->orWhere('internal_key', '!=', Page::HOME_INTERNAL_KEY))->get()->reject(fn (Page $page): bool => $page->isLegacyCheckupPage())->map(function (Page $page) use ($locale): array {
                 $translation = $page->translations->firstWhere('locale', $locale);
 
                 return ['path' => $locale->value === 'it' ? ($page->canonical_url ?: '/'.$page->slug) : '/'.$locale->value.'/'.$translation->slug, 'type' => 'page', 'last_modified' => $page->updated_at];
             }))
-            ->concat(SiteIndexPage::query()->with('translations')->active()->published()->get()->filter(function (SiteIndexPage $page) use ($locale): bool {
+            ->concat(SiteIndexPage::query()->with('translations')->active()->get()->filter(function (SiteIndexPage $page) use ($locale): bool {
                 $translation = $page->translations->firstWhere('locale', $locale);
 
                 return $locale->value === 'it' || $translation?->isPubliclyAvailable();
@@ -133,6 +133,7 @@ class SeoController extends Controller
             'aesthetic_medicine_index' => 'aesthetic_medicine',
             'news_index' => 'news',
             'health_pills_index' => 'health_tips',
+            'conventions_network_index' => 'conventions_network',
         }, $locale);
     }
 }

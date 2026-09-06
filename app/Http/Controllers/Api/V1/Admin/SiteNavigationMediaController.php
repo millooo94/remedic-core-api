@@ -51,6 +51,51 @@ class SiteNavigationMediaController extends Controller
         return response()->json(['data' => $this->media($navigation->refresh(), $request)]);
     }
 
+    public function storeGroupItemIcon(Request $request, string $group, string $item)
+    {
+        $request->validate(['file' => ['required', 'image', 'mimes:png,webp', 'max:2048']]);
+        $navigation = $this->initializer->initialize();
+        $configuration = $this->projection->configuration($navigation);
+        $groups = $configuration['center_mega_menu']['groups'];
+        $groupIndex = collect($groups)->search(fn (array $candidate): bool => $candidate['key'] === $group);
+        abort_unless($groupIndex !== false, 404);
+        $itemIndex = collect($groups[$groupIndex]['items'])->search(fn (array $candidate): bool => $candidate['key'] === $item);
+        abort_unless($itemIndex !== false, 404);
+
+        $oldPath = $groups[$groupIndex]['items'][$itemIndex]['icon_path'] ?? null;
+        $newPath = $request->file('file')->store('site-navigation/center-mega-menu-icons/'.$group.'/'.$item, 'public');
+        $groups[$groupIndex]['items'][$itemIndex]['icon_path'] = $newPath;
+        $configuration['center_mega_menu']['groups'] = $groups;
+        try {
+            DB::transaction(fn () => $navigation->update(['configuration' => $configuration]));
+        } catch (Throwable $error) {
+            Storage::disk('public')->delete($newPath);
+            throw $error;
+        }
+        $this->deleteGroupItemIconFile($oldPath, $group, $item);
+
+        return response()->json(['data' => $this->projection->admin($navigation->refresh(), $request)]);
+    }
+
+    public function destroyGroupItemIcon(Request $request, string $group, string $item)
+    {
+        $navigation = $this->initializer->initialize();
+        $configuration = $this->projection->configuration($navigation);
+        $groups = $configuration['center_mega_menu']['groups'];
+        $groupIndex = collect($groups)->search(fn (array $candidate): bool => $candidate['key'] === $group);
+        abort_unless($groupIndex !== false, 404);
+        $itemIndex = collect($groups[$groupIndex]['items'])->search(fn (array $candidate): bool => $candidate['key'] === $item);
+        abort_unless($itemIndex !== false, 404);
+
+        $oldPath = $groups[$groupIndex]['items'][$itemIndex]['icon_path'] ?? null;
+        $groups[$groupIndex]['items'][$itemIndex]['icon_path'] = null;
+        $configuration['center_mega_menu']['groups'] = $groups;
+        DB::transaction(fn () => $navigation->update(['configuration' => $configuration]));
+        $this->deleteGroupItemIconFile($oldPath, $group, $item);
+
+        return response()->json(['data' => $this->projection->admin($navigation->refresh(), $request)]);
+    }
+
     public function storeSectionIcon(Request $request, string $section)
     {
         $request->validate(['file' => ['required', 'image', 'mimes:png,webp', 'max:2048']]);
@@ -106,5 +151,13 @@ class SiteNavigationMediaController extends Controller
         }
 
         Storage::disk('public')->delete($path);
+    }
+
+    private function deleteGroupItemIconFile(mixed $path, string $group, string $item): void
+    {
+        $directory = 'site-navigation/center-mega-menu-icons/'.$group.'/'.$item.'/';
+        if (is_string($path) && Str::startsWith($path, $directory)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 }

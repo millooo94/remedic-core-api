@@ -22,13 +22,9 @@ class LocalizedContentResolver
         }
 
         return $query->whereHas('translations', function (Builder $translations) use ($locale): void {
-            $translations->where('locale', $locale->value)->where('publication_state', 'published')
+            $translations->where('locale', $locale->value)
                 ->whereNotNull('title')->where('title', '<>', '')
-                ->whereNotNull('slug')->where('slug', '<>', '')
-                ->where(function (Builder $review): void {
-                    $review->where('locale', SupportedLocale::IT->value)
-                        ->orWhereColumn('source_revision', 'reviewed_source_revision');
-                });
+                ->whereNotNull('slug')->where('slug', '<>', '');
         });
     }
 

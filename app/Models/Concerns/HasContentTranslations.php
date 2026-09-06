@@ -7,6 +7,7 @@ use App\Models\BlogPost;
 use App\Models\CheckupWebProfile;
 use App\Models\ConsentCategory;
 use App\Models\ContentTranslation;
+use App\Models\ConventionPartnerWebProfile;
 use App\Models\Page;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\ServiceWebProfile;
@@ -19,7 +20,7 @@ trait HasContentTranslations
     /**
      * The legacy Italian columns remain a compatibility projection for the
      * existing backoffice.  Keeping its translation in sync here makes the
-     * translation table authoritative for publication and review decisions
+     * translation table authoritative for availability and review decisions
      * even when an older editor saves the source record directly.
      */
     public static function bootHasContentTranslations(): void
@@ -40,7 +41,7 @@ trait HasContentTranslations
             $revision = hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
             $owner->translations()->updateOrCreate(
                 ['locale' => SupportedLocale::IT->value],
-                [...$values, 'publication_state' => 'published', 'source_revision' => $revision, 'reviewed_source_revision' => $revision]
+                [...$values, 'source_revision' => $revision, 'reviewed_source_revision' => $revision]
             );
             $owner->translations()->where('locale', '!=', SupportedLocale::IT->value)->update(['source_revision' => $revision]);
         });
@@ -64,12 +65,13 @@ trait HasContentTranslations
     {
         return match ($owner::class) {
             Page::class => ['title', 'slug', 'excerpt', 'intro_text', 'custom_html', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description'],
-            SpecializationWebProfile::class => ['slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
+            SpecializationWebProfile::class => ['slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description'],
             ServiceWebProfile::class => ['public_slug', 'short_description', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'],
-            ProfessionalPublicProfile::class => ['slug', 'short_bio', 'bio_content', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'],
-            CheckupWebProfile::class => ['public_slug', 'short_description', 'category_label', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
+            ProfessionalPublicProfile::class => ['slug', 'short_bio', 'bio_content', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'],
+            CheckupWebProfile::class => ['public_slug', 'short_description', 'category_label', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description'],
+            ConventionPartnerWebProfile::class => ['title', 'public_slug', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1'],
             ConsentCategory::class => ['name', 'description'],
-            BlogPost::class => ['title', 'slug', 'subtitle', 'category_label', 'excerpt', 'intro_text', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description'],
+            BlogPost::class => ['title', 'slug', 'subtitle', 'category_label', 'excerpt', 'intro_text', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description'],
             default => [],
         };
     }
@@ -93,6 +95,7 @@ trait HasContentTranslations
                 ServiceWebProfile::class => $owner->service?->display_name,
                 ProfessionalPublicProfile::class => $owner->professional?->display_name ?? $owner->professional?->full_name,
                 CheckupWebProfile::class => $owner->checkup?->display_name,
+                ConventionPartnerWebProfile::class => $owner->conventionPartner?->name,
                 default => null,
             };
         }

@@ -27,7 +27,7 @@ class CheckupWebProfile extends Model
         'is_web_enabled', 'seo_title', 'local_seo_title',
         'seo_description', 'local_seo_description', 'seo_h1', 'local_seo_h1',
         'is_local_seo_enabled', 'canonical_url', 'robots', 'og_title',
-        'og_description', 'legacy_content',
+        'og_description', 'twitter_title', 'twitter_description', 'twitter_image_path', 'legacy_content',
     ];
 
     protected function casts(): array

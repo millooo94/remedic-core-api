@@ -30,6 +30,7 @@ class ContactCenterDataResolver
                 'country_code' => $settings->clinic_country,
             ],
             'phone' => $settings->clinic_phone,
+            'whatsapp_number' => $settings->whatsapp_number,
             'email' => $settings->clinic_email,
             'opening_hours' => is_array($settings->opening_hours) ? $settings->opening_hours : [],
             'latitude' => $settings->latitude === null ? null : (float) $settings->latitude,

@@ -2,12 +2,14 @@
 
 namespace App\Http\Resources\Api\V1\Admin;
 
-use App\Models\ApplicationType;
 use App\Models\SiteSetting;
 use App\Services\ContactCenterDataResolver;
+use App\Services\ContactPageMediaResolver;
 use App\Services\ConventionPartnerPublicProjection;
+use App\Services\SiteNavigationProjectionService;
 use App\Support\Media\PublicMediaUrl;
 use App\Support\Pages\HomePageRegistry;
+use App\Support\Pages\LegalDocumentContent;
 use App\Support\Pages\LegalDocumentRegistry;
 use App\Support\Pages\PageSectionRegistry;
 use Illuminate\Http\Request;
@@ -50,8 +52,6 @@ class PageResource extends JsonResource
             'meta_keywords' => $this->meta_keywords,
             'faq_enabled' => (bool) $this->faq_enabled,
             'is_active' => (bool) $this->is_active,
-            'published_at' => optional($this->published_at)?->toIso8601String(),
-            'publication_state' => $this->publicationState()->value,
             'effective_public_visibility' => $this->isPubliclyAvailable(),
             'sections' => $this->whenLoaded('sections', fn () => $this->sections->map(
                 fn ($section) => $this->mapSection($section, $request)
@@ -75,6 +75,7 @@ class PageResource extends JsonResource
             'id' => $section->id,
             'key' => $section->key,
             'title' => $section->title,
+            'internal_title' => $section->internal_title,
             'is_active' => (bool) $section->is_active,
         ];
         $definition = PageSectionRegistry::definition((string) $this->internal_key, $section->key);
@@ -90,23 +91,47 @@ class PageResource extends JsonResource
         $extra = $section->extra_json ?? [];
         if (LegalDocumentRegistry::isLegal((string) $this->internal_key)) {
             $data = $section->key === LegalDocumentRegistry::HERO_KEY
-                ? ['eyebrow' => $extra['eyebrow'] ?? null, 'body' => $section->content, 'last_updated_on' => $extra['last_updated_on'] ?? null]
-                : ['blocks' => $extra['blocks'] ?? []];
+                ? ['eyebrow' => $extra['eyebrow'] ?? null, 'body' => $section->content]
+                : [
+                    'blocks' => LegalDocumentContent::toPlaceholderBlocks($extra['blocks'] ?? []),
+                    'targets' => app(SiteNavigationProjectionService::class)->targets(),
+                ];
 
             return [...$base, 'data' => $data];
         }
         if ((string) $this->internal_key === HomePageRegistry::INTERNAL_KEY) {
             $data = $extra;
-            $data['media'] = collect($extra['media'] ?? [])->map(fn ($media) => [
-                'path' => $media['path'] ?? null,
-                'url' => PublicMediaUrl::fromPublicDisk($media['path'] ?? null, $request),
-                'alt' => $media['alt'] ?? null,
+            if (in_array($section->key, ['conventions', 'faq', 'contact', 'newsletter'], true)) {
+                $data += HomePageRegistry::defaults($section->key);
+            }
+            $data['media'] = collect($extra['media'] ?? [])->mapWithKeys(fn ($media, $slot) => [
+                $slot => [
+                    'path' => $media['path'] ?? null,
+                    'url' => PublicMediaUrl::fromPublicDisk($media['path'] ?? null, $request),
+                    'alt' => $media['alt'] ?? null,
+                ],
             ])->all();
+            if (in_array($section->key, ['hero', 'center_intro', 'conventions', 'faq', 'contact', 'newsletter'], true)) {
+                $defaults = HomePageRegistry::defaults($section->key);
+                $targetKeys = match ($section->key) {
+                    'hero', 'contact' => ['primary_cta_target', 'secondary_cta_target'],
+                    'newsletter' => ['submit_target'],
+                    default => ['cta_target'],
+                };
+                foreach ($targetKeys as $key) {
+                    $data[$key] ??= $defaults[$key];
+                }
+                $data['targets'] = app(SiteNavigationProjectionService::class)->targets();
+            }
+            if ($section->key === 'contact') {
+                $data['center'] = app(ContactCenterDataResolver::class)->resolve(SiteSetting::current());
+                $data['shared_media'] = app(ContactPageMediaResolver::class)->resolve($request);
+            }
 
             return [...$base, 'data' => $data];
         }
         $data = (string) $this->internal_key === PageSectionRegistry::CONTACT_INTERNAL_KEY && $section->key === 'location_and_contacts'
-            ? ['intro' => $section->content, 'action' => ['type' => 'contact'], 'center' => app(ContactCenterDataResolver::class)->resolve(SiteSetting::current())]
+            ? ['intro' => $section->content, 'cta_label' => $extra['cta_label'] ?? 'Contattaci', 'cta_target' => $extra['cta_target'] ?? 'contact', 'targets' => app(SiteNavigationProjectionService::class)->targets()]
             : ['body' => $section->content];
         if ((string) $this->internal_key === PageSectionRegistry::CONVENTIONS_NETWORK_INTERNAL_KEY) {
             $data = match ($section->key) {
@@ -123,20 +148,30 @@ class PageResource extends JsonResource
                 'application' => [
                     'body' => $section->content,
                     'privacy_text' => $extra['privacy_text'] ?? null,
+                    'privacy_target' => $extra['privacy_target'] ?? 'privacy',
+                    'cta_label' => $extra['cta_label'] ?? 'Invia la tua candidatura',
                     'action' => ['type' => 'open_application_form'],
-                    'application_types' => ApplicationType::query()->where('is_active', true)->publicOrder()->get(['key', 'name'])->map(fn (ApplicationType $type) => ['key' => $type->key, 'label' => $type->name])->all(),
                 ],
                 default => ['body' => $section->content],
             };
+            if ($section->key === 'application') {
+                $data['targets'] = app(SiteNavigationProjectionService::class)->targets();
+            }
         }
-        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body', 'subheading', 'privacy_text'] as $key) {
+        foreach (['eyebrow', 'link_label', 'target_internal_key', 'actions', 'image_alt', 'items', 'testimonials', 'disclaimer', 'values', 'pillars', 'callout_eyebrow', 'callout_body', 'subheading', 'cta_label', 'cta_target', 'primary_cta_label', 'primary_cta_target', 'secondary_cta_label', 'secondary_cta_target', 'privacy_text', 'privacy_target'] as $key) {
             if (array_key_exists($key, $extra)) {
                 $data[$key] = $extra[$key];
             }
         }
+        if ((string) $this->internal_key === PageSectionRegistry::PLUS_HEALTH_PROTOCOL_INTERNAL_KEY && $section->key === 'four_pillars') {
+            $data['pillars'] = PageSectionRegistry::protocolPillarsWithDefaults($extra['pillars'] ?? []);
+        }
         if (isset($definition['media_slot'])) {
             $data['image_path'] = $extra['image_path'] ?? null;
             $data['image_url'] = PublicMediaUrl::fromPublicDisk($extra['image_path'] ?? null, $request);
+        }
+        if (isset($definition['target_internal_key']) || isset($definition['actions'])) {
+            $data['targets'] = app(SiteNavigationProjectionService::class)->targets();
         }
 
         return [...$base, 'data' => $data];

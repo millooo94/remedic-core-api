@@ -16,6 +16,7 @@ class LocalizedRouteRegistry
         'aesthetic_medicine' => ['it' => '/medicina-estetica', 'en' => '/en/aesthetic-medicine', 'es' => '/es/medicina-estetica', 'fr' => '/fr/medecine-esthetique'],
         'news' => ['it' => '/news', 'en' => '/en/news', 'es' => '/es/noticias', 'fr' => '/fr/actualites'],
         'health_tips' => ['it' => '/pillole-di-salute', 'en' => '/en/health-tips', 'es' => '/es/consejos-de-salud', 'fr' => '/fr/conseils-sante'],
+        'conventions_network' => ['it' => '/convenzioni-e-network', 'en' => '/en/conventions-network', 'es' => '/es/convenios-y-redes', 'fr' => '/fr/conventions-et-reseaux'],
     ];
 
     public function path(string $key, SupportedLocale $locale, ?string $slug = null): string

@@ -7,10 +7,10 @@ use App\Enums\SupportedLocale;
 use App\Models\BlogPost;
 use App\Models\CheckupWebProfile;
 use App\Models\ConsentCategory;
-use App\Models\ContentTranslation;
 use App\Models\Page;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\ServiceWebProfile;
+use App\Models\SitePopup;
 use App\Models\SpecializationWebProfile;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -27,10 +27,13 @@ class TranslationOrchestrator
         'checkups' => CheckupWebProfile::class,
         'blog-posts' => BlogPost::class,
         'consent-categories' => ConsentCategory::class,
+        'popup' => SitePopup::class,
     ];
 
     /** Slugs, URLs, relations, prices and structure deliberately never enter this list. */
     private const FIELDS = ['title', 'excerpt', 'intro_text', 'short_description', 'subtitle', 'category_label', 'body', 'seo_title', 'seo_description', 'seo_h1', 'og_title', 'og_description', 'twitter_title', 'twitter_description', 'local_seo_title', 'local_seo_description', 'local_seo_h1', 'label', 'description'];
+
+    private const POPUP_FIELDS = ['eyebrow', 'title', 'body', 'primary_cta_label', 'secondary_cta_label'];
 
     public function __construct(private readonly TranslationProvider $provider) {}
 
@@ -42,10 +45,10 @@ class TranslationOrchestrator
         }
         $owner = $this->owner($type, $id);
         $source = $owner->translations()->where('locale', SupportedLocale::IT->value)->first();
-        if (! $source instanceof ContentTranslation) {
+        if (! $source instanceof Model) {
             throw ValidationException::withMessages(['source' => 'Il contenuto italiano richiesto non è disponibile.']);
         }
-        $segments = $this->segments($source);
+        $segments = $this->segments($source, $type);
         if ($segments === []) {
             throw ValidationException::withMessages(['source' => 'Il contenuto italiano non contiene campi editoriali traducibili.']);
         }
@@ -54,7 +57,7 @@ class TranslationOrchestrator
         }
 
         $existing = $owner->translations()->where('locale', $target->value)->first();
-        if ($existing instanceof ContentTranslation && ! $existing->needsReview() && ! $regenerate) {
+        if ($existing instanceof Model && ! $this->needsReview($existing) && ! $regenerate) {
             abort(409, 'La traduzione esistente è protetta: conferma la rigenerazione per sostituirla.');
         }
         $translated = $this->provider->translate($segments, $target);
@@ -62,12 +65,14 @@ class TranslationOrchestrator
             throw ValidationException::withMessages(['provider' => 'Il provider ha restituito una risposta incompleta.']);
         }
 
-        return DB::transaction(function () use ($owner, $source, $target, $existing, $translated, $regenerate): array {
-            $translation = $existing ?? new ContentTranslation(['locale' => $target]);
+        return DB::transaction(function () use ($owner, $source, $target, $existing, $translated, $regenerate, $type): array {
+            $translation = $existing ?? $owner->translations()->make(['locale' => $target]);
+            if ($type === 'popup') {
+                $translation->fill(array_fill_keys(array_diff(self::POPUP_FIELDS, array_keys($translated)), null));
+            }
             $translation->fill($translated);
             $translation->forceFill([
                 'locale' => $target,
-                'publication_state' => 'draft',
                 'source_revision' => $source->source_revision,
                 'reviewed_source_revision' => null,
             ]);
@@ -91,10 +96,10 @@ class TranslationOrchestrator
     }
 
     /** @return array<string, string> */
-    private function segments(ContentTranslation $source): array
+    private function segments(Model $source, string $type): array
     {
         $segments = [];
-        foreach (self::FIELDS as $field) {
+        foreach ($this->fields($type) as $field) {
             $value = $source->getAttribute($field);
             if (is_string($value) && filled($value)) {
                 $segments[$field] = $value;
@@ -102,5 +107,16 @@ class TranslationOrchestrator
         }
 
         return $segments;
+    }
+
+    /** @return list<string> */
+    private function fields(string $type): array
+    {
+        return $type === 'popup' ? self::POPUP_FIELDS : self::FIELDS;
+    }
+
+    private function needsReview(Model $translation): bool
+    {
+        return $translation->getAttribute('source_revision') !== $translation->getAttribute('reviewed_source_revision');
     }
 }

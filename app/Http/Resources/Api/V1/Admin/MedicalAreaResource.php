@@ -34,7 +34,7 @@ class MedicalAreaResource extends JsonResource
                 'services_count' => (int) ($this->services_count ?? $this->services->count()),
                 'professionals_count' => (int) ($this->professionals_count ?? $this->professionals->count()),
             ],
-            'web_profile' => $profile ? $this->profile($profile) : null,
+            'web_profile' => $profile ? $this->profile($profile, $request) : null,
             'is_configured' => $profile !== null,
             'effective_public_visibility' => (bool) $this->is_active && (bool) $profile?->is_web_enabled,
             'status' => $profile === null
@@ -60,7 +60,7 @@ class MedicalAreaResource extends JsonResource
         ];
     }
 
-    private function profile(SpecializationWebProfile $profile): array
+    private function profile(SpecializationWebProfile $profile, Request $request): array
     {
         return [
             'id' => $profile->id,
@@ -80,6 +80,10 @@ class MedicalAreaResource extends JsonResource
             'og_title' => $profile->og_title,
             'og_description' => $profile->og_description,
             'og_image_path' => $this->featured_image_path,
+            'twitter_title' => $profile->twitter_title,
+            'twitter_description' => $profile->twitter_description,
+            'twitter_image_path' => $profile->twitter_image_path,
+            'twitter_image_url' => PublicMediaUrl::fromPublicDisk($profile->twitter_image_path, $request),
             'sections' => $profile->sections
                 ->whereIn('key', MedicalAreaSectionDefinition::keys())
                 ->sortBy('id')

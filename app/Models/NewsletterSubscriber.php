@@ -44,4 +44,9 @@ class NewsletterSubscriber extends Model
     {
         return $this->hasMany(NewsletterConsentEvent::class)->orderBy('occurred_at');
     }
+
+    public function campaignDeliveries(): HasMany
+    {
+        return $this->hasMany(NewsletterCampaignDelivery::class);
+    }
 }

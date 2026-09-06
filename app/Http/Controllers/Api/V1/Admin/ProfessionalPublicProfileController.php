@@ -7,11 +7,13 @@ use App\Http\Requests\Api\V1\Admin\BackofficeIndexRequest;
 use App\Http\Requests\Api\V1\Admin\ProfessionalPublicProfiles\StoreProfessionalPublicProfileRequest;
 use App\Http\Requests\Api\V1\Admin\ProfessionalPublicProfiles\UpdateEquipeSectionsRequest;
 use App\Http\Requests\Api\V1\Admin\ProfessionalPublicProfiles\UpdateProfessionalPublicProfileRequest;
+use App\Http\Requests\Api\V1\Media\UploadMasterImageRequest;
 use App\Http\Resources\Api\V1\Admin\ProfessionalPublicProfileResource;
 use App\Models\ProfessionalPublicProfile;
 use App\Models\Redirect;
 use App\Services\AutomaticSlugRedirectService;
 use App\Services\EquipeContentService;
+use App\Services\ManagedMediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -22,6 +24,7 @@ class ProfessionalPublicProfileController extends Controller
     public function __construct(
         private readonly EquipeContentService $content,
         private readonly AutomaticSlugRedirectService $redirects,
+        private readonly ManagedMediaService $media,
     ) {}
 
     public function index(BackofficeIndexRequest $request): AnonymousResourceCollection
@@ -120,6 +123,34 @@ class ProfessionalPublicProfileController extends Controller
         ProfessionalPublicProfile $professionalPublicProfile
     ): ProfessionalPublicProfileResource {
         $this->content->updateSections($professionalPublicProfile, $request->validated('sections'));
+
+        return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
+    }
+
+    public function uploadTwitterImage(UploadMasterImageRequest $request, ProfessionalPublicProfile $professionalPublicProfile): ProfessionalPublicProfileResource
+    {
+        $this->media->replace($professionalPublicProfile, 'twitter_image_path', $request->file('image'), "professional-public-profiles/{$professionalPublicProfile->id}/twitter");
+
+        return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
+    }
+
+    public function uploadOgImage(UploadMasterImageRequest $request, ProfessionalPublicProfile $professionalPublicProfile): ProfessionalPublicProfileResource
+    {
+        $this->media->replace($professionalPublicProfile, 'og_image_path', $request->file('image'), "professional-public-profiles/{$professionalPublicProfile->id}/og");
+
+        return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
+    }
+
+    public function deleteOgImage(ProfessionalPublicProfile $professionalPublicProfile): ProfessionalPublicProfileResource
+    {
+        $this->media->delete($professionalPublicProfile, 'og_image_path', ["professional-public-profiles/{$professionalPublicProfile->id}/og"]);
+
+        return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
+    }
+
+    public function deleteTwitterImage(ProfessionalPublicProfile $professionalPublicProfile): ProfessionalPublicProfileResource
+    {
+        $this->media->delete($professionalPublicProfile, 'twitter_image_path', ["professional-public-profiles/{$professionalPublicProfile->id}/twitter"]);
 
         return new ProfessionalPublicProfileResource($this->loadProfile($professionalPublicProfile));
     }

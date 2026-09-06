@@ -28,7 +28,7 @@ final class PageSectionRegistry
     ];
 
     public const PLUS_HEALTH_PROTOCOL_SECTION_KEYS = [
-        'hero', 'promise', 'four_pillars', 'care_path_overview', 'active_listening', 'personalized_care_plan', 'clinical_technology', 'patient_education', 'person_first', 'method_statement', 'orientation_cta',
+        'hero', 'promise', 'four_pillars', 'care_path_overview', 'personalized_care_plan', 'clinical_technology', 'patient_education', 'person_first', 'method_statement', 'orientation_cta',
     ];
 
     public const CONTACT_SECTION_KEYS = ['hero', 'location_and_contacts', 'orientation_cta'];
@@ -56,7 +56,7 @@ final class PageSectionRegistry
             'three_reasons' => ['label' => 'Tre motivi', 'summary' => 'Motivi con icone dal catalogo controllato.', 'editor' => 'why-three-reasons', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'integrated_workflow' => ['label' => 'Workflow integrato', 'summary' => 'Competenze e diagnostica coordinate.', 'editor' => 'why-image-text', 'default_sort_order' => 3, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
             'continuity' => ['label' => 'Continuità', 'summary' => 'Percorso senza ripartire da zero.', 'editor' => 'why-image-text', 'default_sort_order' => 4, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
-            'patient_experiences' => ['label' => 'Esperienze dei pazienti', 'summary' => 'Testimonianze editoriali strutturate.', 'editor' => 'why-patient-experiences', 'default_sort_order' => 5, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'patient_experiences' => ['label' => 'Esperienze dei pazienti', 'summary' => 'Intestazione editoriale e recensioni verificate.', 'editor' => 'why-patient-experiences', 'default_sort_order' => 5, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'plus_health_protocol_cta' => ['label' => 'Protocollo Più Salute', 'summary' => 'CTA con destinazione semantica futura.', 'editor' => 'why-protocol-cta', 'default_sort_order' => 6, 'capabilities' => ['edit', 'toggle', 'reorder'], 'target_internal_key' => 'plus_health_protocol'],
             'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'why-orientation-cta', 'default_sort_order' => 7, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
         ],
@@ -65,18 +65,17 @@ final class PageSectionRegistry
             'promise' => ['label' => 'Più Salute è una promessa', 'summary' => 'Metodo e quattro valori editoriali fissi.', 'editor' => 'protocol-promise', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'four_pillars' => ['label' => 'I quattro pilastri', 'summary' => 'Copy dei pannelli, senza configurazione della ruota.', 'editor' => 'protocol-four-pillars', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder']],
             'care_path_overview' => ['label' => 'Dai valori al percorso', 'summary' => 'Quattro passaggi fissi del percorso.', 'editor' => 'protocol-care-path-overview', 'default_sort_order' => 3, 'capabilities' => ['edit', 'toggle', 'reorder']],
-            'active_listening' => ['label' => 'Ascolto attivo', 'summary' => 'Approfondimento con immagine.', 'editor' => 'protocol-image-text', 'default_sort_order' => 4, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
-            'personalized_care_plan' => ['label' => 'Piano di cura personalizzato', 'summary' => 'Approfondimento con immagine.', 'editor' => 'protocol-image-text', 'default_sort_order' => 5, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
-            'clinical_technology' => ['label' => 'Tecnologia e valutazione clinica', 'summary' => 'Approfondimento con immagine.', 'editor' => 'protocol-image-text', 'default_sort_order' => 6, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
-            'patient_education' => ['label' => 'Educazione del paziente', 'summary' => 'Contenuto con callout editoriale.', 'editor' => 'protocol-patient-education', 'default_sort_order' => 7, 'capabilities' => ['edit', 'toggle', 'reorder']],
-            'person_first' => ['label' => 'La persona al centro', 'summary' => 'Punti ordinabili con immagine.', 'editor' => 'protocol-person-first', 'default_sort_order' => 8, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
-            'method_statement' => ['label' => 'Più Salute', 'summary' => 'Dichiarazione del metodo.', 'editor' => 'protocol-method-statement', 'default_sort_order' => 9, 'capabilities' => ['edit', 'toggle', 'reorder']],
-            'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'protocol-orientation-cta', 'default_sort_order' => 10, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
+            'personalized_care_plan' => ['label' => 'Piano di cura personalizzato', 'summary' => 'Approfondimento con immagine.', 'editor' => 'protocol-image-text', 'default_sort_order' => 4, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
+            'clinical_technology' => ['label' => 'Tecnologia e valutazione clinica', 'summary' => 'Approfondimento con immagine.', 'editor' => 'protocol-image-text', 'default_sort_order' => 5, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
+            'patient_education' => ['label' => 'Educazione del paziente', 'summary' => 'Contenuto con callout editoriale.', 'editor' => 'protocol-patient-education', 'default_sort_order' => 6, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'person_first' => ['label' => 'La persona al centro', 'summary' => 'Punti ordinabili con immagine.', 'editor' => 'protocol-person-first', 'default_sort_order' => 7, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
+            'method_statement' => ['label' => 'Più Salute', 'summary' => 'Dichiarazione del metodo.', 'editor' => 'protocol-method-statement', 'default_sort_order' => 8, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'protocol-orientation-cta', 'default_sort_order' => 9, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
         ],
         self::CONTACT_INTERNAL_KEY => [
             'hero' => ['label' => 'Hero', 'summary' => 'Introduzione e immagine editoriale della pagina.', 'editor' => 'contact-hero', 'default_sort_order' => 0, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
-            'location_and_contacts' => ['label' => 'Informazioni e sede', 'summary' => 'Copy editoriale e dati derivati dal Centro.', 'editor' => 'contact-location-and-contacts', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
-            'orientation_cta' => ['label' => 'Orientamento finale', 'summary' => 'Invito con azioni globali del sito.', 'editor' => 'contact-orientation-cta', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
+            'location_and_contacts' => ['label' => 'Informazioni e sede', 'summary' => 'Copy editoriale, CTA e dati derivati dal Centro.', 'editor' => 'contact-location-and-contacts', 'default_sort_order' => 1, 'capabilities' => ['edit', 'toggle', 'reorder']],
+            'orientation_cta' => ['label' => 'Cerchi una visita o un esame?', 'summary' => 'Invito finale con le azioni di orientamento.', 'editor' => 'contact-orientation-cta', 'default_sort_order' => 2, 'capabilities' => ['edit', 'toggle', 'reorder'], 'actions' => ['booking', 'contact']],
         ],
         self::CONVENTIONS_NETWORK_INTERNAL_KEY => [
             'hero' => ['label' => 'Hero', 'summary' => 'Introduzione e immagine editoriale della pagina.', 'editor' => 'conventions-hero', 'default_sort_order' => 0, 'capabilities' => ['edit', 'toggle', 'reorder', 'media'], 'media_slot' => 'image'],
@@ -151,6 +150,10 @@ final class PageSectionRegistry
             return [];
         }
 
+        if ($internalKey === self::CONTACT_INTERNAL_KEY) {
+            self::migrateLegacyContactCta($page);
+        }
+
         $existingKeys = $page->sections()->pluck('key')->all();
 
         $defaults = match ($internalKey) {
@@ -197,11 +200,7 @@ final class PageSectionRegistry
             ]], 'sort_order' => 2, 'is_active' => true],
             ['key' => 'integrated_workflow', 'title' => 'Quando competenze e diagnostica lavorano insieme', 'content' => 'Avere professionisti e strumenti nello stesso centro permette di costruire percorsi più leggibili e di collegare più facilmente valutazione clinica, approfondimenti diagnostici e controlli successivi.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 3, 'is_active' => true],
             ['key' => 'continuity', 'title' => 'Un percorso che non riparte da zero', 'content' => 'Quando sono necessari nuovi controlli o competenze differenti, mantenere continuità nelle informazioni aiuta il paziente a orientarsi meglio tra le diverse fasi del percorso.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 4, 'is_active' => true],
-            ['key' => 'patient_experiences', 'title' => 'Le esperienze di chi si affida a Remedic', 'content' => 'Ascoltare chi ha già vissuto il centro aiuta a capire come viene percepita l’esperienza di cura.', 'extra_json' => ['eyebrow' => 'LA VOCE DEI PAZIENTI', 'disclaimer' => 'Le testimonianze mostrate sono contenuti dimostrativi in attesa di fonti verificate.', 'testimonials' => [
-                ['source_type' => 'google', 'quote' => 'Ho trovato indicazioni chiare sui passaggi successivi e un punto di riferimento durante tutto il percorso.', 'author_name' => 'Paziente anonimo', 'author_label' => 'Paziente anonimo', 'avatar_text' => 'PA', 'is_active' => true, 'sort_order' => 0],
-                ['source_type' => 'miodottore', 'quote' => 'La possibilità di svolgere visite e approfondimenti nello stesso centro ha reso l’organizzazione più semplice.', 'author_name' => 'Paziente anonimo', 'author_label' => 'Paziente anonimo', 'avatar_text' => 'PA', 'is_active' => true, 'sort_order' => 1],
-                ['source_type' => 'google', 'quote' => 'Mi sono sentita ascoltata e accompagnata con attenzione, senza dover ricostruire ogni volta tutte le informazioni.', 'author_name' => 'Paziente anonimo', 'author_label' => 'Paziente anonimo', 'avatar_text' => 'PA', 'is_active' => true, 'sort_order' => 2],
-            ]], 'sort_order' => 5, 'is_active' => true],
+            ['key' => 'patient_experiences', 'title' => 'Le esperienze di chi si affida a Remedic', 'content' => 'Ascoltare chi ha già vissuto il centro aiuta a capire come viene percepita l’esperienza di cura.', 'extra_json' => ['eyebrow' => 'LA VOCE DEI PAZIENTI'], 'sort_order' => 5, 'is_active' => true],
             ['key' => 'plus_health_protocol_cta', 'title' => 'Scopri il metodo che guida il percorso', 'content' => 'Professionalità, rapidità, accessibilità e umanità sono i quattro valori del Protocollo Più Salute.', 'extra_json' => ['link_label' => 'Scopri il Protocollo Più Salute', 'target_internal_key' => 'plus_health_protocol'], 'sort_order' => 6, 'is_active' => true],
             ['key' => 'orientation_cta', 'title' => 'Hai bisogno di orientarti?', 'content' => 'Contattaci per capire quale visita, esame o percorso può essere più adatto alla tua esigenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 7, 'is_active' => true],
         ];
@@ -215,13 +214,12 @@ final class PageSectionRegistry
             ['key' => 'promise', 'title' => 'Più Salute è una promessa', 'content' => 'Più Salute nasce dall’idea che prendersi cura di una persona significhi guardare oltre la singola prestazione. Competenze, tempi, accessibilità e relazione devono lavorare insieme lungo lo stesso percorso.', 'extra_json' => ['eyebrow' => 'IL NOSTRO METODO', 'values' => self::protocolValues()], 'sort_order' => 1, 'is_active' => true],
             ['key' => 'four_pillars', 'title' => 'Quattro pilastri, un unico modo di prenderci cura di te', 'content' => 'Non una semplice visita, ma un metodo: quattro valori che si integrano in un unico percorso, pensato per prendersi cura di te nel tempo.', 'extra_json' => ['eyebrow' => 'I QUATTRO PILASTRI', 'pillars' => self::protocolPillars()], 'sort_order' => 2, 'is_active' => true],
             ['key' => 'care_path_overview', 'title' => 'Dai valori al percorso di cura', 'content' => 'I quattro pilastri descrivono il modo in cui Remedic vuole prendersi cura delle persone. Il Protocollo Più Salute traduce questi valori in passaggi concreti lungo il percorso.', 'extra_json' => ['items' => self::carePathItems()], 'sort_order' => 3, 'is_active' => true],
-            ['key' => 'active_listening', 'title' => 'Ascolto attivo', 'content' => 'Il percorso parte dalla comprensione delle esigenze, della storia clinica, delle preoccupazioni e degli obiettivi della persona. L’ascolto permette di orientare in modo più chiaro i passaggi successivi.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 4, 'is_active' => true],
-            ['key' => 'personalized_care_plan', 'title' => 'Piano di cura personalizzato', 'content' => 'Le informazioni raccolte aiutano a definire un percorso coerente con le necessità della persona, organizzando priorità, visite, eventuali approfondimenti e controlli.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 5, 'is_active' => true],
-            ['key' => 'clinical_technology', 'title' => 'Tecnologia al servizio della valutazione clinica', 'content' => 'Strumenti diagnostici e tecnologie supportano i professionisti negli approfondimenti e aiutano a mantenere continuità nelle informazioni lungo il percorso.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 6, 'is_active' => true],
-            ['key' => 'patient_education', 'title' => 'Conoscere aiuta a prendersi cura di sé', 'content' => 'Informazioni comprensibili e indicazioni chiare aiutano la persona a conoscere meglio la propria salute, seguire il percorso concordato e adottare comportamenti di prevenzione più consapevoli.', 'extra_json' => ['callout_eyebrow' => 'EDUCAZIONE DEL PAZIENTE', 'callout_body' => 'Comprendere il perché di una visita, di un controllo o di un’indicazione aiuta a partecipare con maggiore consapevolezza al proprio percorso.'], 'sort_order' => 7, 'is_active' => true],
-            ['key' => 'person_first', 'title' => 'La persona al centro, non la singola prestazione', 'content' => 'Ogni percorso parte da una persona con esigenze, domande e tempi diversi. Per questo il Protocollo Più Salute mette in relazione competenza, ascolto, strumenti e continuità.', 'extra_json' => ['eyebrow' => 'IL PUNTO DI PARTENZA', 'image_path' => null, 'image_alt' => null, 'items' => [['title' => 'Ascoltare', 'description' => 'Comprendere prima di orientare.'], ['title' => 'Coordinare', 'description' => 'Mettere in relazione competenze e informazioni quando serve.'], ['title' => 'Accompagnare', 'description' => 'Dare chiarezza ai passaggi successivi.']]], 'sort_order' => 8, 'is_active' => true],
-            ['key' => 'method_statement', 'title' => 'Quattro valori. Un metodo. Una persona al centro.', 'content' => 'Professionalità, rapidità, accessibilità e umanità guidano il modo in cui Remedic costruisce il percorso. Il Protocollo Più Salute dà a questi valori una struttura concreta.', 'extra_json' => ['eyebrow' => 'PIÙ SALUTE'], 'sort_order' => 9, 'is_active' => true],
-            ['key' => 'orientation_cta', 'title' => 'Parliamo del tuo percorso', 'content' => 'Contattaci se hai bisogno di capire quale visita, esame o percorso può essere più adatto alla tua esigenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 10, 'is_active' => true],
+            ['key' => 'personalized_care_plan', 'title' => 'Piano di cura personalizzato', 'content' => 'Le informazioni raccolte aiutano a definire un percorso coerente con le necessità della persona, organizzando priorità, visite, eventuali approfondimenti e controlli.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 4, 'is_active' => true],
+            ['key' => 'clinical_technology', 'title' => 'Tecnologia al servizio della valutazione clinica', 'content' => 'Strumenti diagnostici e tecnologie supportano i professionisti negli approfondimenti e aiutano a mantenere continuità nelle informazioni lungo il percorso.', 'extra_json' => ['image_path' => null, 'image_alt' => null], 'sort_order' => 5, 'is_active' => true],
+            ['key' => 'patient_education', 'title' => 'Conoscere aiuta a prendersi cura di sé', 'content' => 'Informazioni comprensibili e indicazioni chiare aiutano la persona a conoscere meglio la propria salute, seguire il percorso concordato e adottare comportamenti di prevenzione più consapevoli.', 'extra_json' => ['callout_eyebrow' => 'EDUCAZIONE DEL PAZIENTE', 'callout_body' => 'Comprendere il perché di una visita, di un controllo o di un’indicazione aiuta a partecipare con maggiore consapevolezza al proprio percorso.'], 'sort_order' => 6, 'is_active' => true],
+            ['key' => 'person_first', 'title' => 'La persona al centro, non la singola prestazione', 'content' => 'Ogni percorso parte da una persona con esigenze, domande e tempi diversi. Per questo il Protocollo Più Salute mette in relazione competenza, ascolto, strumenti e continuità.', 'extra_json' => ['eyebrow' => 'IL PUNTO DI PARTENZA', 'image_path' => null, 'image_alt' => null, 'items' => [['title' => 'Ascoltare', 'description' => 'Comprendere prima di orientare.'], ['title' => 'Coordinare', 'description' => 'Mettere in relazione competenze e informazioni quando serve.'], ['title' => 'Accompagnare', 'description' => 'Dare chiarezza ai passaggi successivi.']]], 'sort_order' => 7, 'is_active' => true],
+            ['key' => 'method_statement', 'title' => 'Quattro valori. Un metodo. Una persona al centro.', 'content' => 'Professionalità, rapidità, accessibilità e umanità guidano il modo in cui Remedic costruisce il percorso. Il Protocollo Più Salute dà a questi valori una struttura concreta.', 'extra_json' => ['eyebrow' => 'PIÙ SALUTE'], 'sort_order' => 8, 'is_active' => true],
+            ['key' => 'orientation_cta', 'title' => 'Parliamo del tuo percorso', 'content' => 'Contattaci se hai bisogno di capire quale visita, esame o percorso può essere più adatto alla tua esigenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 9, 'is_active' => true],
         ];
     }
 
@@ -230,9 +228,36 @@ final class PageSectionRegistry
     {
         return [
             ['key' => 'hero', 'title' => 'Contatti', 'content' => 'Tutte le informazioni per contattare Remedic e raggiungere il centro.', 'extra_json' => ['eyebrow' => 'CONTATTI', 'image_path' => null, 'image_alt' => null], 'sort_order' => 0, 'is_active' => true],
-            ['key' => 'location_and_contacts', 'title' => 'Informazioni e sede', 'content' => 'Consulta i recapiti e gli orari del centro, oppure scegli l’azione più utile per te.', 'extra_json' => [], 'sort_order' => 1, 'is_active' => true],
-            ['key' => 'orientation_cta', 'title' => 'Cerchi una visita o un esame?', 'content' => 'Prenota online oppure contattaci per ricevere assistenza.', 'extra_json' => ['actions' => ['booking', 'contact']], 'sort_order' => 2, 'is_active' => true],
+            ['key' => 'location_and_contacts', 'title' => 'Informazioni e sede', 'content' => 'Consulta i recapiti e gli orari del centro, oppure scegli l’azione più utile per te.', 'extra_json' => ['cta_label' => 'Contattaci', 'cta_target' => 'contact'], 'sort_order' => 1, 'is_active' => true],
+            ['key' => 'orientation_cta', 'title' => 'Cerchi una visita o un esame?', 'content' => 'Prenota online oppure contattaci per ricevere assistenza.', 'extra_json' => ['primary_cta_label' => 'Prenota ora', 'primary_cta_target' => 'booking', 'secondary_cta_label' => 'Contattaci', 'secondary_cta_target' => 'contact', 'actions' => ['booking', 'contact']], 'sort_order' => 2, 'is_active' => true],
         ];
+    }
+
+    /** Preserve legacy CTA values while moving their editable contract to location_and_contacts. */
+    private static function migrateLegacyContactCta(Page $page): void
+    {
+        $location = $page->sections()->where('key', 'location_and_contacts')->first();
+        if ($location === null) {
+            return;
+        }
+
+        $legacy = $page->sections()->where('key', 'orientation_cta')->first();
+        $extra = $location->extra_json ?? [];
+        $legacyExtra = $legacy?->extra_json ?? [];
+        $changed = false;
+
+        if (! filled($extra['cta_label'] ?? null)) {
+            $extra['cta_label'] = filled($legacyExtra['cta_label'] ?? null) ? trim((string) $legacyExtra['cta_label']) : 'Contattaci';
+            $changed = true;
+        }
+        if (! filled($extra['cta_target'] ?? null)) {
+            $extra['cta_target'] = filled($legacyExtra['cta_target'] ?? null) ? trim((string) $legacyExtra['cta_target']) : 'contact';
+            $changed = true;
+        }
+
+        if ($changed) {
+            $location->update(['extra_json' => $extra]);
+        }
     }
 
     /** @return list<array{key: string, title: string, content: string, extra_json: array<string, mixed>, sort_order: int, is_active: bool}> */
@@ -252,7 +277,7 @@ final class PageSectionRegistry
             ['key' => 'hero', 'title' => 'Lavora con noi', 'content' => 'Entra in una realtà sanitaria che mette in relazione competenze diverse per costruire percorsi più chiari, coordinati e vicini alle persone.', 'extra_json' => ['eyebrow' => 'CARRIERE', 'image_path' => null, 'image_alt' => null], 'sort_order' => 0, 'is_active' => true],
             ['key' => 'professional_profiles', 'title' => 'Costruiamo insieme una medicina più vicina alle persone', 'content' => 'Remedic cresce attraverso professionisti che uniscono competenza, responsabilità e attenzione alla qualità dell’esperienza di cura.', 'extra_json' => ['subheading' => 'Profili professionali', 'items' => [['semantic_key' => 'specialist_doctors', 'title' => 'Medici specialisti', 'description' => 'Professionisti interessati a lavorare in un contesto multidisciplinare e orientato alla continuità di cura.'], ['semantic_key' => 'healthcare_professionals', 'title' => 'Professionisti sanitari', 'description' => 'Figure sanitarie che condividono un approccio competente, chiaro e attento alla persona.'], ['semantic_key' => 'collaborations', 'title' => 'Collaborazioni', 'description' => 'Competenze complementari utili a sviluppare percorsi, servizi e progetti coerenti con il modello Remedic.'], ['semantic_key' => 'organizational_area', 'title' => 'Area organizzativa', 'description' => 'Persone capaci di accompagnare pazienti e professionisti con precisione, disponibilità e affidabilità.']]], 'sort_order' => 1, 'is_active' => true],
             ['key' => 'what_we_look_for', 'title' => 'Cosa cerchiamo', 'content' => 'Un modo di lavorare coerente con il nostro impegno verso pazienti, colleghi e comunità professionale.', 'extra_json' => ['items' => [['semantic_key' => 'person_care', 'title' => 'Attenzione alla persona', 'description' => 'Ascolto, rispetto e cura della relazione in ogni passaggio.'], ['semantic_key' => 'quality', 'title' => 'Qualità', 'description' => 'Responsabilità professionale e attenzione costante alla qualità del servizio.'], ['semantic_key' => 'clarity', 'title' => 'Chiarezza', 'description' => 'Informazioni comprensibili e comunicazione trasparente con pazienti e colleghi.'], ['semantic_key' => 'multidisciplinary_collaboration', 'title' => 'Collaborazione multidisciplinare', 'description' => 'Disponibilità al confronto e alla costruzione di percorsi condivisi.'], ['semantic_key' => 'reliability', 'title' => 'Affidabilità', 'description' => 'Precisione negli impegni, nei processi e nella gestione delle informazioni.'], ['semantic_key' => 'continuity', 'title' => 'Continuità', 'description' => 'Un modo di lavorare che accompagna la persona nel tempo e collega le diverse fasi del percorso.']]], 'sort_order' => 2, 'is_active' => true],
-            ['key' => 'application', 'title' => 'Candidatura spontanea', 'content' => 'Raccontaci il tuo percorso professionale e il tipo di collaborazione che vorresti costruire con Remedic. Puoi scrivere al recapito generale del centro indicando nell’oggetto “Candidatura spontanea Remedic” e allegando soltanto i documenti pertinenti alla candidatura.', 'extra_json' => ['privacy_text' => 'Prima di inviare i tuoi dati, consulta la Privacy Policy.'], 'sort_order' => 3, 'is_active' => true],
+            ['key' => 'application', 'title' => 'Candidatura spontanea', 'content' => 'Raccontaci il tuo percorso professionale e il tipo di collaborazione che vorresti costruire con Remedic. Puoi scrivere al recapito generale del centro indicando nell’oggetto “Candidatura spontanea Remedic” e allegando soltanto i documenti pertinenti alla candidatura.', 'extra_json' => ['cta_label' => 'Invia la tua candidatura', 'privacy_text' => 'Prima di inviare i tuoi dati, consulta la Privacy Policy.', 'privacy_target' => 'privacy'], 'sort_order' => 3, 'is_active' => true],
         ];
     }
 
@@ -278,14 +303,36 @@ final class PageSectionRegistry
     }
 
     /** @return list<array<string, mixed>> */
-    private static function protocolPillars(): array
+    public static function protocolPillars(): array
     {
         return [
-            ['semantic_key' => 'rapidity', 'label' => 'Rapidità', 'detail_eyebrow' => null, 'detail_title' => null, 'detail_description' => 'Orientamento rapido, comunicazioni coordinate e un percorso che evita passaggi inutili.', 'bullets' => []],
-            ['semantic_key' => 'professionalism', 'label' => 'Professionalità', 'detail_eyebrow' => null, 'detail_title' => 'Competenze che lavorano insieme', 'detail_description' => 'Specialisti qualificati, standard clinici e strumenti diagnostici integrati.', 'bullets' => ['Specialisti qualificati e standard clinici', 'Strumenti diagnostici integrati']],
-            ['semantic_key' => 'accessibility', 'label' => 'Accessibilità', 'detail_eyebrow' => null, 'detail_title' => null, 'detail_description' => 'Informazioni comprensibili, convenzioni e percorsi costruiti sulle necessità reali del paziente.', 'bullets' => []],
-            ['semantic_key' => 'humanity', 'label' => 'Umanità', 'detail_eyebrow' => null, 'detail_title' => null, 'detail_description' => 'Ascolto, attenzione e continuità nella relazione con il paziente.', 'bullets' => []],
+            ['semantic_key' => 'rapidity', 'label' => 'Rapidità', 'detail_eyebrow' => 'PIÙ RAPIDITÀ', 'detail_title' => 'Risposte più semplici, tempi più chiari', 'detail_description' => 'Orientamento rapido, comunicazioni coordinate e un percorso che evita passaggi inutili.', 'bullets' => []],
+            ['semantic_key' => 'professionalism', 'label' => 'Professionalità', 'detail_eyebrow' => 'PIÙ PROFESSIONALITÀ', 'detail_title' => 'Competenze che lavorano insieme', 'detail_description' => 'Specialisti qualificati, standard clinici e strumenti diagnostici integrati.', 'bullets' => ['Specialisti qualificati e standard clinici', 'Strumenti diagnostici integrati']],
+            ['semantic_key' => 'accessibility', 'label' => 'Accessibilità', 'detail_eyebrow' => 'PIÙ ACCESSIBILITÀ', 'detail_title' => 'Una cura più facile da raggiungere', 'detail_description' => 'Informazioni comprensibili, convenzioni e percorsi costruiti sulle necessità reali del paziente.', 'bullets' => []],
+            ['semantic_key' => 'humanity', 'label' => 'Umanità', 'detail_eyebrow' => 'PIÙ UMANITÀ', 'detail_title' => 'La persona prima della prestazione', 'detail_description' => 'Ascolto, attenzione e continuità nella relazione con il paziente.', 'bullets' => []],
         ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    public static function protocolPillarsWithDefaults(mixed $pillars): array
+    {
+        $defaults = self::protocolPillars();
+        if (! is_array($pillars)) {
+            return $defaults;
+        }
+
+        return array_map(static function (array $default, int $index) use ($pillars): array {
+            $saved = isset($pillars[$index]) && is_array($pillars[$index]) ? $pillars[$index] : [];
+
+            return [
+                'semantic_key' => $default['semantic_key'],
+                'label' => $default['label'],
+                'detail_eyebrow' => $default['detail_eyebrow'],
+                'detail_title' => filled($saved['detail_title'] ?? null) ? trim((string) $saved['detail_title']) : $default['detail_title'],
+                'detail_description' => array_key_exists('detail_description', $saved) ? (string) $saved['detail_description'] : $default['detail_description'],
+                'bullets' => is_array($saved['bullets'] ?? null) ? array_values($saved['bullets']) : $default['bullets'],
+            ];
+        }, $defaults, array_keys($defaults));
     }
 
     /** @return list<array{semantic_key: string, title: string, description: string, icon_key: string}> */
